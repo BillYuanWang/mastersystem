@@ -61,6 +61,9 @@ begin
 end;
 $$;
 
+revoke execute on function private.capture_audit_event()
+from public, anon, authenticated;
+
 create trigger profiles_audit
 after insert or update or delete on public.profiles
 for each row execute function private.capture_audit_event();

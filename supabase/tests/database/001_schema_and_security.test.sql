@@ -52,10 +52,10 @@ select ok(
 select ok(
   not has_function_privilege(
     'authenticated',
-    'private.is_admin()',
+    'private.capture_audit_event()',
     'EXECUTE'
   ),
-  'private authorization helpers are not directly executable'
+  'private trigger helpers are not directly executable'
 );
 
 select ok(
