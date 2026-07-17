@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Master Dance Reserve</title>
+    <script>
+      (() => {
+        try {
+          const raw = localStorage.getItem("jiamei_master_schedule_prefs_v1");
+          const appearance = raw ? JSON.parse(raw).appearance : "system";
+          const themeQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+          const prefersDark = Boolean(themeQuery?.matches);
+          document.documentElement.dataset.theme = appearance === "dark" || (appearance !== "light" && prefersDark) ? "dark" : "light";
+        } catch (error) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">MD</div>
+          <div>
+            <h1>MASTER DANCE</h1>
+            <p id="recordCount">0 classes</p>
+          </div>
+        </div>
+
+        <nav class="tabs" aria-label="主导航">
+          <button class="tab is-active" type="button" data-view="schedule">schedule</button>
+          <button class="tab" type="button" data-view="manage">courses</button>
+          <button class="tab" type="button" data-view="students">students</button>
+        </nav>
+
+        <div class="header-actions">
+          <label class="appearance-control" for="appearanceSelect">
+            <span>mode</span>
+            <select id="appearanceSelect" aria-label="外观">
+              <option value="system">system</option>
+              <option value="light">light</option>
+              <option value="dark">dark</option>
+            </select>
+          </label>
+          <button class="button secondary" type="button" id="printBtn">print</button>
+          <button class="button primary" type="button" id="addCourseTop">+ course</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="view is-active" id="scheduleView" aria-labelledby="scheduleTitle">
+          <div class="section-head">
+            <div>
+              <h2 id="scheduleTitle">schedule board</h2>
+              <p id="scheduleSubtitle">当前视图</p>
+            </div>
+          </div>
+
+          <div class="toolbar" aria-label="课程表筛选">
+            <div class="control-block">
+              <span class="control-label">日期</span>
+              <div class="segmented" id="weekModeGroup">
+                <button class="is-active" type="button" data-week-mode="weekdays">周一到周五</button>
+                <button type="button" data-week-mode="full">周一到周日</button>
+              </div>
+            </div>
+
+            <div class="control-block">
+              <span class="control-label">教室</span>
+              <div class="segmented" id="roomModeGroup">
+                <button class="is-active" type="button" data-room-mode="both">大小教室</button>
+                <button type="button" data-room-mode="large">仅大教室</button>
+                <button type="button" data-room-mode="small">仅小教室</button>
+              </div>
+            </div>
+
+            <div class="control-block zoom-control">
+              <div class="control-row">
+                <span class="control-label">缩放</span>
+                <output id="scheduleZoomValue" for="scheduleZoom">100%</output>
+              </div>
+              <div class="zoom-row">
+                <input id="scheduleZoom" type="range" min="70" max="180" step="5" value="100" aria-label="课程表缩放">
+                <button class="mini-button" type="button" id="scheduleZoomReset">100%</button>
+              </div>
+            </div>
+
+            <label class="field compact">
+              <span>年龄段</span>
+              <select id="scheduleAgeFilter"></select>
+            </label>
+
+            <label class="field compact">
+              <span>课程类型</span>
+              <select id="scheduleCategoryFilter"></select>
+            </label>
+
+            <label class="field compact">
+              <span>老师</span>
+              <select id="scheduleTeacherFilter"></select>
+            </label>
+          </div>
+
+          <section class="schedule-frame" aria-label="可打印课程表">
+            <div class="print-title">
+              <h2>佳美舞蹈课程表</h2>
+              <p id="printMeta">周一到周五 · 大小教室</p>
+            </div>
+            <div id="scheduleBoard" class="schedule-board"></div>
+          </section>
+        </section>
+
+        <section class="view" id="manageView" aria-labelledby="manageTitle">
+          <div class="section-head">
+            <div>
+              <h2 id="manageTitle">课程设置</h2>
+              <p>录入、筛选、排序</p>
+            </div>
+            <div class="section-actions">
+              <button class="button secondary" type="button" id="exportBtn">下载CSV</button>
+              <details class="csv-tools">
+                <summary>CSV 备用</summary>
+                <div class="csv-tool-menu">
+                  <button class="button secondary" type="button" id="connectCsvBtn">重新授权</button>
+                  <button class="button secondary" type="button" id="createCsvBtn">新建CSV</button>
+                  <label class="button secondary file-button" for="importFile">导入替换</label>
+                </div>
+              </details>
+              <input id="importFile" type="file" accept=".csv,text/csv,application/json,.json">
+              <button class="button danger" type="button" id="clearCoursesBtn">清空课程</button>
+              <button class="button primary" type="button" id="addCourseManage">+ 添加课程</button>
+            </div>
+          </div>
+
+          <div class="storage-status" id="storageStatus" role="status">未连接 CSV 文件</div>
+
+          <div class="toolbar management-toolbar" aria-label="课程列表筛选">
+            <label class="field search-field">
+              <span>搜索</span>
+              <input id="tableSearch" type="search" placeholder="课程、老师、备注">
+            </label>
+
+            <label class="field compact">
+              <span>星期</span>
+              <select id="tableDayFilter"></select>
+            </label>
+
+            <label class="field compact">
+              <span>教室</span>
+              <select id="tableRoomFilter"></select>
+            </label>
+
+            <label class="field compact">
+              <span>年龄段</span>
+              <select id="tableAgeFilter"></select>
+            </label>
+
+            <label class="field compact">
+              <span>课程类型</span>
+              <select id="tableCategoryFilter"></select>
+            </label>
+
+            <label class="field compact">
+              <span>老师</span>
+              <select id="tableTeacherFilter"></select>
+            </label>
+          </div>
+
+          <div class="table-shell">
+            <table class="course-table">
+              <thead>
+                <tr>
+                  <th><button type="button" data-sort="dayTime">星期 / 时间</button></th>
+                  <th><button type="button" data-sort="room">教室</button></th>
+                  <th><button type="button" data-sort="name">课程</button></th>
+                  <th><button type="button" data-sort="classMode">属性 / 价格</button></th>
+                  <th><button type="button" data-sort="category">类型</button></th>
+                  <th><button type="button" data-sort="age">年龄段</button></th>
+                  <th><button type="button" data-sort="teacher">老师</button></th>
+                  <th>报名</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="courseTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="studentsView" aria-labelledby="studentsTitle">
+          <div class="section-head">
+            <div>
+              <h2 id="studentsTitle">学生</h2>
+              <p id="studentsSubtitle">已报名学生总览</p>
+            </div>
+          </div>
+
+          <div class="toolbar" aria-label="学生筛选">
+            <label class="field search-field">
+              <span>搜索</span>
+              <input id="studentSearch" type="search" placeholder="学生、课程、老师">
+            </label>
+
+            <label class="field compact">
+              <span>报名方式</span>
+              <select id="studentEnrollmentFilter">
+                <option value="all">全部方式</option>
+                <option value="term">按期</option>
+                <option value="passes">按N次</option>
+              </select>
+            </label>
+          </div>
+
+          <div id="studentBoard" class="student-board" aria-label="学生报名总览"></div>
+        </section>
+      </main>
+      <footer class="app-footer">Master Dance Reserve</footer>
+    </div>
+
+    <dialog class="course-dialog" id="courseDialog">
+      <form id="courseForm" class="course-form">
+        <div class="dialog-head">
+          <div>
+            <h2 id="dialogTitle">添加课程</h2>
+            <p id="dialogSubtitle">课程信息</p>
+          </div>
+          <button class="icon-button" type="button" id="closeDialogBtn" aria-label="关闭">×</button>
+        </div>
+
+        <input id="courseId" type="hidden">
+
+        <div class="form-grid">
+          <label class="field wide">
+            <span>课程名称</span>
+            <input id="courseName" type="text" maxlength="60" placeholder="输入课程名称" required>
+          </label>
+
+          <label class="field">
+            <span>课程类型</span>
+            <input id="courseCategory" type="text" list="categoryOptions" maxlength="32" placeholder="输入课程类型">
+          </label>
+
+          <label class="field">
+            <span>组课 / 私课</span>
+            <select id="courseClassMode" required></select>
+          </label>
+
+          <label class="field">
+            <span>老师</span>
+            <input id="courseTeacher" type="text" list="teacherOptions" maxlength="32" placeholder="老师姓名">
+          </label>
+
+          <label class="field">
+            <span>年龄段</span>
+            <input id="courseAge" type="text" list="ageOptions" maxlength="24" placeholder="输入年龄段">
+          </label>
+
+          <label class="field">
+            <span>星期</span>
+            <select id="courseDay" required></select>
+          </label>
+
+          <label class="field">
+            <span>教室</span>
+            <select id="courseRoom" required></select>
+          </label>
+
+          <label class="field">
+            <span>起始周</span>
+            <input id="courseStartDate" type="date">
+          </label>
+
+          <label class="field">
+            <span>结束周</span>
+            <input id="courseEndDate" type="date">
+          </label>
+
+          <label class="field">
+            <span>开始时间</span>
+            <input id="courseStart" type="time" step="300" required>
+          </label>
+
+          <label class="field">
+            <span>结束时间</span>
+            <input id="courseEnd" type="time" step="300" required>
+          </label>
+
+          <label class="field">
+            <span>单期价格</span>
+            <input id="courseSinglePrice" type="text" maxlength="24" inputmode="decimal" placeholder="输入单期价格">
+          </label>
+
+          <label class="field">
+            <span>按期价格</span>
+            <input id="courseTermPrice" type="text" maxlength="24" inputmode="decimal" placeholder="输入按期价格">
+          </label>
+
+          <div class="session-panel wide">
+            <div class="session-head">
+              <span>上课周次</span>
+              <output id="sessionCount">未设置日期范围</output>
+            </div>
+            <div class="session-list" id="sessionList"></div>
+          </div>
+
+          <div class="enrollment-panel wide">
+            <div class="enrollment-head">
+              <span>报名学生</span>
+              <button class="mini-button" type="button" id="addEnrollmentBtn">+ 学生</button>
+            </div>
+            <div class="enrollment-list" id="enrollmentList"></div>
+          </div>
+
+          <label class="field wide">
+            <span>备注</span>
+            <textarea id="courseNotes" rows="3" maxlength="180" placeholder="班级、人数、注意事项"></textarea>
+          </label>
+        </div>
+
+        <datalist id="categoryOptions"></datalist>
+        <datalist id="teacherOptions"></datalist>
+        <datalist id="ageOptions"></datalist>
+        <datalist id="studentOptions"></datalist>
+
+        <div class="conflict-box" id="conflictBox" hidden></div>
+
+        <div class="dialog-actions">
+          <button class="button secondary" type="button" id="cancelDialogBtn">取消</button>
+          <button class="button primary" type="submit">保存课程</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="course-dialog readonly-dialog" id="readonlyCourseDialog">
+      <div class="course-form">
+        <div class="dialog-head">
+          <div>
+            <h2 id="readonlyCourseTitle">课程详情</h2>
+            <p id="readonlyCourseSubtitle">只读查看</p>
+          </div>
+          <button class="icon-button" type="button" id="closeReadonlyDialogBtn" aria-label="关闭">×</button>
+        </div>
+        <div id="readonlyCourseBody" class="readonly-course-body"></div>
+        <div class="dialog-actions">
+          <button class="button primary" type="button" id="readonlyDialogDoneBtn">完成</button>
+        </div>
+      </div>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

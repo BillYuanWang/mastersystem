@@ -1,0 +1,68 @@
+name: MasterDance
+options:
+  bundleIdPrefix: com.masterdance
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  MasterDanceCore:
+    path: ..
+
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+    SWIFT_STRICT_CONCURRENCY: complete
+    GENERATE_INFOPLIST_FILE: YES
+
+targets:
+  MasterDanceAdmin:
+    type: application
+    platform: macOS
+    sources:
+      - path: Shared
+      - path: MasterDanceAdmin
+    dependencies:
+      - package: MasterDanceCore
+        product: MasterDanceCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.masterdance.desk
+        PRODUCT_NAME: MD Desk
+        INFOPLIST_KEY_CFBundleDisplayName: MD Desk
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+
+  MasterDanceMobile:
+    type: application
+    platform: iOS
+    sources:
+      - path: Shared
+      - path: MasterDanceMobile
+    dependencies:
+      - package: MasterDanceCore
+        product: MasterDanceCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.masterdance.mobile
+        PRODUCT_NAME: Master Dance
+        INFOPLIST_KEY_CFBundleDisplayName: Master Dance
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        TARGETED_DEVICE_FAMILY: 1,2
+        CODE_SIGN_STYLE: Automatic
+
+schemes:
+  MasterDanceAdmin:
+    build:
+      targets:
+        MasterDanceAdmin: all
+    run:
+      config: Debug
+  MasterDanceMobile:
+    build:
+      targets:
+        MasterDanceMobile: all
+    run:
+      config: Debug

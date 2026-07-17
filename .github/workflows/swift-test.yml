@@ -1,0 +1,13 @@
+name: Swift Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-core:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test MasterDanceCore
+        run: swift test

@@ -1,0 +1,36 @@
+# Apple and editor metadata
+.DS_Store
+*.xcuserstate
+xcuserdata/
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+.codex/
+
+# Swift and Xcode build products
+.build/
+build/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+*.app
+*.dSYM/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.pem
+*.key
+*.mobileprovision
+supabase/.branches/
+supabase/.temp/
+
+# Research, recordings, and legacy production data
+product-research/
+*.m4a
+web/courses.csv
+macos-app/MD Desk Data/
+macos-app/MD Desk.app/
+macos-app/source/Resources/Web/courses.csv
+macos-app/source/dist/
