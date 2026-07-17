@@ -1,0 +1,52 @@
+name: Supabase tests
+
+on:
+  push:
+    paths:
+      - ".github/workflows/supabase-test.yml"
+      - "supabase/**"
+  pull_request:
+    paths:
+      - ".github/workflows/supabase-test.yml"
+      - "supabase/**"
+
+permissions:
+  contents: read
+
+jobs:
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start database and apply migrations
+        run: supabase db start
+
+      - name: Lint database functions
+        run: supabase db lint --local --fail-on error
+
+      - name: Run pgTAP tests
+        run: supabase test db --local
+
+  edge-function:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check formatting
+        run: deno fmt --check supabase/functions
+
+      - name: Type-check functions
+        run: deno check supabase/functions/admin-invite-member/index.ts
