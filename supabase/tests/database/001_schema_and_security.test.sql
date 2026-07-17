@@ -63,9 +63,13 @@ select ok(
   'administrator bootstrap RPC exists'
 );
 
-select like(
-  pg_get_functiondef('public.bootstrap_first_administrator(text)'::regprocedure),
-  '%pg_advisory_xact_lock%',
+select ok(
+  position(
+    'pg_advisory_xact_lock'
+    in pg_get_functiondef(
+      'public.bootstrap_first_administrator(text)'::regprocedure
+    )
+  ) > 0,
   'administrator bootstrap serializes concurrent activation attempts'
 );
 
