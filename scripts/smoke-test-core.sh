@@ -11,7 +11,7 @@ SDK_SWIFT_VERSION=""
 mkdir -p "$CACHE_ROOT"
 
 if [[ -n "$SWIFT_INTERFACE" ]]; then
-  SDK_SWIFT_VERSION="$(sed -n 's|// swift-compiler-version: Apple Swift version \\([^ ]*\\).*|\\1|p' "$SWIFT_INTERFACE" | head -1)"
+  SDK_SWIFT_VERSION="$(sed -n 's|// swift-compiler-version: Apple Swift version \([^ ]*\).*|\1|p' "$SWIFT_INTERFACE" | head -1)"
 fi
 
 SWIFT_ARGS=(
@@ -28,6 +28,7 @@ fi
 swiftc \
   "${SWIFT_ARGS[@]}" \
   "$ROOT_DIR"/packages/MasterDanceCore/Sources/MasterDanceCore/*.swift \
+  "$ROOT_DIR"/packages/MasterDanceCore/Sources/MasterDanceCore/Migration/*.swift \
   "$ROOT_DIR/scripts/CoreSmokeTest.swift" \
   -o "$BINARY_PATH"
 

@@ -6,12 +6,13 @@
 - Define replaceable repositories, preview data, tests, and native app shells.
 - Preserve the working legacy web and macOS versions as migration inputs.
 
-## Phase 2: Product design and shared workflows
+## Phase 2: Product design and shared workflows - complete
 
 - Design the compact native navigation and schedule experience.
 - Build reusable SwiftUI flows for terms, custom course reference data, sessions, students, and enrollments.
 - Confirm the remaining-session, leave-deadline, reminder, and contract-scope rules before encoding policies.
 - Design additive CSV migration with validation and a dry-run report.
+- Verify the selected Option 3 layout with Option 2 dark colors in matched-size native screenshots.
 
 ## Phase 3: Supabase backend
 

@@ -1,15 +1,15 @@
 # Master Dance
 
-Phase 1 engineering foundation for the production Master Dance system.
+Phase 2 native product foundation for the production Master Dance system.
 
-Master Dance formal product Phase 1 engineering skeleton. / Master Dance 正式产品第 1 阶段工程骨架。
+Master Dance formal product Phase 2 shared workflows. / Master Dance 正式产品第 2 阶段共享工作流。
 
 ## What is here
 
-- `packages/MasterDanceCore`: Swift 6 domain models and repository contracts.
-- `apps`: an XcodeGen specification for the MD Desk macOS admin app and role-aware Master Dance iOS app.
+- `packages/MasterDanceCore`: Swift 6 domain models, recurring-session generation, preview data, and repository contracts.
+- `apps`: shared SwiftUI workflows plus an XcodeGen specification for MD Desk on macOS and the role-aware Master Dance iPhone app.
 - `supabase`: the future cloud adapter boundary; schema work starts in Phase 3.
-- `docs`: architecture, product scope, and delivery roadmap.
+- `docs`: architecture, product scope, visual baseline, policy log, migration design, QA evidence, and delivery roadmap.
 
 Existing `web`, `macos-app`, and `product-research` directories are migration inputs. This skeleton does not replace or remove them.
 
@@ -33,7 +33,7 @@ The apps require full Xcode. When Xcode and XcodeGen are installed, generate the
 xcodegen generate --spec apps/project.yml
 ```
 
-No Xcode app build is claimed by Phase 1 in a Command Line Tools-only environment.
+The current machine has Command Line Tools rather than full Xcode, so Phase 2 verifies the native source by strict typechecking, rendered SwiftUI evidence, XcodeGen generation, and core smoke tests. Installable macOS and iPhone demo builds remain Phase 6.
 
 ## Current boundaries
 

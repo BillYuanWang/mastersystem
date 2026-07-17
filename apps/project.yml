@@ -22,6 +22,10 @@ targets:
     platform: macOS
     sources:
       - path: Shared
+        excludes:
+          - Resources
+      - path: Shared/Resources
+        buildPhase: resources
       - path: MasterDanceAdmin
     dependencies:
       - package: MasterDanceCore
@@ -31,6 +35,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.masterdance.desk
         PRODUCT_NAME: MD Desk
         INFOPLIST_KEY_CFBundleDisplayName: MD Desk
+        INFOPLIST_KEY_CFBundleIconFile: AppIcon
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: YES
 
@@ -39,6 +44,10 @@ targets:
     platform: iOS
     sources:
       - path: Shared
+        excludes:
+          - Resources
+      - path: Shared/Resources
+        buildPhase: resources
       - path: MasterDanceMobile
     dependencies:
       - package: MasterDanceCore

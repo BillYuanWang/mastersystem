@@ -88,6 +88,61 @@ private struct CoreSmokeTest {
             throw SmokeFailure.failed("Appearance modes are incomplete")
         }
 
+        try verifyRecurringSessions(courseID: course.id)
+        verifyMigrationDryRun()
+
         print("MasterDanceCore smoke test passed")
+    }
+
+    private static func verifyRecurringSessions(courseID: CourseID) throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        guard
+            let startsOn = calendar.date(from: DateComponents(year: 2026, month: 8, day: 3)),
+            let endsOn = calendar.date(from: DateComponents(year: 2026, month: 8, day: 31)),
+            let excluded = calendar.date(from: DateComponents(year: 2026, month: 8, day: 17))
+        else {
+            throw SmokeFailure.failed("Could not construct recurrence dates")
+        }
+        let plan = WeeklySessionPlan(
+            courseID: courseID,
+            startsOn: startsOn,
+            endsOn: endsOn,
+            weekday: 2,
+            startTime: SessionClockTime(hour: 16, minute: 0),
+            endTime: SessionClockTime(hour: 17, minute: 15),
+            excludedDates: [excluded]
+        )
+        let sessions = try RecurringSessionBuilder.sessions(for: plan, calendar: calendar)
+        guard sessions.count == 4 else {
+            throw SmokeFailure.failed("Recurring sessions did not honor an excluded week")
+        }
+    }
+
+    private static func verifyMigrationDryRun() {
+        let report = MigrationDryRunReport(
+            generatedAt: .distantPast,
+            sourceFingerprint: "smoke",
+            summaries: [
+                MigrationEntitySummary(
+                    entity: .course,
+                    sourceRows: 2,
+                    validRows: 1,
+                    skippedRows: 1,
+                    proposedInserts: 1,
+                    proposedUpdates: 0
+                )
+            ],
+            issues: [
+                MigrationIssue(
+                    severity: .error,
+                    entity: .course,
+                    sourceRow: 2,
+                    message: "Unknown room"
+                )
+            ]
+        )
+        precondition(!report.isReadyToApply)
+        precondition(report.proposedWriteCount == 1)
     }
 }

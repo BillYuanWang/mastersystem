@@ -2,6 +2,7 @@ import MasterDanceCore
 import SwiftUI
 
 @main
+@MainActor
 struct MasterDanceMobileApp: App {
     private let repository = PreviewMasterDanceStore.sample()
     @AppStorage("previewRole") private var roleRawValue = AppRole.guardian.rawValue

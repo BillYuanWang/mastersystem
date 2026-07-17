@@ -157,54 +157,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
     }
 
     public static func sample(now: Date = Date()) -> PreviewMasterDanceStore {
-        let term = Term(
-            name: "Fall Term",
-            startsOn: now,
-            endsOn: now.addingTimeInterval(120 * 24 * 60 * 60),
-            status: .open
-        )
-        let category = CourseCategory(name: "Ballet")
-        let ageGroup = AgeGroup(name: "Youth")
-        let room = Room(name: "Studio A")
-        let instructor = Instructor(displayName: "Instructor")
-        let substitute = Instructor(displayName: "Substitute Instructor")
-        let course = Course(
-            termID: term.id,
-            name: "Youth Ballet Foundations",
-            categoryID: category.id,
-            ageGroupID: ageGroup.id,
-            defaultRoomID: room.id,
-            defaultInstructorID: instructor.id,
-            format: .group
-        )
-        let session = ClassSession(
-            courseID: course.id,
-            startsAt: now.addingTimeInterval(24 * 60 * 60),
-            endsAt: now.addingTimeInterval(25 * 60 * 60),
-            instructorOverrideID: substitute.id
-        )
-        let student = Student(displayName: "Sample Student", kind: .child)
-        let guardian = Guardian(displayName: "Sample Guardian", studentIDs: [student.id])
-        let enrollment = Enrollment(
-            termID: term.id,
-            courseID: course.id,
-            studentID: student.id,
-            enrolledAt: now
-        )
-        return PreviewMasterDanceStore(
-            data: PreviewData(
-                terms: [term],
-                courseCategories: [category],
-                ageGroups: [ageGroup],
-                rooms: [room],
-                instructors: [instructor, substitute],
-                courses: [course],
-                sessions: [session],
-                students: [student],
-                guardians: [guardian],
-                enrollments: [enrollment]
-            )
-        )
+        PreviewMasterDanceStore(data: .masterDanceSample(now: now))
     }
 
     private func upsert<Value: Identifiable>(_ value: Value, in values: inout [Value]) where Value.ID: Equatable {
