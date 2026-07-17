@@ -610,7 +610,7 @@ set search_path = ''
 as $$
 declare
   current_user_id uuid := (select auth.uid());
-  current_role public.app_role := private.current_user_role();
+  role_value public.app_role := private.current_user_role();
   organization_id_value uuid := private.current_user_organization_id();
   term_id_value uuid;
   scope_value public.contract_consent_scope;
@@ -618,7 +618,7 @@ declare
   resolved_display_name text;
   resulting_consent public.contract_consents;
 begin
-  if current_role is null or current_role not in (
+  if role_value is null or role_value not in (
     'guardian'::public.app_role,
     'adult_student'::public.app_role
   ) then
@@ -652,7 +652,7 @@ begin
     else 'enrollment'::public.contract_consent_scope
   end;
 
-  signer_kind_value := case current_role
+  signer_kind_value := case role_value
     when 'guardian'::public.app_role then 'guardian'::public.consent_signer_kind
     else 'adult_student'::public.consent_signer_kind
   end;
