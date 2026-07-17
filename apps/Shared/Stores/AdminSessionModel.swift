@@ -115,9 +115,7 @@ final class AdminSessionModel {
             client.auth.handle(url)
             let session = try await client.auth.session
             try await finishAuthentication(userID: session.user.id)
-            if phase == .ready {
-                needsPasswordSetup = true
-            }
+            needsPasswordSetup = true
         } catch {
             errorMessage = friendlyMessage(for: error)
         }
