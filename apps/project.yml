@@ -9,6 +9,9 @@ options:
 packages:
   MasterDanceCore:
     path: ..
+  Supabase:
+    url: https://github.com/supabase/supabase-swift.git
+    exactVersion: 2.46.0
 
 settings:
   base:
@@ -30,6 +33,21 @@ targets:
     dependencies:
       - package: MasterDanceCore
         product: MasterDanceCore
+      - package: Supabase
+        product: Supabase
+    info:
+      path: MasterDanceAdmin/Info.plist
+      properties:
+        CFBundleDisplayName: MD Desk
+        CFBundleIconFile: AppIcon
+        CFBundleShortVersionString: 0.4.0
+        CFBundleVersion: 4
+        CFBundleURLTypes:
+          - CFBundleURLName: com.masterdance.desk.auth
+            CFBundleURLSchemes:
+              - masterdance-desk
+        LSApplicationCategoryType: public.app-category.education
+        NSHighResolutionCapable: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.masterdance.desk
@@ -52,6 +70,8 @@ targets:
     dependencies:
       - package: MasterDanceCore
         product: MasterDanceCore
+      - package: Supabase
+        product: Supabase
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.masterdance.mobile

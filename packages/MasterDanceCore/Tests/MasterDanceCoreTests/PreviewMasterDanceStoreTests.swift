@@ -19,19 +19,17 @@ struct PreviewMasterDanceStoreTests {
         try await store.save(student: student)
         try await store.save(attendance: attendance)
 
-        #expect(
-            try await store.listEnrollments(
-                termID: nil,
-                courseID: nil,
-                studentID: student.id
-            ).isEmpty
+        let enrollments = try await store.listEnrollments(
+            termID: nil,
+            courseID: nil,
+            studentID: student.id
         )
-        #expect(
-            try await store.listAttendance(
-                sessionID: nil,
-                studentID: student.id
-            ) == [attendance]
+        let attendanceRecords = try await store.listAttendance(
+            sessionID: nil,
+            studentID: student.id
         )
+        #expect(enrollments.isEmpty)
+        #expect(attendanceRecords == [attendance])
     }
 
     @Test("Enrollment queries and removal use stable identities")
@@ -81,23 +79,21 @@ struct PreviewMasterDanceStoreTests {
             data: PreviewData(enrollments: [first, second])
         )
 
-        #expect(
-            try await store.listEnrollments(
-                termID: term.id,
-                courseID: courseA.id,
-                studentID: student.id
-            ) == [first]
+        let firstCourseEnrollments = try await store.listEnrollments(
+            termID: term.id,
+            courseID: courseA.id,
+            studentID: student.id
         )
+        #expect(firstCourseEnrollments == [first])
 
         try await store.deleteEnrollment(id: first.id)
 
-        #expect(
-            try await store.listEnrollments(
-                termID: term.id,
-                courseID: nil,
-                studentID: student.id
-            ) == [second]
+        let remaining = try await store.listEnrollments(
+            termID: term.id,
+            courseID: nil,
+            studentID: student.id
         )
+        #expect(remaining == [second])
     }
 
     @Test("Saving the same identity updates instead of duplicating")
@@ -115,7 +111,8 @@ struct PreviewMasterDanceStoreTests {
 
         try await store.save(term: updated)
 
-        #expect(try await store.listTerms() == [updated])
+        let terms = try await store.listTerms()
+        #expect(terms == [updated])
     }
 
     @Test("Guardian lookup supports multiple children")
@@ -130,19 +127,15 @@ struct PreviewMasterDanceStoreTests {
             data: PreviewData(guardians: [guardian])
         )
 
-        #expect(
-            try await store.listGuardians(studentID: firstChild) == [guardian]
-        )
-        #expect(
-            try await store.listGuardians(studentID: secondChild) == [guardian]
-        )
+        let firstGuardians = try await store.listGuardians(studentID: firstChild)
+        let secondGuardians = try await store.listGuardians(studentID: secondChild)
+        #expect(firstGuardians == [guardian])
+        #expect(secondGuardians == [guardian])
     }
 
     @Test("Appearance retains all requested modes")
     func appearanceModes() {
-        #expect(
-            Set(AppearancePreference.allCases) == [.system, .light, .dark]
-        )
+        #expect(Set(AppearancePreference.allCases) == [.system, .light, .dark])
     }
 
     @Test("Custom course references persist and sessions override defaults")
@@ -186,23 +179,22 @@ struct PreviewMasterDanceStoreTests {
         try await store.save(course: course)
         try await store.save(session: session)
 
-        #expect(try await store.listCourseCategories() == [category])
-        #expect(try await store.listAgeGroups() == [ageGroup])
-        #expect(
-            try await store.listRooms() == [primaryRoom, alternateRoom]
-        )
-        #expect(
-            try await store.listInstructors()
-                == [primaryInstructor, substitute]
-        )
-        #expect(try await store.listCourses(termID: term.id) == [course])
-        #expect(
-            try await store.listSessions(courseID: course.id) == [session]
-        )
+        let categories = try await store.listCourseCategories()
+        let ageGroups = try await store.listAgeGroups()
+        let rooms = try await store.listRooms()
+        let instructors = try await store.listInstructors()
+        let courses = try await store.listCourses(termID: term.id)
+        let sessions = try await store.listSessions(courseID: course.id)
+
+        #expect(categories == [category])
+        #expect(ageGroups == [ageGroup])
+        #expect(rooms == [primaryRoom, alternateRoom])
+        #expect(instructors == [primaryInstructor, substitute])
+        #expect(courses == [course])
+        #expect(sessions == [session])
 
         try await store.deleteInstructor(id: substitute.id)
-        #expect(
-            try await store.listInstructors() == [primaryInstructor]
-        )
+        let remainingInstructors = try await store.listInstructors()
+        #expect(remainingInstructors == [primaryInstructor])
     }
 }

@@ -14,14 +14,14 @@
 - Design additive CSV migration with validation and a dry-run report.
 - Verify the selected Option 3 layout with Option 2 dark colors in matched-size native screenshots.
 
-## Phase 3: Supabase backend
+## Phase 3: Supabase backend - complete
 
 - Design Postgres schema, constraints, indexes, and Row Level Security.
 - Implement Auth roles, profiles, and guardian-student relationships.
 - Add Storage for versioned contracts and Edge Functions for trusted workflows.
 - Create seed data, migration rehearsal, observability, backups, and recovery checks.
 
-## Phase 4: MD Desk macOS MVP
+## Phase 4: MD Desk macOS MVP - implementation complete
 
 - Deliver the administration schedule, course setup, student table, total enrollment, attendance, leave, contracts, and notifications.
 - Connect the macOS app to Supabase while keeping preview mode for tests.

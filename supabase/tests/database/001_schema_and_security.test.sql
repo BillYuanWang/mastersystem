@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(20);
+select plan(21);
 
 select has_table('public', 'organizations', 'organizations table exists');
 select has_table('public', 'terms', 'terms table exists');
@@ -61,6 +61,12 @@ select ok(
 select ok(
   to_regprocedure('public.bootstrap_first_administrator(text)') is not null,
   'administrator bootstrap RPC exists'
+);
+
+select like(
+  pg_get_functiondef('public.bootstrap_first_administrator(text)'::regprocedure),
+  '%pg_advisory_xact_lock%',
+  'administrator bootstrap serializes concurrent activation attempts'
 );
 
 select ok(

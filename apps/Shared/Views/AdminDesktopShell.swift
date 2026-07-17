@@ -6,6 +6,9 @@ import SwiftUI
 struct AdminDesktopShell: View {
     let model: AppModel
     @Binding var appearanceRawValue: String
+    let accountDisplayName: String?
+    let onManageAccount: (() -> Void)?
+    let onSignOut: (() -> Void)?
 
     @State private var selection = AdminSection.schedule
 
@@ -16,7 +19,10 @@ struct AdminDesktopShell: View {
         HStack(spacing: 0) {
             CompactRailView(
                 selection: $selection,
-                appearanceRawValue: $appearanceRawValue
+                appearanceRawValue: $appearanceRawValue,
+                accountDisplayName: accountDisplayName,
+                onManageAccount: onManageAccount,
+                onSignOut: onSignOut
             )
             .frame(width: MDMetrics.railWidth)
 
@@ -54,6 +60,9 @@ struct AdminDesktopShell: View {
 private struct CompactRailView: View {
     @Binding var selection: AdminSection
     @Binding var appearanceRawValue: String
+    let accountDisplayName: String?
+    let onManageAccount: (() -> Void)?
+    let onSignOut: (() -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -94,6 +103,29 @@ private struct CompactRailView: View {
             }
 
             Spacer(minLength: 8)
+
+            if let onManageAccount, let onSignOut {
+                Menu {
+                    if let accountDisplayName {
+                        Text(accountDisplayName)
+                    }
+                    Button(action: onManageAccount) {
+                        Label("教务账号", systemImage: "person.2")
+                    }
+                    Divider()
+                    Button(role: .destructive, action: onSignOut) {
+                        Label("退出登录", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                } label: {
+                    Image(systemName: "person.crop.circle")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(theme.secondaryText)
+                        .frame(width: 42, height: 38)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .help("教务账号 / ACCOUNT")
+            }
 
             Menu {
                 Picker("外观", selection: $appearanceRawValue) {

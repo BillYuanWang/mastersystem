@@ -252,4 +252,13 @@ final class AppModel {
         }
         await reload()
     }
+
+    func resolveLeaveRequest(id: LeaveRequestID, status: LeaveRequestStatus) async throws {
+        guard status == .approved || status == .denied else { return }
+        guard var request = leaveRequests.first(where: { $0.id == id }) else { return }
+        request.status = status
+        request.resolvedAt = Date()
+        try await repository.save(leaveRequest: request)
+        await reload()
+    }
 }

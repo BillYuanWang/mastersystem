@@ -1,39 +1,52 @@
 # Master Dance
 
-Phase 3 native product foundation and Supabase backend for the production Master Dance system.
+Phase 4 native MD Desk macOS app and Supabase backend for the production Master Dance system.
 
 Master Dance formal product backend. / Master Dance 正式产品云端后端。
 
 ## What is here
 
 - `packages/MasterDanceCore`: Swift 6 domain models, recurring-session generation, preview data, and repository contracts.
-- `apps`: shared SwiftUI workflows plus an XcodeGen specification for MD Desk on macOS and the role-aware Master Dance iPhone app.
+- `apps`: the production MD Desk macOS source, shared SwiftUI workflows, and the deferred iPhone shell.
 - `supabase`: production Postgres schema, RLS, Storage, Realtime, Edge Function, seed, and pgTAP tests.
 - `docs`: architecture, product scope, visual baseline, policy log, migration design, QA evidence, and delivery roadmap.
 
 Existing `web`, `macos-app`, and `product-research` directories are migration inputs. This skeleton does not replace or remove them.
 
-## Verify the core
+## Run MD Desk
 
-With Apple Command Line Tools only:
-
-```sh
-./scripts/smoke-test-core.sh
-```
-
-With full Xcode, run the complete suite:
+Build, package, and open the native app with Apple Command Line Tools:
 
 ```sh
-swift test
+./script/build_and_run.sh
 ```
 
-The apps require full Xcode. When Xcode and XcodeGen are installed, generate the project from the repository root:
+The script creates `MD Desk.app` at the repository root. The same command is
+available as the Codex `Run` action. Optional modes are `--verify`, `--debug`,
+`--logs`, and `--telemetry`.
+
+MD Desk accepts administrator accounts only. The first Auth user completes the
+one-time school activation after signing in; after that, additional
+administrators are invited from the account menu inside MD Desk. There is no
+public administrator registration path.
+
+## Verify Swift
+
+Run the complete suite:
 
 ```sh
-xcodegen generate --spec apps/project.yml
+./script/test.sh
 ```
 
-The current machine has Command Line Tools rather than full Xcode, so the native source is verified by strict typechecking, rendered SwiftUI evidence, XcodeGen generation, and core smoke tests. Installable macOS and iPhone demo builds remain Phase 6.
+Generate the formal Xcode project when Xcode is available:
+
+```sh
+cd apps
+xcodegen generate --spec project.yml
+```
+
+The macOS app is buildable and runnable without full Xcode. Full Xcode remains
+required for Apple signing, notarization, and later iPhone device builds.
 
 ## Verify the backend
 
@@ -49,4 +62,8 @@ See `supabase/README.md` and `docs/backend-operations.md` for deployment and rec
 
 ## Current boundaries
 
-The MVP supports term enrollment, scheduling, students and guardians, attendance, leave, contract consent, and notification records. Course categories, age groups, rooms, instructors, and course names are user-managed data. Pricing, per-class enrollment, credits, exceptional rule engines, parent course selection, and teacher login are intentionally absent.
+The MVP supports term enrollment, scheduling, students and guardians,
+attendance, leave handling, contract-consent records, and notification records.
+Course categories, age groups, rooms, instructors, and course names are
+user-managed data. Pricing, per-class enrollment, credits, exceptional rule
+engines, parent course selection, and teacher login are intentionally absent.

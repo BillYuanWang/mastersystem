@@ -45,25 +45,64 @@ struct RequestsWorkspaceView: View {
 
     private func leaveList(theme: MDTheme) -> some View {
         VStack(spacing: 0) {
-            requestHeader([("学生", 150), ("课程", 210), ("课次", 190), ("来源", 100), ("状态", 100), ("备注", 240)], theme: theme)
+            requestHeader([("学生", 140), ("课程", 190), ("课次", 180), ("来源", 90), ("状态", 90), ("备注", 180), ("处理", 126)], theme: theme)
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(model.leaveRequests) { request in
                         let session = model.session(id: request.sessionID)
                         let course = session.flatMap { model.course(id: $0.courseID) }
                         HStack(spacing: 0) {
-                            requestCell(model.student(id: request.studentID)?.displayName ?? "—", width: 150, strong: true)
-                            requestCell(course?.name ?? "—", width: 210)
-                            requestCell(session?.startsAt.formatted(date: .abbreviated, time: .shortened) ?? "—", width: 190, mono: true)
-                            requestCell(request.source == .app ? "App" : "教务代办", width: 100)
-                            requestCell(leaveStatus(request.status), width: 100)
-                            requestCell(request.note ?? "—", width: 240)
+                            requestCell(model.student(id: request.studentID)?.displayName ?? "—", width: 140, strong: true)
+                            requestCell(course?.name ?? "—", width: 190)
+                            requestCell(session?.startsAt.formatted(date: .abbreviated, time: .shortened) ?? "—", width: 180, mono: true)
+                            requestCell(request.source == .app ? "App" : "教务代办", width: 90)
+                            requestCell(leaveStatus(request.status), width: 90)
+                            requestCell(request.note ?? "—", width: 180)
+                            leaveActions(request)
+                                .frame(width: 126, alignment: .leading)
+                                .padding(.leading, 8)
                             Spacer()
                         }
                         .frame(minHeight: 42)
                         Divider()
                     }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func leaveActions(_ request: LeaveRequest) -> some View {
+        if request.status == .pending || request.status == .late {
+            HStack(spacing: 5) {
+                Button {
+                    resolve(request, as: .approved)
+                } label: {
+                    Image(systemName: "checkmark")
+                }
+                .buttonStyle(.borderless)
+                .help("同意")
+
+                Button {
+                    resolve(request, as: .denied)
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.borderless)
+                .help("拒绝")
+            }
+        } else {
+            Text("—")
+                .font(MDType.body)
+        }
+    }
+
+    private func resolve(_ request: LeaveRequest, as status: LeaveRequestStatus) {
+        Task {
+            do {
+                try await model.resolveLeaveRequest(id: request.id, status: status)
+            } catch {
+                model.errorMessage = error.localizedDescription
             }
         }
     }

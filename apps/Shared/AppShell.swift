@@ -4,12 +4,24 @@ import SwiftUI
 @MainActor
 struct AppShell: View {
     let role: AppRole
+    let accountDisplayName: String?
+    let onManageAccount: (() -> Void)?
+    let onSignOut: (() -> Void)?
 
     @AppStorage("appearancePreference") private var appearanceRawValue = AppearancePreference.dark.rawValue
     @State private var model: AppModel
 
-    init(role: AppRole, repository: any MasterDanceRepository) {
+    init(
+        role: AppRole,
+        repository: any MasterDanceRepository,
+        accountDisplayName: String? = nil,
+        onManageAccount: (() -> Void)? = nil,
+        onSignOut: (() -> Void)? = nil
+    ) {
         self.role = role
+        self.accountDisplayName = accountDisplayName
+        self.onManageAccount = onManageAccount
+        self.onSignOut = onSignOut
         _model = State(initialValue: AppModel(repository: repository))
     }
 
@@ -19,7 +31,10 @@ struct AppShell: View {
             if role == .administrator {
                 AdminDesktopShell(
                     model: model,
-                    appearanceRawValue: $appearanceRawValue
+                    appearanceRawValue: $appearanceRawValue,
+                    accountDisplayName: accountDisplayName,
+                    onManageAccount: onManageAccount,
+                    onSignOut: onSignOut
                 )
             } else {
                 ContentUnavailableView(
