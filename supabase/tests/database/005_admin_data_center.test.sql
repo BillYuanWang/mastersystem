@@ -247,7 +247,7 @@ select is(
 );
 
 select throws_ok(
-  $$
+  $second_guardian$
     insert into public.guardian_students (
       organization_id,
       guardian_id,
@@ -255,3 +255,93 @@ select throws_ok(
       is_primary
     )
     values (
+      '93000000-0000-0000-0000-000000000001',
+      '93000000-0000-0000-0000-000000000011',
+      '93000000-0000-0000-0000-000000000012',
+      true
+    )
+  $second_guardian$,
+  '23505',
+  null,
+  '一个学员不能同时属于两个监护人'
+);
+
+select is(
+  (
+    select count(*)
+    from public.guardian_students
+    where student_id = '93000000-0000-0000-0000-000000000012'
+  ),
+  1::bigint,
+  '每个学员只有一条监护人关系'
+);
+
+select throws_ok(
+  $missing_guardian$
+    insert into public.students (
+      id,
+      organization_id,
+      display_name,
+      kind
+    )
+    values (
+      '93000000-0000-0000-0000-000000000015',
+      '93000000-0000-0000-0000-000000000001',
+      'No Family',
+      'child'
+    )
+  $missing_guardian$,
+  '23502',
+  null,
+  '学员不能脱离监护人建立'
+);
+
+select set_config(
+  'request.jwt.claim.sub',
+  '93000000-0000-0000-0000-000000000002',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '93000000-0000-0000-0000-000000000002',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+
+select throws_ok(
+  $used_type$
+    select public.admin_delete_record(
+      'course_type',
+      '93000000-0000-0000-0000-000000000005'
+    )
+  $used_type$,
+  '23503',
+  null,
+  '已被课程使用的课程种类不能删除'
+);
+
+select lives_ok(
+  $unused_type$
+    select public.admin_delete_record(
+      'course_type',
+      '93000000-0000-0000-0000-000000000006'
+    )
+  $unused_type$,
+  '未被使用的课程种类可以删除'
+);
+
+select is(
+  (
+    select count(*)
+    from public.course_types
+    where id = '93000000-0000-0000-0000-000000000006'
+  ),
+  0::bigint,
+  '受控删除确实移除未关联资料'
+);
+
+select * from finish();
+
+rollback;
