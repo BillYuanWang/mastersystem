@@ -69,23 +69,14 @@ struct MDIconButtonStyle: ButtonStyle {
 
 struct MDSectionTitle: View {
     let chinese: String
-    let english: String
 
-    @Environment(\.colorScheme) private var colorScheme
+    init(chinese: String, english: String? = nil) {
+        self.chinese = chinese
+    }
 
     var body: some View {
-        let theme = MDTheme(scheme: colorScheme)
-        HStack(spacing: 7) {
-            Text(chinese)
-                .font(MDType.bodyStrong)
-            Text("/")
-                .font(MDType.mono)
-                .foregroundStyle(theme.secondaryText)
-            Text(english)
-                .font(MDType.monoStrong)
-                .foregroundStyle(theme.accent)
-        }
-        .foregroundStyle(theme.primaryText)
+        Text(chinese)
+            .font(MDType.bodyStrong)
     }
 }
 

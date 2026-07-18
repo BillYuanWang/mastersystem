@@ -25,9 +25,53 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         try await client.from("terms").upsert(TermRow(term, organizationID: organizationID)).execute()
     }
 
+    func deleteTerm(id: TermID) async throws {
+        try await deleteRecord(kind: "term", id: id.rawValue)
+    }
+
+    func listTermHolidays(termID: TermID?) async throws -> [TermHoliday] {
+        let rows: [TermHolidayRow]
+        if let termID {
+            rows = try await client
+                .from("term_holidays")
+                .select()
+                .eq("term_id", value: termID.rawValue)
+                .order("starts_on")
+                .execute()
+                .value
+        } else {
+            rows = try await client
+                .from("term_holidays")
+                .select()
+                .order("starts_on")
+                .execute()
+                .value
+        }
+        return try rows.map { try $0.domain() }
+    }
+
+    func save(termHoliday: TermHoliday) async throws {
+        try await client.from("term_holidays")
+            .upsert(TermHolidayRow(termHoliday, organizationID: organizationID)).execute()
+    }
+
+    func deleteTermHoliday(id: TermHolidayID) async throws {
+        try await deleteRecord(kind: "term_holiday", id: id.rawValue)
+    }
+
     func listCourseCategories() async throws -> [CourseCategory] {
         let rows: [CourseCategoryRow] = try await client
             .from("course_categories")
+            .select()
+            .order("name")
+            .execute()
+            .value
+        return rows.map { $0.domain() }
+    }
+
+    func listCourseTypes() async throws -> [CourseType] {
+        let rows: [CourseTypeRow] = try await client
+            .from("course_types")
             .select()
             .order("name")
             .execute()
@@ -72,6 +116,13 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
             .execute()
     }
 
+    func save(courseType: CourseType) async throws {
+        try await client
+            .from("course_types")
+            .upsert(CourseTypeRow(courseType, organizationID: organizationID))
+            .execute()
+    }
+
     func save(ageGroup: AgeGroup) async throws {
         try await client
             .from("age_groups")
@@ -94,19 +145,23 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
     }
 
     func deleteCourseCategory(id: CourseCategoryID) async throws {
-        try await client.from("course_categories").delete().eq("id", value: id.rawValue).execute()
+        try await deleteRecord(kind: "course_category", id: id.rawValue)
+    }
+
+    func deleteCourseType(id: CourseTypeID) async throws {
+        try await deleteRecord(kind: "course_type", id: id.rawValue)
     }
 
     func deleteAgeGroup(id: AgeGroupID) async throws {
-        try await client.from("age_groups").delete().eq("id", value: id.rawValue).execute()
+        try await deleteRecord(kind: "age_group", id: id.rawValue)
     }
 
     func deleteRoom(id: RoomID) async throws {
-        try await client.from("rooms").delete().eq("id", value: id.rawValue).execute()
+        try await deleteRecord(kind: "room", id: id.rawValue)
     }
 
     func deleteInstructor(id: InstructorID) async throws {
-        try await client.from("instructors").delete().eq("id", value: id.rawValue).execute()
+        try await deleteRecord(kind: "instructor", id: id.rawValue)
     }
 
     func listCourses(termID: TermID?) async throws -> [Course] {
@@ -132,6 +187,10 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
 
     func save(course: Course) async throws {
         try await client.from("courses").upsert(CourseRow(course, organizationID: organizationID)).execute()
+    }
+
+    func deleteCourse(id: CourseID) async throws {
+        try await deleteRecord(kind: "course", id: id.rawValue)
     }
 
     func listSessions(courseID: CourseID?) async throws -> [ClassSession] {
@@ -296,6 +355,14 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         return try issued.domain()
     }
 
+    func deleteStudent(id: StudentID) async throws {
+        try await deleteRecord(kind: "student", id: id.rawValue)
+    }
+
+    func deleteGuardian(id: GuardianID) async throws {
+        try await deleteRecord(kind: "guardian", id: id.rawValue)
+    }
+
     func listEnrollments(
         termID: TermID?,
         courseID: CourseID?,
@@ -391,6 +458,76 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         ).execute()
     }
 
+    func listContractDocuments(termID: TermID?) async throws -> [ContractDocument] {
+        let rows: [ContractDocumentRow]
+        if let termID {
+            rows = try await client
+                .from("contract_documents")
+                .select()
+                .eq("term_id", value: termID.rawValue)
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+        } else {
+            rows = try await client
+                .from("contract_documents")
+                .select()
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+        }
+        return try rows.map { try $0.domain() }
+    }
+
+    func save(
+        contractDocument: ContractDocument,
+        fileData: Data?
+    ) async throws -> ContractDocument {
+        var saved = contractDocument
+        if saved.status == .published, saved.publishedAt == nil {
+            saved.publishedAt = Date()
+        } else if saved.status != .published {
+            saved.publishedAt = nil
+        }
+
+        if let fileData {
+            if saved.storagePath.isEmpty {
+                saved.storagePath = [
+                    organizationID.uuidString.lowercased(),
+                    saved.termID.rawValue.uuidString.lowercased(),
+                    saved.id.rawValue.uuidString.lowercased() + ".pdf"
+                ].joined(separator: "/")
+            }
+            try await client.storage
+                .from("contracts")
+                .upload(
+                    saved.storagePath,
+                    data: fileData,
+                    options: FileOptions(contentType: "application/pdf", upsert: true)
+                )
+        }
+
+        guard !saved.storagePath.isEmpty else {
+            throw SupabaseRepositoryError.server("请先选择 PDF 合同文件。")
+        }
+
+        let row = ContractDocumentRow(saved, organizationID: organizationID)
+        let stored: ContractDocumentRow = try await client
+            .from("contract_documents")
+            .upsert(row)
+            .select()
+            .single()
+            .execute()
+            .value
+        return try stored.domain()
+    }
+
+    func deleteContractDocument(id: ContractDocumentID, storagePath: String) async throws {
+        try await deleteRecord(kind: "contract_document", id: id.rawValue)
+        guard !storagePath.isEmpty else { return }
+        _ = try? await client.storage.from("contracts").remove(paths: [storagePath])
+    }
+
     func listContractConsents(
         termID: TermID,
         enrollmentID: EnrollmentID?
@@ -446,6 +583,18 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         try await client.from("notifications").upsert(
             try NotificationRow(notification, organizationID: organizationID)
         ).execute()
+    }
+
+    private func deleteRecord(kind: String, id: UUID) async throws {
+        try await client
+            .rpc(
+                "admin_delete_record",
+                params: AdminDeleteRecordParameters(
+                    kind: kind,
+                    id: id
+                )
+            )
+            .execute()
     }
 
     private func currentUserID() async throws -> UUID {

@@ -91,27 +91,6 @@ values
     'Guardian B'
   );
 
-insert into public.students (id, organization_id, display_name, kind)
-values
-  (
-    '91000000-0000-0000-0000-000000000020',
-    '91000000-0000-0000-0000-000000000001',
-    'Linked Child A',
-    'child'
-  ),
-  (
-    '91000000-0000-0000-0000-000000000021',
-    '91000000-0000-0000-0000-000000000001',
-    'Unlinked Child A',
-    'child'
-  ),
-  (
-    '91000000-0000-0000-0000-000000000022',
-    '91000000-0000-0000-0000-000000000002',
-    'Linked Child B',
-    'child'
-  );
-
 insert into public.guardians (
   id,
   organization_id,
@@ -133,26 +112,43 @@ values
     '91000000-0000-0000-0000-000000000012',
     'Guardian B',
     'guardian-b@example.test'
+  ),
+  (
+    '91000000-0000-0000-0000-000000000032',
+    '91000000-0000-0000-0000-000000000001',
+    null,
+    'Unlinked Family A',
+    null
   );
 
-insert into public.guardian_students (
+insert into public.students (
+  id,
   organization_id,
   guardian_id,
-  student_id,
-  is_primary
+  display_name,
+  kind
 )
 values
   (
+    '91000000-0000-0000-0000-000000000020',
     '91000000-0000-0000-0000-000000000001',
     '91000000-0000-0000-0000-000000000030',
-    '91000000-0000-0000-0000-000000000020',
-    true
+    'Linked Child A',
+    'child'
   ),
   (
+    '91000000-0000-0000-0000-000000000021',
+    '91000000-0000-0000-0000-000000000001',
+    '91000000-0000-0000-0000-000000000032',
+    'Unlinked Child A',
+    'child'
+  ),
+  (
+    '91000000-0000-0000-0000-000000000022',
     '91000000-0000-0000-0000-000000000002',
     '91000000-0000-0000-0000-000000000031',
-    '91000000-0000-0000-0000-000000000022',
-    true
+    'Linked Child B',
+    'child'
   );
 
 set local role authenticated;
@@ -175,9 +171,10 @@ select is(
 
 select throws_ok(
   $$
-    insert into public.students (organization_id, display_name, kind)
+    insert into public.students (organization_id, guardian_id, display_name, kind)
     values (
       '91000000-0000-0000-0000-000000000001',
+      '91000000-0000-0000-0000-000000000030',
       'Forbidden Student',
       'child'
     )

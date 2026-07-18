@@ -44,9 +44,9 @@ struct AdminDesktopShell: View {
             ScheduleWorkspaceView(model: model) { destination in
                 selection = destination
             }
-        case .setup:
+        case .courses:
             SetupWorkspaceView(model: model)
-        case .students:
+        case .families:
             StudentsWorkspaceView(model: model)
         case .enrollments:
             EnrollmentsWorkspaceView(model: model)
@@ -54,6 +54,10 @@ struct AdminDesktopShell: View {
             AttendanceWorkspaceView(model: model)
         case .requests:
             RequestsWorkspaceView(model: model)
+        case .contracts:
+            ContractsWorkspaceView(model: model)
+        case .dataCenter:
+            DataCenterWorkspaceView(model: model)
         }
     }
 }
@@ -105,15 +109,15 @@ private struct CompactRailView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(section.title)，\(section.englishTitle)")
+                .accessibilityLabel(section.title)
                 .onHover { isHovering in
                     updateHover(section.id, isHovering: isHovering)
                 }
                 .overlay(alignment: .leading) {
-                    hoverLabel(id: section.id, title: section.title, englishTitle: section.englishTitle)
+                    hoverLabel(id: section.id, title: section.title)
                 }
                 .zIndex(hoveredItem == section.id ? 10 : 0)
-                .help("\(section.title) / \(section.englishTitle)")
+                .help(section.title)
             }
 
             Spacer(minLength: 8)
@@ -147,10 +151,10 @@ private struct CompactRailView: View {
                     updateHover("account", isHovering: isHovering)
                 }
                 .overlay(alignment: .leading) {
-                    hoverLabel(id: "account", title: "教务账号", englishTitle: "ACCOUNT")
+                    hoverLabel(id: "account", title: "教务账号")
                 }
                 .zIndex(hoveredItem == "account" ? 10 : 0)
-                .help("教务账号 / ACCOUNT")
+                .help("教务账号")
             }
 
             Menu {
@@ -179,10 +183,10 @@ private struct CompactRailView: View {
                 updateHover("appearance", isHovering: isHovering)
             }
             .overlay(alignment: .leading) {
-                hoverLabel(id: "appearance", title: "外观", englishTitle: "APPEARANCE")
+                hoverLabel(id: "appearance", title: "外观")
             }
             .zIndex(hoveredItem == "appearance" ? 10 : 0)
-            .help("外观 / APPEARANCE")
+            .help("外观")
             .padding(.bottom, 12)
         }
         .frame(maxHeight: .infinity)
@@ -198,9 +202,9 @@ private struct CompactRailView: View {
     }
 
     @ViewBuilder
-    private func hoverLabel(id: String, title: String, englishTitle: String) -> some View {
+    private func hoverLabel(id: String, title: String) -> some View {
         if hoveredItem == id {
-            RailHoverLabel(title: title, englishTitle: englishTitle)
+            RailHoverLabel(title: title)
                 .offset(x: 50)
                 .transition(.opacity.combined(with: .move(edge: .leading)))
                 .allowsHitTesting(false)
@@ -220,20 +224,14 @@ private struct CompactRailView: View {
 
 private struct RailHoverLabel: View {
     let title: String
-    let englishTitle: String
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
-        HStack(spacing: 7) {
-            Text(title)
-                .font(MDType.bodyStrong)
-                .foregroundStyle(theme.primaryText)
-            Text(englishTitle)
-                .font(MDType.monoStrong)
-                .foregroundStyle(theme.accent)
-        }
+        Text(title)
+            .font(MDType.bodyStrong)
+            .foregroundStyle(theme.primaryText)
         .fixedSize()
         .padding(.horizontal, 10)
         .frame(height: 30)

@@ -36,6 +36,10 @@ public extension PreviewData {
         let categories = ["芭蕾", "中国舞", "基本功", "爵士", "现代舞", "街舞"].map {
             CourseCategory(name: $0)
         }
+        let courseTypes = [
+            CourseType(name: "组课", isPrivate: false),
+            CourseType(name: "私课", isPrivate: true)
+        ]
         let ageGroups = ["5–7 岁", "7–12 岁", "青少年", "成人"].map {
             AgeGroup(name: $0)
         }
@@ -70,6 +74,7 @@ public extension PreviewData {
                 ageGroupID: ageGroups[specification.ageGroupIndex].id,
                 defaultRoomID: rooms[specification.roomIndex].id,
                 defaultInstructorID: instructors[specification.instructorIndex].id,
+                courseTypeID: specification.format == .privateLesson ? courseTypes[1].id : courseTypes[0].id,
                 format: specification.format
             )
         }
@@ -91,13 +96,19 @@ public extension PreviewData {
             "陈思彤", "李依依", "张若曦", "王梓涵", "刘子墨", "赵子墨",
             "周欣妍", "吴昊然", "孙可欣", "郑雨桐", "方安琪", "顾晓宁"
         ]
+        let guardianIDs = studentNames.map { _ in GuardianID() }
         let students = studentNames.enumerated().map { index, name in
-            Student(displayName: name, kind: index < 10 ? .child : .adult)
+            Student(
+                guardianID: guardianIDs[index],
+                displayName: name,
+                kind: index < 10 ? .child : .adult
+            )
         }
         let guardians = students.enumerated().map { index, student in
             let isAdult = student.kind == .adult
             let isLinked = index.isMultiple(of: 3)
             return Guardian(
+                id: guardianIDs[index],
                 displayName: isAdult ? student.displayName : "\(student.displayName)家长",
                 email: isAdult ? "adult\(index + 1)@example.com" : "guardian\(index + 1)@example.com",
                 phone: "949-555-\(String(format: "%04d", index + 100))",
@@ -180,6 +191,7 @@ public extension PreviewData {
         return PreviewData(
             terms: [term],
             courseCategories: categories,
+            courseTypes: courseTypes,
             ageGroups: ageGroups,
             rooms: rooms,
             instructors: instructors,

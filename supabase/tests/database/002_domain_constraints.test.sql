@@ -80,6 +80,14 @@ values
     'Teacher B'
   );
 
+insert into public.course_types (id, organization_id, name, is_private)
+values (
+  '90000000-0000-0000-0000-000000000013',
+  '90000000-0000-0000-0000-000000000001',
+  'Custom Group',
+  false
+);
+
 insert into public.courses (
   id,
   organization_id,
@@ -89,6 +97,7 @@ insert into public.courses (
   age_group_id,
   default_room_id,
   default_instructor_id,
+  course_type_id,
   format
 )
 values (
@@ -100,6 +109,7 @@ values (
   '90000000-0000-0000-0000-000000000005',
   '90000000-0000-0000-0000-000000000006',
   '90000000-0000-0000-0000-000000000008',
+  '90000000-0000-0000-0000-000000000013',
   'group'
 );
 
@@ -182,15 +192,24 @@ select throws_ok(
   'sessions must stay inside their term'
 );
 
+insert into public.guardians (id, organization_id, display_name)
+values (
+  '90000000-0000-0000-0000-000000000014',
+  '90000000-0000-0000-0000-000000000001',
+  'Test Family'
+);
+
 insert into public.students (
   id,
   organization_id,
+  guardian_id,
   display_name,
   kind
 )
 values (
   '90000000-0000-0000-0000-000000000012',
   '90000000-0000-0000-0000-000000000001',
+  '90000000-0000-0000-0000-000000000014',
   'Test Student',
   'child'
 );

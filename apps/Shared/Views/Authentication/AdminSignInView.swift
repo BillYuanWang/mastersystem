@@ -80,7 +80,7 @@ struct AdminSignInView: View {
 
             Spacer()
 
-            Text("MASTER DANCE · ADMIN ONLY")
+            Text("MASTER DANCE · 教务专用")
                 .font(MDType.mono)
                 .foregroundStyle(theme.secondaryText)
                 .padding(.bottom, 18)

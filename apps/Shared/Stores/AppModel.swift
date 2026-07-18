@@ -8,7 +8,9 @@ final class AppModel {
     @ObservationIgnored private let repository: any MasterDanceRepository
 
     var terms: [Term] = []
+    var termHolidays: [TermHoliday] = []
     var categories: [CourseCategory] = []
+    var courseTypes: [CourseType] = []
     var ageGroups: [AgeGroup] = []
     var rooms: [Room] = []
     var instructors: [Instructor] = []
@@ -19,6 +21,7 @@ final class AppModel {
     var enrollments: [Enrollment] = []
     var attendance: [Attendance] = []
     var leaveRequests: [LeaveRequest] = []
+    var contractDocuments: [ContractDocument] = []
     var contractConsents: [ContractConsent] = []
     var notifications: [NotificationRecord] = []
     var focusedSessionID: ClassSessionID?
@@ -39,7 +42,9 @@ final class AppModel {
 
         do {
             terms = try await repository.listTerms().sorted { $0.startsOn > $1.startsOn }
+            termHolidays = try await repository.listTermHolidays(termID: nil).sorted { $0.startsOn < $1.startsOn }
             categories = try await repository.listCourseCategories().sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+            courseTypes = try await repository.listCourseTypes().sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
             ageGroups = try await repository.listAgeGroups().sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
             rooms = try await repository.listRooms().sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
             instructors = try await repository.listInstructors().sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
@@ -51,6 +56,7 @@ final class AppModel {
             attendance = try await repository.listAttendance(sessionID: nil, studentID: nil)
             leaveRequests = try await repository.listLeaveRequests(sessionID: nil, studentID: nil)
             notifications = try await repository.listNotifications(recipientReference: nil)
+            contractDocuments = try await repository.listContractDocuments(termID: nil)
             if let term = terms.first {
                 contractConsents = try await repository.listContractConsents(termID: term.id, enrollmentID: nil)
             } else {
@@ -72,6 +78,10 @@ final class AppModel {
 
     func category(id: CourseCategoryID) -> CourseCategory? {
         categories.first { $0.id == id }
+    }
+
+    func courseType(id: CourseTypeID) -> CourseType? {
+        courseTypes.first { $0.id == id }
     }
 
     func ageGroup(id: AgeGroupID) -> AgeGroup? {
@@ -97,17 +107,13 @@ final class AppModel {
     }
 
     func students(for guardianID: GuardianID) -> [Student] {
-        guard let guardian = guardian(id: guardianID) else { return [] }
         return students
-            .filter { guardian.studentIDs.contains($0.id) }
+            .filter { $0.guardianID == guardianID }
             .sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
     }
 
     var unassignedStudents: [Student] {
-        let assignedIDs = Set(guardians.flatMap(\.studentIDs))
-        return students
-            .filter { !assignedIDs.contains($0.id) }
-            .sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+        []
     }
 
     func session(id: ClassSessionID) -> ClassSession? {
@@ -148,6 +154,103 @@ final class AppModel {
         await reload()
     }
 
+    func saveTerm(_ term: Term) async throws {
+        guard term.startsOn <= term.endsOn else { throw AppModelError.invalidTermRange }
+        guard termHolidays.filter({ $0.termID == term.id }).allSatisfy({
+            $0.startsOn >= term.startsOn && $0.endsOn <= term.endsOn
+        }) else {
+            throw AppModelError.holidayOutsideTerm
+        }
+        try await repository.save(term: term)
+        await reload()
+    }
+
+    func deleteTerm(id: TermID) async throws {
+        try await repository.deleteTerm(id: id)
+        await reload()
+    }
+
+    func saveTermHoliday(_ holiday: TermHoliday) async throws {
+        guard holiday.startsOn <= holiday.endsOn else { throw AppModelError.invalidTermRange }
+        guard let term = term(id: holiday.termID),
+              holiday.startsOn >= term.startsOn,
+              holiday.endsOn <= term.endsOn else {
+            throw AppModelError.holidayOutsideTerm
+        }
+        try await repository.save(termHoliday: holiday)
+        await reload()
+    }
+
+    func deleteTermHoliday(id: TermHolidayID) async throws {
+        try await repository.deleteTermHoliday(id: id)
+        await reload()
+    }
+
+    func saveCourseCategory(_ category: CourseCategory) async throws {
+        try await repository.save(courseCategory: category)
+        await reload()
+    }
+
+    func deleteCourseCategory(id: CourseCategoryID) async throws {
+        try await repository.deleteCourseCategory(id: id)
+        await reload()
+    }
+
+    func saveCourseType(_ courseType: CourseType) async throws {
+        try await repository.save(courseType: courseType)
+        await reload()
+    }
+
+    func deleteCourseType(id: CourseTypeID) async throws {
+        try await repository.deleteCourseType(id: id)
+        await reload()
+    }
+
+    func saveAgeGroup(_ ageGroup: AgeGroup) async throws {
+        try await repository.save(ageGroup: ageGroup)
+        await reload()
+    }
+
+    func deleteAgeGroup(id: AgeGroupID) async throws {
+        try await repository.deleteAgeGroup(id: id)
+        await reload()
+    }
+
+    func saveRoom(_ room: Room) async throws {
+        try await repository.save(room: room)
+        await reload()
+    }
+
+    func deleteRoom(id: RoomID) async throws {
+        try await repository.deleteRoom(id: id)
+        await reload()
+    }
+
+    func saveInstructor(_ instructor: Instructor) async throws {
+        try await repository.save(instructor: instructor)
+        await reload()
+    }
+
+    func deleteInstructor(id: InstructorID) async throws {
+        try await repository.deleteInstructor(id: id)
+        await reload()
+    }
+
+    func saveCourse(_ course: Course) async throws {
+        guard let type = courseType(id: course.courseTypeID) else {
+            throw AppModelError.missingCourseFields
+        }
+        var updated = course
+        updated.format = type.isPrivate ? .privateLesson : .group
+        try await repository.save(course: updated)
+        await reload()
+    }
+
+    func deleteCourse(id: CourseID) async throws {
+        try await repository.deleteCourse(id: id)
+        await reload()
+    }
+
     func createCourse(from draft: CourseCreationDraft) async throws {
         let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard
@@ -156,7 +259,9 @@ final class AppModel {
             let categoryID = draft.categoryID,
             let ageGroupID = draft.ageGroupID,
             let roomID = draft.roomID,
-            let instructorID = draft.instructorID
+            let instructorID = draft.instructorID,
+            let courseTypeID = draft.courseTypeID,
+            let selectedCourseType = courseType(id: courseTypeID)
         else {
             throw AppModelError.missingCourseFields
         }
@@ -168,9 +273,15 @@ final class AppModel {
             ageGroupID: ageGroupID,
             defaultRoomID: roomID,
             defaultInstructorID: instructorID,
-            format: draft.format,
+            courseTypeID: courseTypeID,
+            format: selectedCourseType.isPrivate ? .privateLesson : .group,
             notes: draft.notes.isEmpty ? nil : draft.notes
         )
+        let holidayDates = termHolidays
+            .filter { $0.termID == termID }
+            .reduce(into: Set<Date>()) { dates, holiday in
+                dates.formUnion(calendarDays(from: holiday.startsOn, through: holiday.endsOn))
+            }
         let plan = WeeklySessionPlan(
             courseID: course.id,
             startsOn: draft.startsOn,
@@ -178,7 +289,7 @@ final class AppModel {
             weekday: draft.weekday,
             startTime: draft.startTime,
             endTime: draft.endTime,
-            excludedDates: draft.excludedDates
+            excludedDates: draft.excludedDates.union(holidayDates)
         )
         let generatedSessions = try RecurringSessionBuilder.sessions(for: plan, calendar: .masterDance)
 
@@ -250,6 +361,7 @@ final class AppModel {
             throw AppModelError.missingStudentName
         }
         let student = Student(
+            guardianID: guardianID,
             displayName: trimmedName,
             legalName: trimmedLegalName.isEmpty ? nil : trimmedLegalName,
             kind: kind
@@ -267,6 +379,44 @@ final class AppModel {
         let code = try await repository.issueGuardianLinkCode(guardianID: guardianID)
         await reload()
         return code
+    }
+
+    func saveGuardian(_ guardian: Guardian) async throws {
+        let name = guardian.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { throw AppModelError.missingGuardianName }
+        var updated = guardian
+        updated.displayName = name
+        try await repository.save(guardian: updated)
+        await reload()
+    }
+
+    func deleteGuardian(id: GuardianID) async throws {
+        try await repository.deleteGuardian(id: id)
+        await reload()
+    }
+
+    func saveStudent(_ student: Student) async throws {
+        let name = student.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { throw AppModelError.missingStudentName }
+        var updated = student
+        updated.displayName = name
+        try await repository.save(student: updated)
+        await reload()
+    }
+
+    func deleteStudent(id: StudentID) async throws {
+        try await repository.deleteStudent(id: id)
+        await reload()
+    }
+
+    func saveContractDocument(_ document: ContractDocument, fileData: Data?) async throws {
+        _ = try await repository.save(contractDocument: document, fileData: fileData)
+        await reload()
+    }
+
+    func deleteContractDocument(_ document: ContractDocument) async throws {
+        try await repository.deleteContractDocument(id: document.id, storagePath: document.storagePath)
+        await reload()
     }
 
     func enroll(studentID: StudentID, courseID: CourseID) async throws {
@@ -325,5 +475,18 @@ final class AppModel {
         request.resolvedAt = Date()
         try await repository.save(leaveRequest: request)
         await reload()
+    }
+
+    private func calendarDays(from startsOn: Date, through endsOn: Date) -> Set<Date> {
+        let calendar = Calendar.masterDance
+        var date = calendar.startOfDay(for: startsOn)
+        let end = calendar.startOfDay(for: endsOn)
+        var dates: Set<Date> = []
+        while date <= end {
+            dates.insert(date)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: date) else { break }
+            date = next
+        }
+        return dates
     }
 }

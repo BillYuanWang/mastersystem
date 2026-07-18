@@ -6,8 +6,11 @@ import Testing
 struct PreviewMasterDanceStoreTests {
     @Test("Enrollment remains separate from attendance")
     func attendanceDoesNotImplyEnrollment() async throws {
-        let store = PreviewMasterDanceStore()
-        let student = Student(displayName: "Trial Student", kind: .child)
+        let guardian = Guardian(displayName: "Trial Family")
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(guardians: [guardian])
+        )
+        let student = Student(guardianID: guardian.id, displayName: "Trial Student", kind: .child)
         let attendance = Attendance(
             sessionID: ClassSessionID(),
             studentID: student.id,
@@ -44,6 +47,8 @@ struct PreviewMasterDanceStoreTests {
         let ageGroup = AgeGroup(name: "Custom Age Band")
         let room = Room(name: "Custom Room")
         let instructor = Instructor(displayName: "Custom Instructor")
+        let groupType = CourseType(name: "Large Group", isPrivate: false)
+        let privateType = CourseType(name: "Private", isPrivate: true)
         let courseA = Course(
             termID: term.id,
             name: "Course A",
@@ -51,6 +56,7 @@ struct PreviewMasterDanceStoreTests {
             ageGroupID: ageGroup.id,
             defaultRoomID: room.id,
             defaultInstructorID: instructor.id,
+            courseTypeID: groupType.id,
             format: .group
         )
         let courseB = Course(
@@ -60,9 +66,11 @@ struct PreviewMasterDanceStoreTests {
             ageGroupID: ageGroup.id,
             defaultRoomID: room.id,
             defaultInstructorID: instructor.id,
+            courseTypeID: privateType.id,
             format: .privateLesson
         )
-        let student = Student(displayName: "Student", kind: .adult)
+        let guardian = Guardian(displayName: "Adult Family")
+        let student = Student(guardianID: guardian.id, displayName: "Student", kind: .adult)
         let first = Enrollment(
             termID: term.id,
             courseID: courseA.id,
@@ -117,27 +125,25 @@ struct PreviewMasterDanceStoreTests {
 
     @Test("Guardian lookup supports multiple children")
     func guardianRelationships() async throws {
-        let firstChild = StudentID()
-        let secondChild = StudentID()
-        let guardian = Guardian(
-            displayName: "Guardian",
-            studentIDs: [firstChild, secondChild]
-        )
+        let guardian = Guardian(displayName: "Guardian")
+        let firstChild = Student(guardianID: guardian.id, displayName: "First", kind: .child)
+        let secondChild = Student(guardianID: guardian.id, displayName: "Second", kind: .child)
         let store = PreviewMasterDanceStore(
-            data: PreviewData(guardians: [guardian])
+            data: PreviewData(students: [firstChild, secondChild], guardians: [guardian])
         )
 
-        let firstGuardians = try await store.listGuardians(studentID: firstChild)
-        let secondGuardians = try await store.listGuardians(studentID: secondChild)
-        #expect(firstGuardians == [guardian])
-        #expect(secondGuardians == [guardian])
+        let firstGuardians = try await store.listGuardians(studentID: firstChild.id)
+        let secondGuardians = try await store.listGuardians(studentID: secondChild.id)
+        #expect(firstGuardians.map(\.id) == [guardian.id])
+        #expect(secondGuardians.map(\.id) == [guardian.id])
+        #expect(firstGuardians.first?.studentIDs == [firstChild.id, secondChild.id])
     }
 
     @Test("A family owns child and adult learner profiles")
     func familyCreatesMultipleLearners() async throws {
         let guardian = Guardian(displayName: "Family")
-        let child = Student(displayName: "Child", kind: .child)
-        let adult = Student(displayName: "Adult Self", kind: .adult)
+        let child = Student(guardianID: guardian.id, displayName: "Child", kind: .child)
+        let adult = Student(guardianID: guardian.id, displayName: "Adult Self", kind: .adult)
         let store = PreviewMasterDanceStore(
             data: PreviewData(guardians: [guardian])
         )
@@ -171,15 +177,22 @@ struct PreviewMasterDanceStoreTests {
 
     @Test("Existing learners can be placed into a family")
     func linksExistingStudent() async throws {
-        let guardian = Guardian(displayName: "Family")
-        let student = Student(displayName: "Existing", kind: .child)
+        let previousGuardian = Guardian(displayName: "Previous Family")
+        let guardian = Guardian(displayName: "New Family")
+        let student = Student(
+            guardianID: previousGuardian.id,
+            displayName: "Existing",
+            kind: .child
+        )
         let store = PreviewMasterDanceStore(
-            data: PreviewData(students: [student], guardians: [guardian])
+            data: PreviewData(students: [student], guardians: [previousGuardian, guardian])
         )
 
         try await store.link(studentID: student.id, to: guardian.id)
         let linked = try await store.listGuardians(studentID: student.id)
         #expect(linked.map(\.id) == [guardian.id])
+        let families = try await store.listGuardians(studentID: nil)
+        #expect(families.first(where: { $0.id == previousGuardian.id })?.studentIDs.isEmpty == true)
     }
 
     @Test("Appearance retains all requested modes")
@@ -201,6 +214,7 @@ struct PreviewMasterDanceStoreTests {
         let alternateRoom = Room(name: "Room Two")
         let primaryInstructor = Instructor(displayName: "Primary")
         let substitute = Instructor(displayName: "Substitute")
+        let courseType = CourseType(name: "Custom Group", isPrivate: false)
         let course = Course(
             termID: term.id,
             name: "User Defined Course Name",
@@ -208,6 +222,7 @@ struct PreviewMasterDanceStoreTests {
             ageGroupID: ageGroup.id,
             defaultRoomID: primaryRoom.id,
             defaultInstructorID: primaryInstructor.id,
+            courseTypeID: courseType.id,
             format: .group
         )
         let session = ClassSession(
@@ -220,6 +235,7 @@ struct PreviewMasterDanceStoreTests {
         let store = PreviewMasterDanceStore()
 
         try await store.save(courseCategory: category)
+        try await store.save(courseType: courseType)
         try await store.save(ageGroup: ageGroup)
         try await store.save(room: primaryRoom)
         try await store.save(room: alternateRoom)
@@ -242,8 +258,101 @@ struct PreviewMasterDanceStoreTests {
         #expect(courses == [course])
         #expect(sessions == [session])
 
-        try await store.deleteInstructor(id: substitute.id)
-        let remainingInstructors = try await store.listInstructors()
-        #expect(remainingInstructors == [primaryInstructor])
+        await #expect(throws: PreviewRepositoryError.recordInUse("这位老师已被课程或课次使用，不能删除。")) {
+            try await store.deleteInstructor(id: substitute.id)
+        }
+        #expect(try await store.listInstructors() == [primaryInstructor, substitute])
+    }
+
+    @Test("Each learner belongs to exactly one family")
+    func learnerMovesInsteadOfDuplicatingFamilyLinks() async throws {
+        let first = Guardian(displayName: "First Family")
+        let second = Guardian(displayName: "Second Family")
+        let learner = Student(guardianID: first.id, displayName: "Learner", kind: .child)
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(students: [learner], guardians: [first, second])
+        )
+
+        try await store.link(studentID: learner.id, to: second.id)
+
+        #expect(try await store.listGuardians(studentID: learner.id).map(\.id) == [second.id])
+        let savedLearner = try #require(try await store.listStudents().first)
+        #expect(savedLearner.guardianID == second.id)
+    }
+
+    @Test("Referenced records cannot be deleted but can be updated")
+    func protectsReferencedRecordsAndPropagatesEdits() async throws {
+        let term = Term(name: "Term", startsOn: .distantPast, endsOn: .distantFuture, status: .open)
+        let category = CourseCategory(name: "Ballet")
+        let ageGroup = AgeGroup(name: "Children")
+        let room = Room(name: "Large Room")
+        let instructor = Instructor(displayName: "Teacher")
+        let courseType = CourseType(name: "Group", isPrivate: false)
+        let course = Course(
+            termID: term.id,
+            name: "Technique",
+            categoryID: category.id,
+            ageGroupID: ageGroup.id,
+            defaultRoomID: room.id,
+            defaultInstructorID: instructor.id,
+            courseTypeID: courseType.id,
+            format: .group
+        )
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(
+                terms: [term],
+                courseCategories: [category],
+                courseTypes: [courseType],
+                ageGroups: [ageGroup],
+                rooms: [room],
+                instructors: [instructor],
+                courses: [course]
+            )
+        )
+
+        await #expect(throws: PreviewRepositoryError.recordInUse("这个课程种类已被课程使用，不能删除。")) {
+            try await store.deleteCourseType(id: courseType.id)
+        }
+
+        var updatedType = courseType
+        updatedType.name = "Private"
+        updatedType.isPrivate = true
+        try await store.save(courseType: updatedType)
+
+        let savedCourse = try #require(try await store.listCourses(termID: term.id).first)
+        #expect(savedCourse.courseTypeID == updatedType.id)
+        #expect(savedCourse.format == .privateLesson)
+        #expect(try await store.listCourseTypes() == [updatedType])
+    }
+
+    @Test("Holidays must stay inside their term")
+    func validatesTermHolidayRange() async throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let startsOn = try #require(
+            calendar.date(from: DateComponents(year: 2026, month: 8, day: 1))
+        )
+        let endsOn = try #require(
+            calendar.date(from: DateComponents(year: 2026, month: 12, day: 31))
+        )
+        let term = Term(name: "Fall", startsOn: startsOn, endsOn: endsOn, status: .open)
+        let store = PreviewMasterDanceStore(data: PreviewData(terms: [term]))
+        let validHoliday = TermHoliday(
+            termID: term.id,
+            name: "Thanksgiving",
+            startsOn: try #require(calendar.date(from: DateComponents(year: 2026, month: 11, day: 23))),
+            endsOn: try #require(calendar.date(from: DateComponents(year: 2026, month: 11, day: 29)))
+        )
+        try await store.save(termHoliday: validHoliday)
+
+        let invalidHoliday = TermHoliday(
+            termID: term.id,
+            name: "Outside",
+            startsOn: startsOn,
+            endsOn: .distantFuture
+        )
+        await #expect(throws: PreviewRepositoryError.holidayOutsideTerm) {
+            try await store.save(termHoliday: invalidHoliday)
+        }
+        #expect(try await store.listTermHolidays(termID: term.id) == [validHoliday])
     }
 }

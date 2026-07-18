@@ -59,6 +59,47 @@ struct TermRow: Codable, Sendable {
     }
 }
 
+struct TermHolidayRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let termID: UUID
+    let name: String
+    let startsOn: String
+    let endsOn: String
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case termID = "term_id"
+        case name
+        case startsOn = "starts_on"
+        case endsOn = "ends_on"
+        case notes
+    }
+
+    init(_ holiday: TermHoliday, organizationID: UUID) {
+        id = holiday.id.rawValue
+        self.organizationID = organizationID
+        termID = holiday.termID.rawValue
+        name = holiday.name
+        startsOn = SupabaseDateCodec.dayString(from: holiday.startsOn)
+        endsOn = SupabaseDateCodec.dayString(from: holiday.endsOn)
+        notes = holiday.notes
+    }
+
+    func domain() throws -> TermHoliday {
+        try TermHoliday(
+            id: TermHolidayID(serverID: id),
+            termID: TermID(serverID: termID),
+            name: name,
+            startsOn: SupabaseDateCodec.date(from: startsOn),
+            endsOn: SupabaseDateCodec.date(from: endsOn),
+            notes: notes
+        )
+    }
+}
+
 struct CourseCategoryRow: Codable, Sendable {
     let id: UUID
     let organizationID: UUID
@@ -81,6 +122,43 @@ struct CourseCategoryRow: Codable, Sendable {
 
     func domain() -> CourseCategory {
         CourseCategory(id: CourseCategoryID(serverID: id), name: name, isActive: isActive)
+    }
+}
+
+struct CourseTypeRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let name: String
+    let isPrivate: Bool
+    let notes: String?
+    let isActive: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case name
+        case isPrivate = "is_private"
+        case notes
+        case isActive = "is_active"
+    }
+
+    init(_ courseType: CourseType, organizationID: UUID) {
+        id = courseType.id.rawValue
+        self.organizationID = organizationID
+        name = courseType.name
+        isPrivate = courseType.isPrivate
+        notes = courseType.notes
+        isActive = courseType.isActive
+    }
+
+    func domain() -> CourseType {
+        CourseType(
+            id: CourseTypeID(serverID: id),
+            name: name,
+            isPrivate: isPrivate,
+            notes: notes,
+            isActive: isActive
+        )
     }
 }
 
@@ -179,8 +257,10 @@ struct CourseRow: Codable, Sendable {
     let ageGroupID: UUID
     let defaultRoomID: UUID
     let defaultInstructorID: UUID
+    let courseTypeID: UUID
     let format: String
     let notes: String?
+    let isActive: Bool
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -191,8 +271,10 @@ struct CourseRow: Codable, Sendable {
         case ageGroupID = "age_group_id"
         case defaultRoomID = "default_room_id"
         case defaultInstructorID = "default_instructor_id"
+        case courseTypeID = "course_type_id"
         case format
         case notes
+        case isActive = "is_active"
     }
 
     init(_ course: Course, organizationID: UUID) {
@@ -204,8 +286,10 @@ struct CourseRow: Codable, Sendable {
         ageGroupID = course.ageGroupID.rawValue
         defaultRoomID = course.defaultRoomID.rawValue
         defaultInstructorID = course.defaultInstructorID.rawValue
+        courseTypeID = course.courseTypeID.rawValue
         format = course.format == .privateLesson ? "private_lesson" : "group"
         notes = course.notes
+        isActive = course.isActive
     }
 
     func domain() throws -> Course {
@@ -224,8 +308,10 @@ struct CourseRow: Codable, Sendable {
             ageGroupID: AgeGroupID(serverID: ageGroupID),
             defaultRoomID: RoomID(serverID: defaultRoomID),
             defaultInstructorID: InstructorID(serverID: defaultInstructorID),
+            courseTypeID: CourseTypeID(serverID: courseTypeID),
             format: domainFormat,
-            notes: notes
+            notes: notes,
+            isActive: isActive
         )
     }
 }
@@ -281,6 +367,7 @@ struct ClassSessionRow: Codable, Sendable {
 struct StudentRow: Codable, Sendable {
     let id: UUID
     let organizationID: UUID
+    let guardianID: UUID
     let displayName: String
     let legalName: String?
     let kind: String
@@ -289,6 +376,7 @@ struct StudentRow: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id
         case organizationID = "organization_id"
+        case guardianID = "guardian_id"
         case displayName = "display_name"
         case legalName = "legal_name"
         case kind
@@ -298,6 +386,7 @@ struct StudentRow: Codable, Sendable {
     init(_ student: Student, organizationID: UUID) {
         id = student.id.rawValue
         self.organizationID = organizationID
+        guardianID = student.guardianID.rawValue
         displayName = student.displayName
         legalName = student.legalName
         kind = student.kind.rawValue
@@ -310,6 +399,7 @@ struct StudentRow: Codable, Sendable {
         }
         return Student(
             id: StudentID(serverID: id),
+            guardianID: GuardianID(serverID: guardianID),
             displayName: displayName,
             legalName: legalName,
             kind: kind,
@@ -410,6 +500,16 @@ struct IssueGuardianLinkCodeParameters: Encodable, Sendable {
     enum CodingKeys: String, CodingKey {
         case guardianID = "target_guardian_id"
         case validityDays = "validity_days"
+    }
+}
+
+struct AdminDeleteRecordParameters: Encodable, Sendable {
+    let kind: String
+    let id: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case kind = "target_kind"
+        case id = "target_id"
     }
 }
 
@@ -592,6 +692,54 @@ struct LeaveRequestRow: Codable, Sendable {
     }
 }
 
+struct ContractDocumentRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let termID: UUID
+    let version: String
+    let title: String
+    let storagePath: String
+    let status: String
+    let publishedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case termID = "term_id"
+        case version
+        case title
+        case storagePath = "storage_path"
+        case status
+        case publishedAt = "published_at"
+    }
+
+    init(_ document: ContractDocument, organizationID: UUID) {
+        id = document.id.rawValue
+        self.organizationID = organizationID
+        termID = document.termID.rawValue
+        version = document.version
+        title = document.title
+        storagePath = document.storagePath
+        status = document.status.rawValue
+        publishedAt = document.publishedAt.map(SupabaseDateCodec.timestampString(from:))
+    }
+
+    func domain() throws -> ContractDocument {
+        guard let status = ContractDocumentStatus(rawValue: status) else {
+            throw SupabaseRepositoryError.invalidValue(field: "合同状态", value: status)
+        }
+        return try ContractDocument(
+            id: ContractDocumentID(serverID: id),
+            termID: TermID(serverID: termID),
+            version: version,
+            title: title,
+            storagePath: storagePath,
+            status: status,
+            publishedAt: publishedAt.map { try SupabaseDateCodec.timestamp(from: $0) }
+        )
+    }
+}
+
 struct ContractDocumentSummaryRow: Codable, Sendable {
     let id: UUID
     let version: String
@@ -627,6 +775,7 @@ struct ContractConsentRow: Codable, Sendable {
         }
         return try ContractConsent(
             id: ContractConsentID(serverID: id),
+            contractDocumentID: ContractDocumentID(serverID: contractDocumentID),
             termID: TermID(serverID: termID),
             enrollmentID: enrollmentID.map(EnrollmentID.init(serverID:)),
             contractVersion: contractVersion,

@@ -1,18 +1,27 @@
+import Foundation
+
 public protocol TermRepository: Sendable {
     func listTerms() async throws -> [Term]
     func save(term: Term) async throws
+    func deleteTerm(id: TermID) async throws
+    func listTermHolidays(termID: TermID?) async throws -> [TermHoliday]
+    func save(termHoliday: TermHoliday) async throws
+    func deleteTermHoliday(id: TermHolidayID) async throws
 }
 
 public protocol CourseReferenceRepository: Sendable {
     func listCourseCategories() async throws -> [CourseCategory]
+    func listCourseTypes() async throws -> [CourseType]
     func listAgeGroups() async throws -> [AgeGroup]
     func listRooms() async throws -> [Room]
     func listInstructors() async throws -> [Instructor]
     func save(courseCategory: CourseCategory) async throws
+    func save(courseType: CourseType) async throws
     func save(ageGroup: AgeGroup) async throws
     func save(room: Room) async throws
     func save(instructor: Instructor) async throws
     func deleteCourseCategory(id: CourseCategoryID) async throws
+    func deleteCourseType(id: CourseTypeID) async throws
     func deleteAgeGroup(id: AgeGroupID) async throws
     func deleteRoom(id: RoomID) async throws
     func deleteInstructor(id: InstructorID) async throws
@@ -21,6 +30,7 @@ public protocol CourseReferenceRepository: Sendable {
 public protocol CourseRepository: Sendable {
     func listCourses(termID: TermID?) async throws -> [Course]
     func save(course: Course) async throws
+    func deleteCourse(id: CourseID) async throws
 }
 
 public protocol ClassSessionRepository: Sendable {
@@ -36,6 +46,8 @@ public protocol PeopleRepository: Sendable {
     func create(student: Student, for guardianID: GuardianID) async throws -> Student
     func link(studentID: StudentID, to guardianID: GuardianID) async throws
     func issueGuardianLinkCode(guardianID: GuardianID) async throws -> GuardianLinkCode
+    func deleteStudent(id: StudentID) async throws
+    func deleteGuardian(id: GuardianID) async throws
 }
 
 public protocol EnrollmentRepository: Sendable {
@@ -52,6 +64,12 @@ public protocol AttendanceRepository: Sendable {
 public protocol LeaveRequestRepository: Sendable {
     func listLeaveRequests(sessionID: ClassSessionID?, studentID: StudentID?) async throws -> [LeaveRequest]
     func save(leaveRequest: LeaveRequest) async throws
+}
+
+public protocol ContractDocumentRepository: Sendable {
+    func listContractDocuments(termID: TermID?) async throws -> [ContractDocument]
+    func save(contractDocument: ContractDocument, fileData: Data?) async throws -> ContractDocument
+    func deleteContractDocument(id: ContractDocumentID, storagePath: String) async throws
 }
 
 public protocol ContractConsentRepository: Sendable {
@@ -72,5 +90,6 @@ public typealias MasterDanceRepository = TermRepository
     & EnrollmentRepository
     & AttendanceRepository
     & LeaveRequestRepository
+    & ContractDocumentRepository
     & ContractConsentRepository
     & NotificationRepository

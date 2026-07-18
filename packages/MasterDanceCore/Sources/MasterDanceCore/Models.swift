@@ -22,6 +22,31 @@ public struct Term: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+public struct TermHoliday: Identifiable, Codable, Equatable, Sendable {
+    public let id: TermHolidayID
+    public var termID: TermID
+    public var name: String
+    public var startsOn: Date
+    public var endsOn: Date
+    public var notes: String?
+
+    public init(
+        id: TermHolidayID = TermHolidayID(),
+        termID: TermID,
+        name: String,
+        startsOn: Date,
+        endsOn: Date,
+        notes: String? = nil
+    ) {
+        self.id = id
+        self.termID = termID
+        self.name = name
+        self.startsOn = startsOn
+        self.endsOn = endsOn
+        self.notes = notes
+    }
+}
+
 public struct CourseCategory: Identifiable, Codable, Equatable, Sendable {
     public let id: CourseCategoryID
     public var name: String
@@ -30,6 +55,28 @@ public struct CourseCategory: Identifiable, Codable, Equatable, Sendable {
     public init(id: CourseCategoryID = CourseCategoryID(), name: String, isActive: Bool = true) {
         self.id = id
         self.name = name
+        self.isActive = isActive
+    }
+}
+
+public struct CourseType: Identifiable, Codable, Equatable, Sendable {
+    public let id: CourseTypeID
+    public var name: String
+    public var isPrivate: Bool
+    public var notes: String?
+    public var isActive: Bool
+
+    public init(
+        id: CourseTypeID = CourseTypeID(),
+        name: String,
+        isPrivate: Bool,
+        notes: String? = nil,
+        isActive: Bool = true
+    ) {
+        self.id = id
+        self.name = name
+        self.isPrivate = isPrivate
+        self.notes = notes
         self.isActive = isActive
     }
 }
@@ -87,8 +134,10 @@ public struct Course: Identifiable, Codable, Equatable, Sendable {
     public var ageGroupID: AgeGroupID
     public var defaultRoomID: RoomID
     public var defaultInstructorID: InstructorID
+    public var courseTypeID: CourseTypeID
     public var format: CourseFormat
     public var notes: String?
+    public var isActive: Bool
 
     public init(
         id: CourseID = CourseID(),
@@ -98,8 +147,10 @@ public struct Course: Identifiable, Codable, Equatable, Sendable {
         ageGroupID: AgeGroupID,
         defaultRoomID: RoomID,
         defaultInstructorID: InstructorID,
+        courseTypeID: CourseTypeID,
         format: CourseFormat,
-        notes: String? = nil
+        notes: String? = nil,
+        isActive: Bool = true
     ) {
         self.id = id
         self.termID = termID
@@ -108,8 +159,10 @@ public struct Course: Identifiable, Codable, Equatable, Sendable {
         self.ageGroupID = ageGroupID
         self.defaultRoomID = defaultRoomID
         self.defaultInstructorID = defaultInstructorID
+        self.courseTypeID = courseTypeID
         self.format = format
         self.notes = notes
+        self.isActive = isActive
     }
 }
 
@@ -154,6 +207,7 @@ public enum StudentKind: String, Codable, CaseIterable, Sendable {
 
 public struct Student: Identifiable, Codable, Equatable, Sendable {
     public let id: StudentID
+    public var guardianID: GuardianID
     public var displayName: String
     public var legalName: String?
     public var kind: StudentKind
@@ -161,12 +215,14 @@ public struct Student: Identifiable, Codable, Equatable, Sendable {
 
     public init(
         id: StudentID = StudentID(),
+        guardianID: GuardianID,
         displayName: String,
         legalName: String? = nil,
         kind: StudentKind,
         isActive: Bool = true
     ) {
         self.id = id
+        self.guardianID = guardianID
         self.displayName = displayName
         self.legalName = legalName
         self.kind = kind
@@ -338,6 +394,40 @@ public struct LeaveRequest: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+public enum ContractDocumentStatus: String, Codable, CaseIterable, Sendable {
+    case draft
+    case published
+    case retired
+}
+
+public struct ContractDocument: Identifiable, Codable, Equatable, Sendable {
+    public let id: ContractDocumentID
+    public var termID: TermID
+    public var version: String
+    public var title: String
+    public var storagePath: String
+    public var status: ContractDocumentStatus
+    public var publishedAt: Date?
+
+    public init(
+        id: ContractDocumentID = ContractDocumentID(),
+        termID: TermID,
+        version: String,
+        title: String,
+        storagePath: String = "",
+        status: ContractDocumentStatus = .draft,
+        publishedAt: Date? = nil
+    ) {
+        self.id = id
+        self.termID = termID
+        self.version = version
+        self.title = title
+        self.storagePath = storagePath
+        self.status = status
+        self.publishedAt = publishedAt
+    }
+}
+
 public enum ConsentSignerKind: String, Codable, CaseIterable, Sendable {
     case guardian
     case adultStudent
@@ -345,6 +435,7 @@ public enum ConsentSignerKind: String, Codable, CaseIterable, Sendable {
 
 public struct ContractConsent: Identifiable, Codable, Equatable, Sendable {
     public let id: ContractConsentID
+    public let contractDocumentID: ContractDocumentID?
     public let termID: TermID
     public var enrollmentID: EnrollmentID?
     public var contractVersion: String
@@ -354,6 +445,7 @@ public struct ContractConsent: Identifiable, Codable, Equatable, Sendable {
 
     public init(
         id: ContractConsentID = ContractConsentID(),
+        contractDocumentID: ContractDocumentID? = nil,
         termID: TermID,
         enrollmentID: EnrollmentID? = nil,
         contractVersion: String,
@@ -362,6 +454,7 @@ public struct ContractConsent: Identifiable, Codable, Equatable, Sendable {
         consentedAt: Date
     ) {
         self.id = id
+        self.contractDocumentID = contractDocumentID
         self.termID = termID
         self.enrollmentID = enrollmentID
         self.contractVersion = contractVersion

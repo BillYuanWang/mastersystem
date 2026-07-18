@@ -9,7 +9,11 @@ struct GuardianInspectorView: View {
 
     @State private var selectedStudentID: StudentID?
     @State private var showingLearnerEditor = false
+    @State private var showingGuardianEditor = false
+    @State private var editingStudent: Student?
     @State private var issuedCode: GuardianLinkCode?
+    @State private var deletingGuardian = false
+    @State private var deletingStudent: Student?
     @State private var isWorking = false
     @State private var errorMessage: String?
 
@@ -44,6 +48,20 @@ struct GuardianInspectorView: View {
                                     .foregroundStyle(theme.secondaryText)
                             }
                             Spacer()
+                            Button {
+                                editingStudent = selectedStudent
+                            } label: {
+                                Image(systemName: "pencil")
+                            }
+                            .buttonStyle(MDIconButtonStyle())
+                            .help("编辑学员")
+                            Button {
+                                deletingStudent = selectedStudent
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(MDIconButtonStyle())
+                            .help("删除学员")
                         }
 
                         StudentCourseManagerView(model: model, student: selectedStudent)
@@ -61,8 +79,51 @@ struct GuardianInspectorView: View {
         .sheet(isPresented: $showingLearnerEditor) {
             LearnerEditorView(model: model, guardianID: guardian.id)
         }
+        .sheet(isPresented: $showingGuardianEditor) {
+            GuardianEditorView(model: model, guardian: guardian)
+        }
+        .sheet(item: $editingStudent) { student in
+            LearnerEditorView(model: model, guardianID: guardian.id, student: student)
+        }
         .sheet(item: $issuedCode) { code in
             GuardianLinkCodeSheet(code: code)
+        }
+        .alert("确认删除监护人", isPresented: $deletingGuardian) {
+            Button("删除", role: .destructive) {
+                Task {
+                    do {
+                        try await model.deleteGuardian(id: guardian.id)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("仍有学员档案或已连接帐号时，监护人不会被删除。")
+        }
+        .alert(
+            "确认删除学员",
+            isPresented: Binding(
+                get: { deletingStudent != nil },
+                set: { if !$0 { deletingStudent = nil } }
+            ),
+            presenting: deletingStudent
+        ) { student in
+            Button("删除", role: .destructive) {
+                deletingStudent = nil
+                Task {
+                    do {
+                        try await model.deleteStudent(id: student.id)
+                        selectedStudentID = nil
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: { _ in
+            Text("已有报名、签到或请假记录时，学员不会被删除，可以改为停用档案。")
         }
     }
 
@@ -77,8 +138,25 @@ struct GuardianInspectorView: View {
 
     private func guardianSummary(theme: MDTheme) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(guardian.displayName)
-                .font(MDType.bodyStrong)
+            HStack {
+                Text(guardian.displayName)
+                    .font(MDType.bodyStrong)
+                Spacer()
+                Button {
+                    showingGuardianEditor = true
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .buttonStyle(MDIconButtonStyle())
+                .help("编辑监护人")
+                Button {
+                    deletingGuardian = true
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(MDIconButtonStyle())
+                .help("删除监护人")
+            }
 
             if let email = guardian.email, !email.isEmpty {
                 Label(email, systemImage: "envelope")

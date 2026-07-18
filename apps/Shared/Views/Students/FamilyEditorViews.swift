@@ -6,15 +6,24 @@ import SwiftUI
 @MainActor
 struct GuardianEditorView: View {
     let model: AppModel
+    let original: Guardian?
 
-    @State private var displayName = ""
-    @State private var email = ""
-    @State private var phone = ""
+    @State private var displayName: String
+    @State private var email: String
+    @State private var phone: String
     @State private var issuedCode: GuardianLinkCode?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
     @Environment(\.dismiss) private var dismiss
+
+    init(model: AppModel, guardian: Guardian? = nil) {
+        self.model = model
+        original = guardian
+        _displayName = State(initialValue: guardian?.displayName ?? "")
+        _email = State(initialValue: guardian?.email ?? "")
+        _phone = State(initialValue: guardian?.phone ?? "")
+    }
 
     var body: some View {
         Group {
@@ -23,41 +32,37 @@ struct GuardianEditorView: View {
                     dismiss()
                 }
             } else {
-                form
+                VStack(alignment: .leading, spacing: 16) {
+                    MDSectionTitle(chinese: original == nil ? "添加监护人" : "编辑监护人")
+
+                    Form {
+                        TextField("监护人姓名", text: $displayName)
+                        TextField("邮箱（选填）", text: $email)
+                        TextField("电话（选填）", text: $phone)
+                    }
+                    .formStyle(.grouped)
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(MDType.compact)
+                            .foregroundStyle(.red)
+                    }
+
+                    HStack {
+                        Spacer()
+                        Button("取消") { dismiss() }
+                        Button(original == nil ? "创建" : "保存") { save() }
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(
+                                displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    || isSaving
+                            )
+                    }
+                }
             }
         }
         .padding(20)
         .frame(width: 460)
-    }
-
-    private var form: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            MDSectionTitle(chinese: "添加监护人", english: "NEW FAMILY")
-
-            Form {
-                TextField("监护人姓名", text: $displayName)
-                TextField("邮箱（选填）", text: $email)
-                TextField("电话（选填）", text: $phone)
-            }
-            .formStyle(.grouped)
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(MDType.compact)
-                    .foregroundStyle(.red)
-            }
-
-            HStack {
-                Spacer()
-                Button("取消") { dismiss() }
-                Button("创建") { save() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(
-                        displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || isSaving
-                    )
-            }
-        }
     }
 
     private func save() {
@@ -65,12 +70,20 @@ struct GuardianEditorView: View {
         errorMessage = nil
         Task {
             do {
-                issuedCode = try await model.createGuardian(
-                    displayName: displayName,
-                    email: email,
-                    phone: phone
-                )
-                isSaving = false
+                if var guardian = original {
+                    guardian.displayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guardian.email = email.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                    guardian.phone = phone.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                    try await model.saveGuardian(guardian)
+                    dismiss()
+                } else {
+                    issuedCode = try await model.createGuardian(
+                        displayName: displayName,
+                        email: email,
+                        phone: phone
+                    )
+                    isSaving = false
+                }
             } catch {
                 errorMessage = error.localizedDescription
                 isSaving = false
@@ -82,27 +95,45 @@ struct GuardianEditorView: View {
 @MainActor
 struct LearnerEditorView: View {
     let model: AppModel
-    let guardianID: GuardianID
+    let original: Student?
 
-    @State private var displayName = ""
-    @State private var legalName = ""
-    @State private var kind = StudentKind.child
+    @State private var guardianID: GuardianID
+    @State private var displayName: String
+    @State private var legalName: String
+    @State private var kind: StudentKind
+    @State private var isActive: Bool
     @State private var isSaving = false
     @State private var errorMessage: String?
 
     @Environment(\.dismiss) private var dismiss
 
+    init(model: AppModel, guardianID: GuardianID, student: Student? = nil) {
+        self.model = model
+        original = student
+        _guardianID = State(initialValue: student?.guardianID ?? guardianID)
+        _displayName = State(initialValue: student?.displayName ?? "")
+        _legalName = State(initialValue: student?.legalName ?? "")
+        _kind = State(initialValue: student?.kind ?? .child)
+        _isActive = State(initialValue: student?.isActive ?? true)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            MDSectionTitle(chinese: "添加学员档案", english: "NEW LEARNER")
+            MDSectionTitle(chinese: original == nil ? "添加学员档案" : "编辑学员档案")
 
             TextField("常用姓名", text: $displayName)
             TextField("法定姓名（选填）", text: $legalName)
+            Picker("所属监护人", selection: $guardianID) {
+                ForEach(model.guardians) { guardian in
+                    Text(guardian.displayName).tag(guardian.id)
+                }
+            }
             Picker("类型", selection: $kind) {
                 Text("少儿").tag(StudentKind.child)
                 Text("成人本人").tag(StudentKind.adult)
             }
             .pickerStyle(.segmented)
+            Toggle("启用档案", isOn: $isActive)
 
             if let errorMessage {
                 Text(errorMessage)
@@ -113,7 +144,7 @@ struct LearnerEditorView: View {
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }
-                Button("添加") { save() }
+                Button(original == nil ? "添加" : "保存") { save() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(
                         displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -130,12 +161,23 @@ struct LearnerEditorView: View {
         errorMessage = nil
         Task {
             do {
-                try await model.createStudent(
-                    displayName: displayName,
-                    legalName: legalName,
-                    kind: kind,
-                    guardianID: guardianID
-                )
+                if var student = original {
+                    student.guardianID = guardianID
+                    student.displayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    student.legalName = legalName
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .nilIfEmpty
+                    student.kind = kind
+                    student.isActive = isActive
+                    try await model.saveStudent(student)
+                } else {
+                    try await model.createStudent(
+                        displayName: displayName,
+                        legalName: legalName,
+                        kind: kind,
+                        guardianID: guardianID
+                    )
+                }
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
@@ -143,6 +185,10 @@ struct LearnerEditorView: View {
             }
         }
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 struct GuardianLinkCodeSheet: View {

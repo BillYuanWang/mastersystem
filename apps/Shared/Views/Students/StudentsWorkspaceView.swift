@@ -43,7 +43,7 @@ struct StudentsWorkspaceView: View {
 
     private func header(theme: MDTheme) -> some View {
         HStack(spacing: 12) {
-            MDSectionTitle(chinese: "学员家庭", english: "FAMILIES")
+            MDSectionTitle(chinese: "家庭与学员")
             Text("\(model.guardians.count) 户 · \(model.students.count) 人")
                 .font(MDType.mono)
                 .foregroundStyle(theme.secondaryText)

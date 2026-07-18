@@ -84,12 +84,12 @@ struct CourseEditorView: View {
                                     .labelsHidden()
                                 }
                                 GridRow {
-                                    fieldLabel("课程类型")
-                                    Picker("", selection: $draft.format) {
-                                        Text("组课").tag(CourseFormat.group)
-                                        Text("私课").tag(CourseFormat.privateLesson)
+                                    fieldLabel("课程种类")
+                                    Picker("", selection: $draft.courseTypeID) {
+                                        ForEach(model.courseTypes) { courseType in
+                                            Text(courseType.name).tag(Optional(courseType.id))
+                                        }
                                     }
-                                    .pickerStyle(.segmented)
                                     .labelsHidden()
                                 }
                             }
@@ -216,7 +216,26 @@ struct CourseEditorView: View {
     }
 
     private var activeOccurrenceCount: Int {
-        occurrenceDates.filter { !draft.excludedDates.contains(Calendar.masterDance.startOfDay(for: $0)) }.count
+        occurrenceDates.filter {
+            let date = Calendar.masterDance.startOfDay(for: $0)
+            return !draft.excludedDates.contains(date) && !automaticHolidayDates.contains(date)
+        }.count
+    }
+
+    private var automaticHolidayDates: Set<Date> {
+        guard let termID = draft.termID else { return [] }
+        let calendar = Calendar.masterDance
+        return model.termHolidays
+            .filter { $0.termID == termID }
+            .reduce(into: Set<Date>()) { dates, holiday in
+                var date = calendar.startOfDay(for: holiday.startsOn)
+                let end = calendar.startOfDay(for: holiday.endsOn)
+                while date <= end {
+                    dates.insert(date)
+                    guard let next = calendar.date(byAdding: .day, value: 1, to: date) else { break }
+                    date = next
+                }
+            }
     }
 
     private var canSave: Bool {
@@ -226,6 +245,7 @@ struct CourseEditorView: View {
             && draft.ageGroupID != nil
             && draft.roomID != nil
             && draft.instructorID != nil
+            && draft.courseTypeID != nil
             && activeOccurrenceCount > 0
     }
 
@@ -284,8 +304,10 @@ struct CourseEditorView: View {
 
     private func occurrenceChip(_ date: Date, theme: MDTheme) -> some View {
         let normalized = Calendar.masterDance.startOfDay(for: date)
-        let isExcluded = draft.excludedDates.contains(normalized)
+        let isHoliday = automaticHolidayDates.contains(normalized)
+        let isExcluded = draft.excludedDates.contains(normalized) || isHoliday
         return Button {
+            guard !isHoliday else { return }
             if isExcluded {
                 draft.excludedDates.remove(normalized)
             } else {
@@ -300,7 +322,7 @@ struct CourseEditorView: View {
                         .font(MDType.compact)
                 }
                 Spacer(minLength: 2)
-                Image(systemName: isExcluded ? "arrow.uturn.backward" : "xmark")
+                Image(systemName: isHoliday ? "calendar.badge.exclamationmark" : (isExcluded ? "arrow.uturn.backward" : "xmark"))
                     .font(.system(size: 9, weight: .semibold))
             }
             .foregroundStyle(isExcluded ? theme.secondaryText : theme.primaryText)
@@ -317,7 +339,8 @@ struct CourseEditorView: View {
             .opacity(isExcluded ? 0.55 : 1)
         }
         .buttonStyle(.plain)
-        .help(isExcluded ? "恢复这一周" : "移除这一周")
+        .disabled(isHoliday)
+        .help(isHoliday ? "学期假期，自动停课" : (isExcluded ? "恢复这一周" : "移除这一周"))
     }
 
     private func configureDraft() {
@@ -328,6 +351,7 @@ struct CourseEditorView: View {
         draft.ageGroupID = model.ageGroups.first?.id
         draft.roomID = model.rooms.first?.id
         draft.instructorID = model.instructors.first?.id
+        draft.courseTypeID = model.courseTypes.first?.id
         if let term = model.terms.first {
             draft.startsOn = term.startsOn
             draft.endsOn = term.endsOn

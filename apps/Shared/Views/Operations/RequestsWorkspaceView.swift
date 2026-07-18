@@ -14,7 +14,7 @@ struct RequestsWorkspaceView: View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                MDSectionTitle(chinese: "申请", english: "REQUESTS")
+                MDSectionTitle(chinese: "请假与通知")
                 Picker("申请", selection: $section) {
                     ForEach(RequestSection.allCases) { item in
                         Text(item.title).tag(item)
@@ -22,7 +22,7 @@ struct RequestsWorkspaceView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 300)
+                .frame(width: 220)
                 Spacer()
             }
             .padding(.horizontal, 14)
@@ -33,8 +33,6 @@ struct RequestsWorkspaceView: View {
             switch section {
             case .leave:
                 leaveList(theme: theme)
-            case .contracts:
-                contractList(theme: theme)
             case .notifications:
                 notificationList(theme: theme)
             }
@@ -55,7 +53,7 @@ struct RequestsWorkspaceView: View {
                             requestCell(model.student(id: request.studentID)?.displayName ?? "—", width: 140, strong: true)
                             requestCell(course?.name ?? "—", width: 190)
                             requestCell(session?.startsAt.formatted(date: .abbreviated, time: .shortened) ?? "—", width: 180, mono: true)
-                            requestCell(request.source == .app ? "App" : "教务代办", width: 90)
+                            requestCell(request.source == .app ? "手机端" : "教务代办", width: 90)
                             requestCell(leaveStatus(request.status), width: 90)
                             requestCell(request.note ?? "—", width: 180)
                             leaveActions(request)
@@ -145,7 +143,7 @@ struct RequestsWorkspaceView: View {
                         HStack(spacing: 0) {
                             requestCell(notification.title, width: 220, strong: true)
                             requestCell(notification.body, width: 360)
-                            requestCell(notification.channel == .applePush ? "Apple Push" : "App", width: 120)
+                            requestCell(notification.channel == .applePush ? "苹果推送" : "应用内", width: 120)
                             requestCell(notificationStatus(notification.status), width: 120)
                             requestCell(notification.scheduledAt?.formatted(date: .abbreviated, time: .shortened) ?? "—", width: 180, mono: true)
                             Spacer()
@@ -191,7 +189,6 @@ struct RequestsWorkspaceView: View {
 
 private enum RequestSection: String, CaseIterable, Identifiable {
     case leave
-    case contracts
     case notifications
 
     var id: String { rawValue }
@@ -199,7 +196,6 @@ private enum RequestSection: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .leave: "请假"
-        case .contracts: "合同"
         case .notifications: "通知"
         }
     }

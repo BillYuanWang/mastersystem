@@ -3,44 +3,39 @@ import MasterDanceCore
 
 enum AdminSection: String, CaseIterable, Identifiable {
     case schedule
-    case setup
-    case students
+    case courses
+    case families
     case enrollments
     case attendance
     case requests
+    case contracts
+    case dataCenter
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .schedule: "课表"
-        case .setup: "课程"
-        case .students: "学生"
+        case .courses: "课程"
+        case .families: "家庭/学员"
         case .enrollments: "报名"
         case .attendance: "签到"
-        case .requests: "申请"
-        }
-    }
-
-    var englishTitle: String {
-        switch self {
-        case .schedule: "SCHEDULE"
-        case .setup: "COURSES"
-        case .students: "STUDENTS"
-        case .enrollments: "ENROLLMENT"
-        case .attendance: "ATTENDANCE"
-        case .requests: "REQUESTS"
+        case .requests: "请假/通知"
+        case .contracts: "合同"
+        case .dataCenter: "数据中心"
         }
     }
 
     var systemImage: String {
         switch self {
         case .schedule: "calendar"
-        case .setup: "books.vertical"
-        case .students: "person.2"
+        case .courses: "books.vertical"
+        case .families: "person.2"
         case .enrollments: "list.bullet.rectangle"
         case .attendance: "checkmark.circle"
         case .requests: "envelope"
+        case .contracts: "doc.text"
+        case .dataCenter: "cylinder.split.1x2"
         }
     }
 }
@@ -111,7 +106,7 @@ struct CourseCreationDraft {
     var ageGroupID: AgeGroupID?
     var roomID: RoomID?
     var instructorID: InstructorID?
-    var format = CourseFormat.group
+    var courseTypeID: CourseTypeID?
     var startsOn = Date()
     var endsOn = Calendar.masterDance.date(byAdding: .day, value: 7 * 15, to: Date()) ?? Date()
     var weekday = 2
@@ -124,6 +119,7 @@ struct CourseCreationDraft {
 enum AppModelError: LocalizedError {
     case missingCourseFields
     case missingEnrollmentFields
+    case holidayOutsideTerm
     case invalidTermRange
     case missingGuardianName
     case invalidGuardianEmail
@@ -131,9 +127,10 @@ enum AppModelError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingCourseFields: "请完成课程名称、学期、分类、年龄段、教室和老师。"
+        case .missingCourseFields: "请完成课程名称、学期、分类、课程种类、年龄段、教室和老师。"
         case .missingEnrollmentFields: "请选择学生和课程。"
         case .invalidTermRange: "结束日期必须晚于开始日期。"
+        case .holidayOutsideTerm: "假期日期必须位于所选学期内。"
         case .missingGuardianName: "请输入监护人姓名。"
         case .invalidGuardianEmail: "请输入有效的监护人邮箱。"
         case .missingStudentName: "请输入学员姓名。"

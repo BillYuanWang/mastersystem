@@ -55,7 +55,7 @@ struct ScheduleWorkspaceView: View {
             ScheduleInspectorView(
                 model: model,
                 sessionID: selectedSessionID,
-                openCourse: { navigate(.setup) },
+                openCourse: { navigate(.courses) },
                 startAttendance: { sessionID in
                     model.focusedSessionID = sessionID
                     navigate(.attendance)

@@ -48,7 +48,7 @@ struct ScheduleGridView: View {
     private func dayHeader(width: CGFloat, theme: MDTheme) -> some View {
         let laneWidth = max(1, (width - timeColumnWidth) / CGFloat(5 * max(1, rooms.count)))
         return HStack(spacing: 0) {
-            Text("TIME")
+            Text("时间")
                 .font(MDType.mono)
                 .foregroundStyle(theme.secondaryText)
                 .frame(width: timeColumnWidth, height: headerHeight)
@@ -59,7 +59,7 @@ struct ScheduleGridView: View {
                         Text(day.formatted(.dateTime.weekday(.abbreviated)).uppercased())
                         Text(day.formatted(.dateTime.month(.abbreviated).day()).uppercased())
                         if calendar.isDateInToday(day) {
-                            Text("TODAY")
+                            Text("今天")
                                 .foregroundStyle(theme.accent)
                         }
                     }

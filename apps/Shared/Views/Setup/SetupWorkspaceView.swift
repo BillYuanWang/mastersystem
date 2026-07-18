@@ -6,11 +6,11 @@ import SwiftUI
 struct SetupWorkspaceView: View {
     let model: AppModel
 
-    @State private var section = SetupSection.courses
     @State private var searchText = ""
     @State private var showingCourseEditor = false
-    @State private var showingTermEditor = false
-    @State private var showingReferenceEditor = false
+    @State private var editingCourse: Course?
+    @State private var deletingCourse: Course?
+    @State private var errorMessage: String?
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -18,78 +18,71 @@ struct SetupWorkspaceView: View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                MDSectionTitle(chinese: "课程", english: "COURSES")
-
-                Picker("设置", selection: $section) {
-                    ForEach(SetupSection.allCases) { item in
-                        Text(item.title).tag(item)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 280)
+                MDSectionTitle(chinese: "课程")
 
                 Spacer()
 
-                if section != .references {
-                    TextField("搜索", text: $searchText)
-                        .textFieldStyle(.roundedBorder)
+                if let errorMessage {
+                    Text(errorMessage)
                         .font(MDType.compact)
-                        .frame(width: 170)
+                        .foregroundStyle(theme.danger)
+                        .lineLimit(1)
                 }
 
+                TextField("搜索", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(MDType.compact)
+                    .frame(width: 170)
+
                 Button {
-                    showEditorForCurrentSection()
+                    showingCourseEditor = true
                 } label: {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(MDIconButtonStyle())
-                .help(addButtonHelp)
+                .help("添加课程")
             }
             .padding(.horizontal, 14)
             .frame(height: 54)
 
-            Rectangle()
-                .fill(theme.separator)
-                .frame(height: 1)
+            Rectangle().fill(theme.separator).frame(height: 1)
 
-            Group {
-                switch section {
-                case .courses:
-                    CourseSheetView(model: model, searchText: searchText)
-                case .terms:
-                    TermSheetView(model: model, searchText: searchText)
-                case .references:
-                    ReferenceDataView(model: model, showAdd: { showingReferenceEditor = true })
-                }
-            }
+            CourseSheetView(
+                model: model,
+                searchText: searchText,
+                edit: { editingCourse = $0 },
+                delete: { deletingCourse = $0 }
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(theme.background)
         .sheet(isPresented: $showingCourseEditor) {
             CourseEditorView(model: model)
         }
-        .sheet(isPresented: $showingTermEditor) {
-            TermEditorView(model: model)
+        .sheet(item: $editingCourse) { course in
+            CourseMetadataEditorView(model: model, course: course)
         }
-        .sheet(isPresented: $showingReferenceEditor) {
-            ReferenceEditorView(model: model)
-        }
-    }
-
-    private var addButtonHelp: String {
-        switch section {
-        case .courses: "添加课程"
-        case .terms: "添加学期"
-        case .references: "添加自定义资料"
-        }
-    }
-
-    private func showEditorForCurrentSection() {
-        switch section {
-        case .courses: showingCourseEditor = true
-        case .terms: showingTermEditor = true
-        case .references: showingReferenceEditor = true
+        .alert(
+            "确认删除",
+            isPresented: Binding(
+                get: { deletingCourse != nil },
+                set: { if !$0 { deletingCourse = nil } }
+            ),
+            presenting: deletingCourse
+        ) { course in
+            Button("删除", role: .destructive) {
+                deletingCourse = nil
+                Task {
+                    do {
+                        try await model.deleteCourse(id: course.id)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: { course in
+            Text("确定删除“\(course.name)”吗？已有课次或报名的课程不会被删除，可以改为停用。")
         }
     }
 }
@@ -97,6 +90,8 @@ struct SetupWorkspaceView: View {
 private struct CourseSheetView: View {
     let model: AppModel
     let searchText: String
+    let edit: (Course) -> Void
+    let delete: (Course) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -127,7 +122,9 @@ private struct CourseSheetView: View {
             headerCell("老师", width: 90)
             headerCell("每周时间", width: 155)
             headerCell("课次", width: 60)
-            headerCell("类型", width: 55)
+            headerCell("课程种类", width: 100)
+            headerCell("状态", width: 60)
+            headerCell("操作", width: 70)
             Spacer(minLength: 0)
         }
         .frame(height: 34)
@@ -148,13 +145,34 @@ private struct CourseSheetView: View {
             dataCell(model.instructor(id: course.defaultInstructorID)?.displayName ?? "—", width: 90)
             dataCell(firstSession.map(scheduleLabel) ?? "未排课", width: 155)
             dataCell("\(courseSessions.count)", width: 60, monospaced: true)
-            HStack {
+            HStack(spacing: 6) {
                 Text(course.format == .privateLesson ? "私" : "组")
                     .font(MDType.compactStrong)
                     .frame(width: 21, height: 21)
                     .overlay(Circle().stroke(theme.secondaryText, lineWidth: 1))
+                Text(model.courseType(id: course.courseTypeID)?.name ?? "—")
+                    .font(MDType.compact)
+                    .lineLimit(1)
             }
-            .frame(width: 55)
+            .frame(width: 100, alignment: .leading)
+            dataCell(course.isActive ? "启用" : "停用", width: 60)
+            HStack(spacing: 3) {
+                Button {
+                    edit(course)
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .buttonStyle(MDIconButtonStyle())
+                .help("编辑")
+                Button {
+                    delete(course)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(MDIconButtonStyle())
+                .help("删除")
+            }
+            .frame(width: 70)
             Spacer(minLength: 0)
         }
         .frame(minHeight: 38)
@@ -171,7 +189,9 @@ private struct CourseSheetView: View {
                 model.category(id: course.categoryID)?.name ?? "",
                 model.ageGroup(id: course.ageGroupID)?.name ?? "",
                 model.room(id: course.defaultRoomID)?.name ?? "",
-                model.instructor(id: course.defaultInstructorID)?.displayName ?? ""
+                model.instructor(id: course.defaultInstructorID)?.displayName ?? "",
+                model.courseType(id: course.courseTypeID)?.name ?? "",
+                model.term(id: course.termID)?.name ?? ""
             ]
             return values.contains { $0.localizedCaseInsensitiveContains(query) }
         }
@@ -182,6 +202,119 @@ private struct CourseSheetView: View {
         let start = session.startsAt.formatted(date: .omitted, time: .shortened)
         let end = session.endsAt.formatted(date: .omitted, time: .shortened)
         return "\(weekday) \(start)–\(end)"
+    }
+}
+
+private struct CourseMetadataEditorView: View {
+    let model: AppModel
+    let original: Course
+
+    @State private var name: String
+    @State private var categoryID: CourseCategoryID
+    @State private var ageGroupID: AgeGroupID
+    @State private var roomID: RoomID
+    @State private var instructorID: InstructorID
+    @State private var courseTypeID: CourseTypeID
+    @State private var notes: String
+    @State private var isActive: Bool
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    @Environment(\.dismiss) private var dismiss
+
+    init(model: AppModel, course: Course) {
+        self.model = model
+        original = course
+        _name = State(initialValue: course.name)
+        _categoryID = State(initialValue: course.categoryID)
+        _ageGroupID = State(initialValue: course.ageGroupID)
+        _roomID = State(initialValue: course.defaultRoomID)
+        _instructorID = State(initialValue: course.defaultInstructorID)
+        _courseTypeID = State(initialValue: course.courseTypeID)
+        _notes = State(initialValue: course.notes ?? "")
+        _isActive = State(initialValue: course.isActive)
+    }
+
+    var body: some View {
+        Form {
+            MDSectionTitle(chinese: "编辑课程")
+            TextField("课程名称", text: $name)
+            LabeledContent("所属学期") {
+                Text(model.term(id: original.termID)?.name ?? "—")
+                    .foregroundStyle(.secondary)
+            }
+            Picker("课程分类", selection: $categoryID) {
+                ForEach(model.categories) { category in
+                    Text(category.name).tag(category.id)
+                }
+            }
+            Picker("年龄段", selection: $ageGroupID) {
+                ForEach(model.ageGroups) { ageGroup in
+                    Text(ageGroup.name).tag(ageGroup.id)
+                }
+            }
+            Picker("教室", selection: $roomID) {
+                ForEach(model.rooms) { room in
+                    Text(room.name).tag(room.id)
+                }
+            }
+            Picker("授课老师", selection: $instructorID) {
+                ForEach(model.instructors) { instructor in
+                    Text(instructor.displayName).tag(instructor.id)
+                }
+            }
+            Picker("课程种类", selection: $courseTypeID) {
+                ForEach(model.courseTypes) { courseType in
+                    Text(courseType.name).tag(courseType.id)
+                }
+            }
+            TextField("备注", text: $notes, axis: .vertical)
+                .lineLimit(2...4)
+            Toggle("启用", isOn: $isActive)
+            Text("排课日期和时间保持不变；单次调整请在课表中处理。")
+                .font(MDType.compact)
+                .foregroundStyle(.secondary)
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(MDType.compact)
+                    .foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("取消") { dismiss() }
+                Button("保存") { save() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 460)
+        .padding(8)
+    }
+
+    private func save() {
+        isSaving = true
+        var course = original
+        course.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        course.categoryID = categoryID
+        course.ageGroupID = ageGroupID
+        course.defaultRoomID = roomID
+        course.defaultInstructorID = instructorID
+        course.courseTypeID = courseTypeID
+        course.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? nil
+            : notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        course.isActive = isActive
+
+        Task {
+            do {
+                try await model.saveCourse(course)
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                isSaving = false
+            }
+        }
     }
 }
 

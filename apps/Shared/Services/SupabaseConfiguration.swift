@@ -19,6 +19,38 @@ struct SupabaseConfiguration: Sendable {
     }
 
     func makeClient() -> SupabaseClient {
-        SupabaseClient(supabaseURL: url, supabaseKey: publishableKey)
+        if ProcessInfo.processInfo.environment["MASTER_DANCE_VOLATILE_AUTH"] == "1" {
+            return SupabaseClient(
+                supabaseURL: url,
+                supabaseKey: publishableKey,
+                options: SupabaseClientOptions(
+                    auth: .init(storage: VolatileAuthStorage())
+                )
+            )
+        }
+        return SupabaseClient(supabaseURL: url, supabaseKey: publishableKey)
+    }
+}
+
+private final class VolatileAuthStorage: AuthLocalStorage, @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String: Data] = [:]
+
+    func store(key: String, value: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        values[key] = value
+    }
+
+    func retrieve(key: String) -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        return values[key]
+    }
+
+    func remove(key: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        values[key] = nil
     }
 }

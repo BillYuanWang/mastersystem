@@ -46,9 +46,9 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.3</string>
+  <string>0.1.4</string>
   <key>CFBundleVersion</key>
-  <string>4</string>
+  <string>5</string>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>
@@ -79,6 +79,8 @@ open_app() {
 }
 
 case "$MODE" in
+  --build|build)
+    ;;
   run)
     open_app
     ;;
@@ -99,7 +101,7 @@ case "$MODE" in
     pgrep -x "$APP_NAME" >/dev/null
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [run|--build|--debug|--logs|--telemetry|--verify]" >&2
     exit 2
     ;;
 esac
