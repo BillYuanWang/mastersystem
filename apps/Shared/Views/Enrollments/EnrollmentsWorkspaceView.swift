@@ -8,7 +8,11 @@ struct EnrollmentsWorkspaceView: View {
 
     @State private var selectedTermID: TermID?
     @State private var searchText = ""
-    @State private var showingEditor = false
+    @State private var draftStudentID: StudentID?
+    @State private var draftCourseID: CourseID?
+    @State private var showingStudentPicker = false
+    @State private var showingCoursePicker = false
+    @State private var pendingEnrollments: [PendingEnrollmentSubmission] = []
     @State private var deletingID: EnrollmentID?
 
     @Environment(\.colorScheme) private var colorScheme
@@ -16,93 +20,61 @@ struct EnrollmentsWorkspaceView: View {
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                MDSectionTitle(chinese: "总报名", english: "ENROLLMENT")
-                Text("\(filteredEnrollments.count)")
-                    .font(MDType.mono)
-                    .foregroundStyle(theme.secondaryText)
-                Spacer()
-                Picker("学期", selection: $selectedTermID) {
-                    Text("全部学期").tag(Optional<TermID>.none)
-                    ForEach(model.terms) { term in
-                        Text(term.name).tag(Optional(term.id))
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 140)
-                TextField("搜索学生或课程", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .font(MDType.compact)
-                    .frame(width: 180)
-                Button {
-                    showingEditor = true
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .buttonStyle(MDIconButtonStyle())
-                .help("添加报名")
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 54)
-
+            header(theme: theme)
             Rectangle().fill(theme.separator).frame(height: 1)
-
             enrollmentTable(theme: theme)
         }
         .background(theme.background)
-        .sheet(isPresented: $showingEditor) {
-            EnrollmentEditorView(model: model)
-        }
         .task(id: model.terms.count) {
             if selectedTermID == nil {
                 selectedTermID = model.terms.first?.id
             }
         }
+        .onChange(of: selectedTermID) { _, termID in
+            guard let termID, let course = draftCourse, course.termID != termID else { return }
+            draftCourseID = nil
+        }
+    }
+
+    private func header(theme: MDTheme) -> some View {
+        HStack(spacing: 12) {
+            MDSectionTitle(chinese: "总报名", english: "ENROLLMENT")
+            Text("\(filteredEnrollments.count)")
+                .font(MDType.mono)
+                .foregroundStyle(theme.secondaryText)
+            Spacer()
+            Picker("学期", selection: $selectedTermID) {
+                Text("全部学期").tag(Optional<TermID>.none)
+                ForEach(model.terms) { term in
+                    Text(term.name).tag(Optional(term.id))
+                }
+            }
+            .labelsHidden()
+            .frame(width: 150)
+            TextField("搜索学员、家庭或课程", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .font(MDType.compact)
+                .frame(width: 230)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 54)
     }
 
     private func enrollmentTable(theme: MDTheme) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                enrollmentHeader("学生", width: 150)
-                enrollmentHeader("课程", width: 210)
-                enrollmentHeader("学期", width: 130)
-                enrollmentHeader("上课时间", width: 190)
-                enrollmentHeader("老师", width: 100)
-                enrollmentHeader("状态", width: 90)
-                enrollmentHeader("报名日期", width: 120)
-                Spacer()
-                Color.clear.frame(width: 40)
-            }
-            .frame(height: 34)
-            .background(theme.subtleSurface)
+            tableHeader(theme: theme)
+            draftRow(theme: theme)
+            Rectangle().fill(theme.separator).frame(height: 1)
 
             ScrollView {
                 LazyVStack(spacing: 0) {
+                    ForEach(pendingEnrollments) { submission in
+                        pendingRow(submission, theme: theme)
+                        Divider()
+                    }
+
                     ForEach(filteredEnrollments) { enrollment in
-                        HStack(spacing: 0) {
-                            enrollmentCell(model.student(id: enrollment.studentID)?.displayName ?? "—", width: 150, strong: true)
-                            enrollmentCell(model.course(id: enrollment.courseID)?.name ?? "—", width: 210)
-                            enrollmentCell(model.term(id: enrollment.termID)?.name ?? "—", width: 130)
-                            enrollmentCell(scheduleLabel(enrollment.courseID), width: 190)
-                            enrollmentCell(instructorName(enrollment.courseID), width: 100)
-                            enrollmentCell(statusLabel(enrollment.status), width: 90)
-                            enrollmentCell(enrollment.enrolledAt.formatted(date: .abbreviated, time: .omitted), width: 120, mono: true)
-                            Spacer()
-                            Button {
-                                deletingID = enrollment.id
-                                Task {
-                                    try? await model.removeEnrollment(id: enrollment.id)
-                                    deletingID = nil
-                                }
-                            } label: {
-                                Image(systemName: "xmark")
-                            }
-                            .buttonStyle(MDIconButtonStyle())
-                            .disabled(deletingID == enrollment.id)
-                            .help("移除报名")
-                            .frame(width: 40)
-                        }
-                        .frame(minHeight: 40)
+                        enrollmentRow(enrollment, theme: theme)
                         Divider()
                     }
                 }
@@ -111,28 +83,337 @@ struct EnrollmentsWorkspaceView: View {
         .foregroundStyle(theme.primaryText)
     }
 
+    private func tableHeader(theme: MDTheme) -> some View {
+        HStack(spacing: 0) {
+            enrollmentHeader("学员", width: EnrollmentColumns.student)
+            enrollmentHeader("课程", width: EnrollmentColumns.course)
+            enrollmentHeader("学期", width: EnrollmentColumns.term)
+            enrollmentHeader("上课时间", width: EnrollmentColumns.schedule)
+            enrollmentHeader("老师 / 教室", width: EnrollmentColumns.staff)
+            enrollmentHeader("状态", width: EnrollmentColumns.status)
+            enrollmentHeader("报名日期", width: EnrollmentColumns.date)
+            Spacer(minLength: 0)
+            Text("操作")
+                .font(MDType.compactStrong)
+                .foregroundStyle(theme.secondaryText)
+                .frame(width: EnrollmentColumns.action)
+        }
+        .frame(height: 34)
+        .background(theme.subtleSurface)
+    }
+
+    private func draftRow(theme: MDTheme) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                showingStudentPicker = true
+            } label: {
+                selectionLabel(
+                    title: draftStudent?.displayName ?? "选择学员",
+                    subtitle: draftStudent.map(studentSubtitle) ?? "按家庭查找",
+                    systemImage: "person.crop.circle",
+                    width: EnrollmentColumns.student,
+                    theme: theme
+                )
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingStudentPicker, arrowEdge: .bottom) {
+                StudentEnrollmentPicker(
+                    model: model,
+                    selectedID: draftStudentID,
+                    select: selectStudent
+                )
+            }
+            .help("选择学员")
+
+            Button {
+                showingCoursePicker = true
+            } label: {
+                selectionLabel(
+                    title: draftCourse?.name ?? "选择课程",
+                    subtitle: draftCourse.map(courseSelectorSubtitle) ?? "按星期和时间查找",
+                    systemImage: "calendar.badge.plus",
+                    width: EnrollmentColumns.course,
+                    theme: theme
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(draftStudentID == nil)
+            .popover(isPresented: $showingCoursePicker, arrowEdge: .bottom) {
+                CourseEnrollmentPicker(
+                    model: model,
+                    courses: availableDraftCourses,
+                    selectedID: draftCourseID,
+                    select: selectCourse
+                )
+            }
+            .help(draftStudentID == nil ? "请先选择学员" : "选择课程")
+
+            enrollmentCell(draftCourse.flatMap { model.term(id: $0.termID) }?.name ?? "—", width: EnrollmentColumns.term)
+            enrollmentCell(draftCourse.map(scheduleLabel) ?? "—", width: EnrollmentColumns.schedule, mono: draftCourse != nil)
+            enrollmentCell(draftCourse.map(staffAndRoom) ?? "—", width: EnrollmentColumns.staff)
+            enrollmentCell("待提交", width: EnrollmentColumns.status)
+            enrollmentCell(Date().formatted(date: .abbreviated, time: .omitted), width: EnrollmentColumns.date, mono: true)
+            Spacer(minLength: 0)
+
+            Button(action: submitDraft) {
+                Image(systemName: "checkmark")
+            }
+            .buttonStyle(MDIconButtonStyle())
+            .disabled(draftStudentID == nil || draftCourseID == nil)
+            .help("提交报名")
+            .frame(width: EnrollmentColumns.action)
+        }
+        .frame(minHeight: 56)
+        .background(theme.accent.opacity(colorScheme == .dark ? 0.075 : 0.045))
+    }
+
+    private func selectionLabel(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        width: CGFloat,
+        theme: MDTheme
+    ) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(theme.accent)
+                .frame(width: 17)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(MDType.bodyStrong)
+                    .foregroundStyle(theme.primaryText)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(MDType.compact)
+                    .foregroundStyle(theme.secondaryText)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 3)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(theme.secondaryText)
+        }
+        .padding(.horizontal, 9)
+        .frame(width: width - 8, height: 46, alignment: .leading)
+        .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
+        .overlay {
+            RoundedRectangle(cornerRadius: MDMetrics.radius)
+                .stroke(theme.separator, lineWidth: 1)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func pendingRow(_ submission: PendingEnrollmentSubmission, theme: MDTheme) -> some View {
+        let course = model.course(id: submission.courseID)
+        let student = model.student(id: submission.studentID)
+        return HStack(spacing: 0) {
+            enrollmentCell(student?.displayName ?? "学员", width: EnrollmentColumns.student, strong: true)
+            enrollmentCell(course?.name ?? "课程", width: EnrollmentColumns.course)
+            enrollmentCell(course.flatMap { model.term(id: $0.termID) }?.name ?? "—", width: EnrollmentColumns.term)
+            enrollmentCell(course.map(scheduleLabel) ?? "—", width: EnrollmentColumns.schedule, mono: course != nil)
+            enrollmentCell(course.map(staffAndRoom) ?? "—", width: EnrollmentColumns.staff)
+            pendingStatus(submission.status, theme: theme)
+            enrollmentCell("刚刚", width: EnrollmentColumns.date, mono: true)
+            Spacer(minLength: 0)
+            pendingActions(submission, theme: theme)
+        }
+        .frame(minHeight: 42)
+        .background(theme.subtleSurface.opacity(0.55))
+        .help(submission.status.errorMessage ?? "正在同步报名")
+    }
+
+    private func enrollmentRow(_ enrollment: Enrollment, theme: MDTheme) -> some View {
+        HStack(spacing: 0) {
+            enrollmentCell(model.student(id: enrollment.studentID)?.displayName ?? "—", width: EnrollmentColumns.student, strong: true)
+            enrollmentCell(model.course(id: enrollment.courseID)?.name ?? "—", width: EnrollmentColumns.course)
+            enrollmentCell(model.term(id: enrollment.termID)?.name ?? "—", width: EnrollmentColumns.term)
+            enrollmentCell(courseForEnrollment(enrollment).map(scheduleLabel) ?? "未排课", width: EnrollmentColumns.schedule, mono: true)
+            enrollmentCell(courseForEnrollment(enrollment).map(staffAndRoom) ?? "—", width: EnrollmentColumns.staff)
+            enrollmentCell(statusLabel(enrollment.status), width: EnrollmentColumns.status)
+            enrollmentCell(enrollment.enrolledAt.formatted(date: .abbreviated, time: .omitted), width: EnrollmentColumns.date, mono: true)
+            Spacer(minLength: 0)
+            Button {
+                removeEnrollment(enrollment)
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(MDIconButtonStyle())
+            .disabled(deletingID == enrollment.id)
+            .help("移除报名")
+            .frame(width: EnrollmentColumns.action)
+        }
+        .frame(minHeight: 40)
+    }
+
+    @ViewBuilder
+    private func pendingStatus(_ status: PendingEnrollmentStatus, theme: MDTheme) -> some View {
+        HStack(spacing: 6) {
+            switch status {
+            case .syncing:
+                ProgressView().controlSize(.small)
+                Text("同步中")
+            case .failed:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(theme.danger)
+                Text("失败")
+                    .foregroundStyle(theme.danger)
+            }
+        }
+        .font(MDType.compact)
+        .padding(.leading, 10)
+        .frame(width: EnrollmentColumns.status, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func pendingActions(_ submission: PendingEnrollmentSubmission, theme: MDTheme) -> some View {
+        switch submission.status {
+        case .syncing:
+            Color.clear.frame(width: EnrollmentColumns.action, height: 32)
+        case .failed:
+            HStack(spacing: 2) {
+                Button {
+                    retry(submission)
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(MDIconButtonStyle())
+                .help("重试")
+                Button {
+                    pendingEnrollments.removeAll { $0.id == submission.id }
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(MDIconButtonStyle())
+                .help("取消这条报名")
+            }
+            .frame(width: EnrollmentColumns.action)
+        }
+    }
+
     private var filteredEnrollments: [Enrollment] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         return model.enrollments.filter { enrollment in
             guard selectedTermID == nil || enrollment.termID == selectedTermID else { return false }
             guard !query.isEmpty else { return true }
-            let studentName = model.student(id: enrollment.studentID)?.displayName ?? ""
-            let courseName = model.course(id: enrollment.courseID)?.name ?? ""
-            return studentName.localizedCaseInsensitiveContains(query)
-                || courseName.localizedCaseInsensitiveContains(query)
+            let student = model.student(id: enrollment.studentID)
+            let course = model.course(id: enrollment.courseID)
+            let guardianName = student.flatMap { model.guardian(id: $0.guardianID)?.displayName } ?? ""
+            let searchableValues = [
+                student?.displayName ?? "",
+                guardianName,
+                course?.name ?? "",
+                course.flatMap { model.instructor(id: $0.defaultInstructorID)?.displayName } ?? "",
+                course.flatMap { model.room(id: $0.defaultRoomID)?.name } ?? ""
+            ]
+            return searchableValues.contains { $0.localizedCaseInsensitiveContains(query) }
         }
     }
 
-    private func scheduleLabel(_ courseID: CourseID) -> String {
-        guard let session = model.sessions(forCourse: courseID).first else { return "未排课" }
-        return session.startsAt.formatted(.dateTime.weekday(.abbreviated)) + " "
+    private var draftStudent: Student? {
+        draftStudentID.flatMap { model.student(id: $0) }
+    }
+
+    private var draftCourse: Course? {
+        draftCourseID.flatMap { model.course(id: $0) }
+    }
+
+    private var availableDraftCourses: [Course] {
+        guard let draftStudentID else { return [] }
+        let enrolledIDs = Set(model.enrollments(for: draftStudentID).map(\.courseID))
+        let pendingIDs = Set(
+            pendingEnrollments
+                .filter { $0.studentID == draftStudentID }
+                .map(\.courseID)
+        )
+        return model.courses.filter { course in
+            course.isActive
+                && (selectedTermID == nil || course.termID == selectedTermID)
+                && !enrolledIDs.contains(course.id)
+                && !pendingIDs.contains(course.id)
+        }
+    }
+
+    private func selectStudent(_ studentID: StudentID) {
+        draftStudentID = studentID
+        draftCourseID = nil
+        showingStudentPicker = false
+    }
+
+    private func selectCourse(_ courseID: CourseID) {
+        draftCourseID = courseID
+        showingCoursePicker = false
+    }
+
+    private func submitDraft() {
+        guard let studentID = draftStudentID, let courseID = draftCourseID else { return }
+        let submission = PendingEnrollmentSubmission(studentID: studentID, courseID: courseID)
+        pendingEnrollments.insert(submission, at: 0)
+        draftStudentID = nil
+        draftCourseID = nil
+        start(submission)
+    }
+
+    private func retry(_ submission: PendingEnrollmentSubmission) {
+        guard let index = pendingEnrollments.firstIndex(where: { $0.id == submission.id }) else { return }
+        pendingEnrollments[index].status = .syncing
+        start(pendingEnrollments[index])
+    }
+
+    private func start(_ submission: PendingEnrollmentSubmission) {
+        model.performBackgroundOperation(
+            label: "添加报名",
+            successMessage: "报名已添加",
+            completion: { result in
+                switch result {
+                case .success:
+                    pendingEnrollments.removeAll { $0.id == submission.id }
+                case let .failure(error):
+                    guard let index = pendingEnrollments.firstIndex(where: { $0.id == submission.id }) else { return }
+                    pendingEnrollments[index].status = .failed(error.localizedDescription)
+                }
+            }
+        ) {
+            try await model.enroll(studentID: submission.studentID, courseID: submission.courseID)
+        }
+    }
+
+    private func removeEnrollment(_ enrollment: Enrollment) {
+        deletingID = enrollment.id
+        model.performBackgroundOperation(
+            label: "移除报名",
+            successMessage: "报名已移除",
+            completion: { _ in deletingID = nil }
+        ) {
+            try await model.removeEnrollment(id: enrollment.id)
+        }
+    }
+
+    private func courseForEnrollment(_ enrollment: Enrollment) -> Course? {
+        model.course(id: enrollment.courseID)
+    }
+
+    private func studentSubtitle(_ student: Student) -> String {
+        let guardian = model.guardian(id: student.guardianID)?.displayName ?? "未知家庭"
+        return guardian + " · " + (student.kind == .adult ? "成人" : "少儿")
+    }
+
+    private func courseSelectorSubtitle(_ course: Course) -> String {
+        let room = model.room(id: course.defaultRoomID)?.name ?? "未定教室"
+        return scheduleLabel(course) + " · " + room
+    }
+
+    private func scheduleLabel(_ course: Course) -> String {
+        guard let session = model.sessions(forCourse: course.id).first else { return "未排课" }
+        return weekdayTitle(Calendar.masterDance.component(.weekday, from: session.startsAt)) + " "
             + session.startsAt.formatted(date: .omitted, time: .shortened) + "–"
             + session.endsAt.formatted(date: .omitted, time: .shortened)
     }
 
-    private func instructorName(_ courseID: CourseID) -> String {
-        guard let course = model.course(id: courseID) else { return "—" }
-        return model.instructor(id: course.defaultInstructorID)?.displayName ?? "—"
+    private func staffAndRoom(_ course: Course) -> String {
+        let instructor = model.instructor(id: course.defaultInstructorID)?.displayName ?? "—"
+        let room = model.room(id: course.defaultRoomID)?.name ?? "—"
+        return instructor + " · " + room
     }
 
     private func statusLabel(_ status: EnrollmentStatus) -> String {
@@ -144,62 +425,432 @@ struct EnrollmentsWorkspaceView: View {
     }
 }
 
-private struct EnrollmentEditorView: View {
+@MainActor
+private struct StudentEnrollmentPicker: View {
     let model: AppModel
+    let selectedID: StudentID?
+    let select: (StudentID) -> Void
 
-    @State private var studentID: StudentID?
-    @State private var courseID: CourseID?
-
-    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+    @State private var filter = StudentPickerFilter.all
+    @FocusState private var searchFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            MDSectionTitle(chinese: "添加报名", english: "NEW ENROLLMENT")
-            Picker("学生", selection: $studentID) {
-                Text("选择学生").tag(Optional<StudentID>.none)
-                ForEach(model.students) { student in
-                    Text(student.displayName).tag(Optional(student.id))
+        let theme = MDTheme(scheme: colorScheme)
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "person.2")
+                    .foregroundStyle(theme.accent)
+                TextField("搜索学员或监护人", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($searchFocused)
+                Text("\(filteredStudents.count)")
+                    .font(MDType.mono)
+                    .foregroundStyle(theme.secondaryText)
+            }
+            .padding(12)
+
+            Picker("学员类型", selection: $filter) {
+                ForEach(StudentPickerFilter.allCases) { item in
+                    Text(item.title).tag(item)
                 }
             }
-            Picker("课程", selection: $courseID) {
-                Text("选择课程").tag(Optional<CourseID>.none)
-                ForEach(availableCourses) { course in
-                    Text(course.name).tag(Optional(course.id))
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 12)
+            .padding(.bottom, 10)
+
+            Divider()
+
+            if groups.isEmpty {
+                ContentUnavailableView("没有匹配的学员", systemImage: "person.slash")
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(groups) { group in
+                            studentGroupHeader(group, theme: theme)
+                            ForEach(group.students) { student in
+                                studentRow(student, guardianName: group.title, theme: theme)
+                                Divider().padding(.leading, 42)
+                            }
+                        }
+                    }
                 }
             }
-            Text("第一版只创建整学期报名，不提供按次报名或价格字段。")
-                .font(MDType.compact)
-                .foregroundStyle(.secondary)
-            HStack {
+        }
+        .frame(width: 470, height: 500)
+        .background(theme.background)
+        .onAppear { searchFocused = true }
+    }
+
+    private var filteredStudents: [Student] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return model.students.filter { student in
+            guard student.isActive else { return false }
+            switch filter {
+            case .children where student.kind != .child: return false
+            case .adults where student.kind != .adult: return false
+            default: break
+            }
+            guard !query.isEmpty else { return true }
+            let guardian = model.guardian(id: student.guardianID)
+            return student.displayName.localizedCaseInsensitiveContains(query)
+                || student.legalName?.localizedCaseInsensitiveContains(query) == true
+                || guardian?.displayName.localizedCaseInsensitiveContains(query) == true
+                || guardian?.email?.localizedCaseInsensitiveContains(query) == true
+                || guardian?.phone?.localizedCaseInsensitiveContains(query) == true
+        }
+    }
+
+    private var groups: [StudentPickerGroup] {
+        var remaining = filteredStudents
+        var result: [StudentPickerGroup] = []
+        for guardian in model.guardians {
+            let students = remaining.filter { $0.guardianID == guardian.id }
+            guard !students.isEmpty else { continue }
+            result.append(
+                StudentPickerGroup(
+                    id: guardian.id.description,
+                    title: guardian.displayName,
+                    contact: [guardian.email, guardian.phone].compactMap { $0 }.joined(separator: " · "),
+                    students: students.sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+                )
+            )
+            let studentIDs = Set(students.map(\.id))
+            remaining.removeAll { studentIDs.contains($0.id) }
+        }
+        if !remaining.isEmpty {
+            result.append(
+                StudentPickerGroup(
+                    id: "other",
+                    title: "其他学员",
+                    contact: "",
+                    students: remaining.sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+                )
+            )
+        }
+        return result
+    }
+
+    private func studentGroupHeader(_ group: StudentPickerGroup, theme: MDTheme) -> some View {
+        HStack(spacing: 7) {
+            Text(group.title)
+                .font(MDType.compactStrong)
+            if !group.contact.isEmpty {
+                Text(group.contact)
+                    .font(MDType.compact)
+                    .foregroundStyle(theme.secondaryText)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Text("\(group.students.count)")
+                .font(MDType.mono)
+                .foregroundStyle(theme.secondaryText)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 32)
+        .background(theme.subtleSurface)
+    }
+
+    private func studentRow(_ student: Student, guardianName: String, theme: MDTheme) -> some View {
+        Button {
+            select(student.id)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: student.kind == .adult ? "person.crop.circle" : "figure.child.circle")
+                    .font(.system(size: 17))
+                    .foregroundStyle(theme.accent)
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(student.displayName)
+                        .font(MDType.bodyStrong)
+                        .foregroundStyle(theme.primaryText)
+                    Text((student.kind == .adult ? "成人" : "少儿") + " · " + guardianName)
+                        .font(MDType.compact)
+                        .foregroundStyle(theme.secondaryText)
+                }
                 Spacer()
-                Button("取消") { dismiss() }
-                Button("添加") { save() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(studentID == nil || courseID == nil)
+                Text("\(model.enrollments(for: student.id).count) 门课")
+                    .font(MDType.compact)
+                    .foregroundStyle(theme.secondaryText)
+                if selectedID == student.id {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(theme.accent)
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+@MainActor
+private struct CourseEnrollmentPicker: View {
+    let model: AppModel
+    let courses: [Course]
+    let selectedID: CourseID?
+    let select: (CourseID) -> Void
+
+    @State private var searchText = ""
+    @State private var weekday: Int?
+    @FocusState private var searchFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "calendar")
+                    .foregroundStyle(theme.accent)
+                TextField("搜索课程、老师、教室或年龄段", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($searchFocused)
+                Picker("星期", selection: $weekday) {
+                    Text("全部星期").tag(Optional<Int>.none)
+                    ForEach(weekdayOptions, id: \.0) { option in
+                        Text(option.1).tag(Optional(option.0))
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 105)
+            }
+            .padding(12)
+
+            Divider()
+
+            if groups.isEmpty {
+                ContentUnavailableView(
+                    "没有可报名课程",
+                    systemImage: "calendar.badge.exclamationmark"
+                )
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(groups) { group in
+                            HStack {
+                                Text(group.title).font(MDType.compactStrong)
+                                Text("\(group.courses.count)")
+                                    .font(MDType.mono)
+                                    .foregroundStyle(theme.secondaryText)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .frame(height: 32)
+                            .background(theme.subtleSurface)
+
+                            ForEach(group.courses) { course in
+                                courseRow(course, theme: theme)
+                                Divider().padding(.leading, 108)
+                            }
+                        }
+                    }
+                }
             }
         }
-        .padding(20)
-        .frame(width: 440)
-        .onChange(of: studentID) { _, _ in
-            courseID = nil
+        .frame(width: 660, height: 520)
+        .background(theme.background)
+        .onAppear { searchFocused = true }
+    }
+
+    private var filteredCourses: [Course] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return courses.filter { course in
+            let courseWeekday = firstSession(course).map {
+                Calendar.masterDance.component(.weekday, from: $0.startsAt)
+            }
+            guard weekday == nil || weekday == courseWeekday else { return false }
+            guard !query.isEmpty else { return true }
+            let values = [
+                course.name,
+                model.ageGroup(id: course.ageGroupID)?.name ?? "",
+                model.courseType(id: course.courseTypeID)?.name ?? "",
+                model.instructor(id: course.defaultInstructorID)?.displayName ?? "",
+                model.room(id: course.defaultRoomID)?.name ?? "",
+                model.term(id: course.termID)?.name ?? ""
+            ]
+            return values.contains { $0.localizedCaseInsensitiveContains(query) }
         }
     }
 
-    private var availableCourses: [Course] {
-        guard let studentID else { return model.courses }
-        let existingIDs = Set(model.enrollments(for: studentID).map(\.courseID))
-        return model.courses.filter { !existingIDs.contains($0.id) }
+    private var groups: [CourseDayGroup] {
+        let orderedDays: [Int?] = [2, 3, 4, 5, 6, 7, 1, nil]
+        return orderedDays.compactMap { day in
+            let matching = filteredCourses.filter { course in
+                guard let session = firstSession(course) else { return day == nil }
+                return day == Calendar.masterDance.component(.weekday, from: session.startsAt)
+            }
+            .sorted { lhs, rhs in
+                switch (firstSession(lhs), firstSession(rhs)) {
+                case let (.some(left), .some(right)) where left.startsAt != right.startsAt:
+                    return left.startsAt < right.startsAt
+                default:
+                    return lhs.name.localizedCompare(rhs.name) == .orderedAscending
+                }
+            }
+            guard !matching.isEmpty else { return nil }
+            return CourseDayGroup(
+                id: day.map { String($0) } ?? "unscheduled",
+                title: day.map { weekdayTitle($0) } ?? "未排课",
+                courses: matching
+            )
+        }
     }
 
-    private func save() {
-        guard let studentID, let courseID else { return }
-        model.performBackgroundOperation(
-            label: "添加报名",
-            successMessage: "报名已添加"
-        ) {
-            try await model.enroll(studentID: studentID, courseID: courseID)
+    private var weekdayOptions: [(Int, String)] {
+        [(2, "周一"), (3, "周二"), (4, "周三"), (5, "周四"), (6, "周五"), (7, "周六"), (1, "周日")]
+    }
+
+    private func courseRow(_ course: Course, theme: MDTheme) -> some View {
+        let session = firstSession(course)
+        let typeIndex = model.courseTypes.firstIndex { $0.id == course.courseTypeID } ?? 0
+        return Button {
+            select(course.id)
+        } label: {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(theme.courseColor(index: typeIndex))
+                    .frame(width: 4, height: 38)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.map(timeRange) ?? "未排课")
+                        .font(MDType.monoStrong)
+                        .foregroundStyle(theme.primaryText)
+                    Text(model.term(id: course.termID)?.name ?? "")
+                        .font(MDType.compact)
+                        .foregroundStyle(theme.secondaryText)
+                        .lineLimit(1)
+                }
+                .frame(width: 88, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(course.name)
+                        .font(MDType.bodyStrong)
+                        .foregroundStyle(theme.primaryText)
+                        .lineLimit(1)
+                    Text(courseMeta(course))
+                        .font(MDType.compact)
+                        .foregroundStyle(theme.secondaryText)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(model.instructor(id: course.defaultInstructorID)?.displayName ?? "未定老师")
+                        .font(MDType.compactStrong)
+                        .foregroundStyle(theme.primaryText)
+                    Text(model.room(id: course.defaultRoomID)?.name ?? "未定教室")
+                        .font(MDType.compact)
+                        .foregroundStyle(theme.secondaryText)
+                }
+                .frame(width: 105, alignment: .trailing)
+
+                Text(course.format == .privateLesson ? "私" : "组")
+                    .font(MDType.compactStrong)
+                    .foregroundStyle(theme.secondaryText)
+                    .frame(width: 22, height: 22)
+                    .overlay(Circle().stroke(theme.secondaryText, lineWidth: 1))
+
+                Image(systemName: selectedID == course.id ? "checkmark.circle.fill" : "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(selectedID == course.id ? theme.accent : theme.secondaryText)
+                    .frame(width: 18)
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 58)
+            .contentShape(Rectangle())
         }
-        dismiss()
+        .buttonStyle(.plain)
+    }
+
+    private func firstSession(_ course: Course) -> ClassSession? {
+        model.sessions(forCourse: course.id).first
+    }
+
+    private func timeRange(_ session: ClassSession) -> String {
+        session.startsAt.formatted(date: .omitted, time: .shortened) + "–"
+            + session.endsAt.formatted(date: .omitted, time: .shortened)
+    }
+
+    private func courseMeta(_ course: Course) -> String {
+        [
+            model.ageGroup(id: course.ageGroupID)?.name,
+            model.courseType(id: course.courseTypeID)?.name
+        ]
+        .compactMap { $0 }
+        .joined(separator: " · ")
+    }
+}
+
+private enum StudentPickerFilter: String, CaseIterable, Identifiable {
+    case all
+    case children
+    case adults
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "全部"
+        case .children: "少儿"
+        case .adults: "成人"
+        }
+    }
+}
+
+private struct StudentPickerGroup: Identifiable {
+    let id: String
+    let title: String
+    let contact: String
+    let students: [Student]
+}
+
+private struct CourseDayGroup: Identifiable {
+    let id: String
+    let title: String
+    let courses: [Course]
+}
+
+private struct PendingEnrollmentSubmission: Identifiable {
+    let id = UUID()
+    let studentID: StudentID
+    let courseID: CourseID
+    var status = PendingEnrollmentStatus.syncing
+}
+
+private enum PendingEnrollmentStatus {
+    case syncing
+    case failed(String)
+
+    var errorMessage: String? {
+        if case let .failed(message) = self { return message }
+        return nil
+    }
+}
+
+private enum EnrollmentColumns {
+    static let student: CGFloat = 180
+    static let course: CGFloat = 245
+    static let term: CGFloat = 125
+    static let schedule: CGFloat = 175
+    static let staff: CGFloat = 120
+    static let status: CGFloat = 88
+    static let date: CGFloat = 110
+    static let action: CGFloat = 68
+}
+
+private func weekdayTitle(_ weekday: Int) -> String {
+    switch weekday {
+    case 1: "周日"
+    case 2: "周一"
+    case 3: "周二"
+    case 4: "周三"
+    case 5: "周四"
+    case 6: "周五"
+    case 7: "周六"
+    default: "—"
     }
 }
 
@@ -207,16 +858,21 @@ private func enrollmentHeader(_ text: String, width: CGFloat) -> some View {
     Text(text)
         .font(MDType.compactStrong)
         .foregroundStyle(.secondary)
-        .frame(width: width, alignment: .leading)
         .padding(.leading, 10)
+        .frame(width: width, alignment: .leading)
 }
 
-private func enrollmentCell(_ text: String, width: CGFloat, strong: Bool = false, mono: Bool = false) -> some View {
+private func enrollmentCell(
+    _ text: String,
+    width: CGFloat,
+    strong: Bool = false,
+    mono: Bool = false
+) -> some View {
     Text(text)
         .font(mono ? MDType.mono : (strong ? MDType.bodyStrong : MDType.body))
         .lineLimit(1)
         .truncationMode(.tail)
-        .frame(width: width, alignment: .leading)
         .padding(.leading, 10)
+        .frame(width: width, alignment: .leading)
 }
 #endif

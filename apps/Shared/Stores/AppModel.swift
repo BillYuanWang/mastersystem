@@ -41,6 +41,7 @@ final class AppModel {
     func performBackgroundOperation(
         label: String,
         successMessage: String,
+        completion: (@MainActor (Result<Void, Error>) -> Void)? = nil,
         operation: @escaping @MainActor () async throws -> Void
     ) {
         let id = UUID()
@@ -53,8 +54,10 @@ final class AppModel {
             do {
                 try await operation()
                 completeBackgroundOperation(id: id, successMessage: successMessage, error: nil)
+                completion?(.success(()))
             } catch {
                 completeBackgroundOperation(id: id, successMessage: successMessage, error: error)
+                completion?(.failure(error))
             }
         }
     }
