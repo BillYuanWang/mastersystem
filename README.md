@@ -1,5 +1,7 @@
 # Master Dance
 
+Current test release: `v0.1.0`.
+
 Phase 4 native MD Desk macOS app and Supabase backend for the production Master Dance system.
 
 Master Dance formal product backend. / Master Dance 正式产品云端后端。

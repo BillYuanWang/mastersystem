@@ -5,6 +5,8 @@ Phase 2 deliberately separates confirmed product boundaries from policies that s
 ## Confirmed
 
 - Only administrators manage courses, enrollments, and attendance in the MVP.
+- Administrator accounts can use every school-management workflow, including managing student records, but do not enter the student-facing experience.
+- Student-facing accounts are initially limited to upcoming classes, notifications, and leave requests; detailed rules will be approved incrementally.
 - Instructors remain user-managed course data and do not receive independent login accounts.
 - Enrollment covers a complete term. Per-session enrollment is out of scope.
 - Parents and adult students cannot select or add courses themselves.
