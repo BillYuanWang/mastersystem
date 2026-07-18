@@ -573,8 +573,6 @@ private struct TermDataEditorView: View {
     @State private var startsOn: Date
     @State private var endsOn: Date
     @State private var status: TermStatus
-    @State private var errorMessage: String?
-    @State private var isSaving = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -602,8 +600,7 @@ private struct TermDataEditorView: View {
                 Text("开放").tag(TermStatus.open)
                 Text("结束").tag(TermStatus.closed)
             }
-            editorError(errorMessage)
-            editorButtons(isSaving: isSaving, canSave: canSave, dismiss: dismiss, save: save)
+            editorButtons(canSave: canSave, dismiss: dismiss, save: save)
         }
         .formStyle(.grouped)
         .frame(width: 430)
@@ -615,21 +612,19 @@ private struct TermDataEditorView: View {
     }
 
     private func save() {
-        isSaving = true
         var value = original ?? Term(name: name, startsOn: startsOn, endsOn: endsOn, status: status)
         value.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         value.startsOn = startsOn
         value.endsOn = endsOn
         value.status = status
-        Task {
-            do {
-                try await model.saveTerm(value)
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                isSaving = false
-            }
+        let isCreating = original == nil
+        model.performBackgroundOperation(
+            label: isCreating ? "创建学期" : "更新学期",
+            successMessage: isCreating ? "学期已创建" : "学期已更新"
+        ) {
+            try await model.saveTerm(value)
         }
+        dismiss()
     }
 }
 
@@ -642,8 +637,6 @@ private struct HolidayDataEditorView: View {
     @State private var startsOn: Date
     @State private var endsOn: Date
     @State private var notes: String
-    @State private var errorMessage: String?
-    @State private var isSaving = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -671,8 +664,7 @@ private struct HolidayDataEditorView: View {
             DatePicker("结束日期", selection: $endsOn, displayedComponents: .date)
             TextField("备注", text: $notes, axis: .vertical)
                 .lineLimit(2...4)
-            editorError(errorMessage)
-            editorButtons(isSaving: isSaving, canSave: canSave, dismiss: dismiss, save: save)
+            editorButtons(canSave: canSave, dismiss: dismiss, save: save)
         }
         .formStyle(.grouped)
         .frame(width: 430)
@@ -687,7 +679,6 @@ private struct HolidayDataEditorView: View {
 
     private func save() {
         guard let termID else { return }
-        isSaving = true
         var value = original ?? TermHoliday(
             termID: termID,
             name: name,
@@ -699,15 +690,14 @@ private struct HolidayDataEditorView: View {
         value.startsOn = startsOn
         value.endsOn = endsOn
         value.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-        Task {
-            do {
-                try await model.saveTermHoliday(value)
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                isSaving = false
-            }
+        let isCreating = original == nil
+        model.performBackgroundOperation(
+            label: isCreating ? "创建假期" : "更新假期",
+            successMessage: isCreating ? "假期已创建" : "假期已更新"
+        ) {
+            try await model.saveTermHoliday(value)
         }
+        dismiss()
     }
 }
 
@@ -735,8 +725,6 @@ private struct ReferenceDataEditorView: View {
     @State private var notes: String
     @State private var isActive: Bool
     @State private var isPrivate: Bool
-    @State private var errorMessage: String?
-    @State private var isSaving = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -779,9 +767,7 @@ private struct ReferenceDataEditorView: View {
                 Toggle("属于私课", isOn: $isPrivate)
             }
             Toggle("启用", isOn: $isActive)
-            editorError(errorMessage)
             editorButtons(
-                isSaving: isSaving,
                 canSave: !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 dismiss: dismiss,
                 save: save
@@ -800,58 +786,48 @@ private struct ReferenceDataEditorView: View {
     }
 
     private func save() {
-        isSaving = true
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-        Task {
-            do {
-                switch target {
-                case let .courseType(original):
-                    var value = original ?? CourseType(name: trimmedName, isPrivate: isPrivate)
-                    value.name = trimmedName
-                    value.isPrivate = isPrivate
-                    value.notes = trimmedNotes
-                    value.isActive = isActive
-                    try await model.saveCourseType(value)
-                case let .ageGroup(original):
-                    var value = original ?? AgeGroup(name: trimmedName)
-                    value.name = trimmedName
-                    value.notes = trimmedNotes
-                    value.isActive = isActive
-                    try await model.saveAgeGroup(value)
-                case let .room(original):
-                    var value = original ?? Room(name: trimmedName)
-                    value.name = trimmedName
-                    value.isActive = isActive
-                    try await model.saveRoom(value)
-                case let .instructor(original):
-                    var value = original ?? Instructor(displayName: trimmedName)
-                    value.displayName = trimmedName
-                    value.notes = trimmedNotes
-                    value.isActive = isActive
-                    try await model.saveInstructor(value)
-                }
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                isSaving = false
+        let targetSnapshot = target
+        let isPrivateSnapshot = isPrivate
+        let isActiveSnapshot = isActive
+        model.performBackgroundOperation(
+            label: "保存\(target.title)",
+            successMessage: "\(target.title)已保存"
+        ) {
+            switch targetSnapshot {
+            case let .courseType(original):
+                var value = original ?? CourseType(name: trimmedName, isPrivate: isPrivateSnapshot)
+                value.name = trimmedName
+                value.isPrivate = isPrivateSnapshot
+                value.notes = trimmedNotes
+                value.isActive = isActiveSnapshot
+                try await model.saveCourseType(value)
+            case let .ageGroup(original):
+                var value = original ?? AgeGroup(name: trimmedName)
+                value.name = trimmedName
+                value.notes = trimmedNotes
+                value.isActive = isActiveSnapshot
+                try await model.saveAgeGroup(value)
+            case let .room(original):
+                var value = original ?? Room(name: trimmedName)
+                value.name = trimmedName
+                value.isActive = isActiveSnapshot
+                try await model.saveRoom(value)
+            case let .instructor(original):
+                var value = original ?? Instructor(displayName: trimmedName)
+                value.displayName = trimmedName
+                value.notes = trimmedNotes
+                value.isActive = isActiveSnapshot
+                try await model.saveInstructor(value)
             }
         }
-    }
-}
-
-@ViewBuilder
-private func editorError(_ message: String?) -> some View {
-    if let message {
-        Text(message)
-            .font(MDType.compact)
-            .foregroundStyle(.red)
+        dismiss()
     }
 }
 
 @MainActor
 private func editorButtons(
-    isSaving: Bool,
     canSave: Bool,
     dismiss: DismissAction,
     save: @escaping () -> Void
@@ -861,7 +837,7 @@ private func editorButtons(
         Button("取消") { dismiss() }
         Button("保存", action: save)
             .keyboardShortcut(.defaultAction)
-            .disabled(isSaving || !canSave)
+            .disabled(!canSave)
     }
 }
 

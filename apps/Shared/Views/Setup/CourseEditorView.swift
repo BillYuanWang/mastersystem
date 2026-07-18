@@ -10,8 +10,6 @@ struct CourseEditorView: View {
     @State private var draft = CourseCreationDraft()
     @State private var occurrenceCourseID: CourseID
     @State private var didConfigure = false
-    @State private var isSaving = false
-    @State private var errorMessage: String?
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
@@ -191,16 +189,11 @@ struct CourseEditorView: View {
             Divider()
 
             HStack {
-                if let errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.triangle")
-                        .font(MDType.compact)
-                        .foregroundStyle(theme.danger)
-                }
                 Spacer()
                 Button("取消") { dismiss() }
                 Button(original == nil ? "添加课程" : "保存修改") { save() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!canSave || isSaving)
+                    .disabled(!canSave)
             }
             .padding(14)
         }
@@ -404,21 +397,20 @@ struct CourseEditorView: View {
     }
 
     private func save() {
-        isSaving = true
-        errorMessage = nil
-        Task {
-            do {
-                if let original {
-                    try await model.updateCourse(original, from: draft)
-                } else {
-                    try await model.createCourse(from: draft)
-                }
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                isSaving = false
+        let draftSnapshot = draft
+        let courseSnapshot = original
+        let isCreating = courseSnapshot == nil
+        model.performBackgroundOperation(
+            label: isCreating ? "创建课程" : "更新课程",
+            successMessage: isCreating ? "课程已创建" : "课程已更新"
+        ) {
+            if let courseSnapshot {
+                try await model.updateCourse(courseSnapshot, from: draftSnapshot)
+            } else {
+                try await model.createCourse(from: draftSnapshot)
             }
         }
+        dismiss()
     }
 }
 #endif

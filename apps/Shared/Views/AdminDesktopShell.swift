@@ -11,6 +11,7 @@ struct AdminDesktopShell: View {
     let onSignOut: (() -> Void)?
 
     @State private var selection = AdminSection.schedule
+    @State private var showingGuardianLinkCode = false
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -35,6 +36,26 @@ struct AdminDesktopShell: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(theme.background)
+        .overlay(alignment: .bottomTrailing) {
+            if model.backgroundSync.isVisible || !model.availableGuardianLinkCodes.isEmpty {
+                BackgroundSyncIndicator(
+                    presentation: model.backgroundSync,
+                    guardianLinkCodeCount: model.availableGuardianLinkCodes.count,
+                    showGuardianLinkCode: { showingGuardianLinkCode = true },
+                    dismissNotice: model.dismissBackgroundSyncNotice
+                )
+                .padding(14)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+                .zIndex(50)
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: model.backgroundSync)
+        .animation(.easeOut(duration: 0.18), value: model.availableGuardianLinkCodes.count)
+        .sheet(isPresented: $showingGuardianLinkCode, onDismiss: model.clearGuardianLinkCode) {
+            if let code = model.availableGuardianLinkCodes.first {
+                GuardianLinkCodeSheet(code: code)
+            }
+        }
     }
 
     @ViewBuilder
@@ -59,6 +80,121 @@ struct AdminDesktopShell: View {
         case .dataCenter:
             DataCenterWorkspaceView(model: model)
         }
+    }
+}
+
+private struct BackgroundSyncIndicator: View {
+    let presentation: BackgroundSyncPresentation
+    let guardianLinkCodeCount: Int
+    let showGuardianLinkCode: () -> Void
+    let dismissNotice: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        HStack(spacing: 9) {
+            statusMark(theme: theme)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(MDType.compactStrong)
+                    .foregroundStyle(theme.primaryText)
+                Text(detail)
+                    .font(MDType.compact)
+                    .foregroundStyle(theme.secondaryText)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 6)
+
+            if hasGuardianLinkCode {
+                Button(guardianLinkCodeCount > 1 ? "查看 \(guardianLinkCodeCount)" : "查看", action: showGuardianLinkCode)
+                    .buttonStyle(.borderless)
+                    .font(MDType.compactStrong)
+            }
+
+            if presentation.notice != nil {
+                Button(action: dismissNotice) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.secondaryText)
+                .help("关闭提示")
+            }
+        }
+        .padding(.horizontal, 11)
+        .frame(minWidth: 210, maxWidth: 390, minHeight: 44)
+        .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
+        .overlay {
+            RoundedRectangle(cornerRadius: MDMetrics.radius)
+                .stroke(borderColor(theme: theme), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.13), radius: 8, y: 3)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func statusMark(theme: MDTheme) -> some View {
+        if case .failure = presentation.notice {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(theme.danger)
+                .frame(width: 18, height: 18)
+        } else if presentation.activeCount > 0 {
+            ProgressView()
+                .controlSize(.small)
+                .tint(statusColor(theme: theme))
+                .frame(width: 18, height: 18)
+        } else {
+            Image(systemName: statusImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(statusColor(theme: theme))
+                .frame(width: 18, height: 18)
+        }
+    }
+
+    private var title: String {
+        if case .failure = presentation.notice { return "同步失败" }
+        if presentation.activeCount > 0 { return "正在同步" }
+        if hasGuardianLinkCode { return "监护人码已生成" }
+        return "已完成"
+    }
+
+    private var hasGuardianLinkCode: Bool {
+        guardianLinkCodeCount > 0
+    }
+
+    private var detail: String {
+        if case let .failure(message) = presentation.notice {
+            let pending = presentation.activeCount > 0 ? " · 另有 \(presentation.activeCount) 项同步中" : ""
+            return message + pending
+        }
+        if presentation.activeCount > 0 {
+            let count = presentation.activeCount > 1 ? " · \(presentation.activeCount) 项" : ""
+            return (presentation.activeLabel ?? "保存资料") + count
+        }
+        if hasGuardianLinkCode { return "可继续工作，需要时再查看。" }
+        if case let .success(message) = presentation.notice { return message }
+        return "资料已同步。"
+    }
+
+    private var statusImage: String {
+        if case .failure = presentation.notice { return "exclamationmark.triangle.fill" }
+        if hasGuardianLinkCode { return "key.fill" }
+        return "checkmark.circle.fill"
+    }
+
+    private func statusColor(theme: MDTheme) -> Color {
+        if case .failure = presentation.notice { return theme.danger }
+        if presentation.activeCount > 0 { return theme.accent }
+        return theme.success
+    }
+
+    private func borderColor(theme: MDTheme) -> Color {
+        if case .failure = presentation.notice { return theme.danger.opacity(0.55) }
+        return theme.separator
     }
 }
 

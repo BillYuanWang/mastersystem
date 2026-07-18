@@ -113,6 +113,21 @@ struct CourseCreationDraft {
     var isActive = true
 }
 
+enum BackgroundSyncNotice: Equatable {
+    case success(String)
+    case failure(String)
+}
+
+struct BackgroundSyncPresentation: Equatable {
+    var activeCount = 0
+    var activeLabel: String?
+    var notice: BackgroundSyncNotice?
+
+    var isVisible: Bool {
+        activeCount > 0 || notice != nil
+    }
+}
+
 enum AppModelError: LocalizedError {
     case missingCourseFields
     case missingEnrollmentFields

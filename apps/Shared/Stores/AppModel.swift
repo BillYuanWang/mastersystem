@@ -7,6 +7,8 @@ import Observation
 final class AppModel {
     @ObservationIgnored private let repository: any MasterDanceRepository
     @ObservationIgnored private let referenceOrderStore = ReferenceOrderStore()
+    @ObservationIgnored private var pendingBackgroundOperations: [PendingBackgroundOperation] = []
+    @ObservationIgnored private var syncNoticeGeneration = UUID()
 
     var terms: [Term] = []
     var termHolidays: [TermHoliday] = []
@@ -25,6 +27,8 @@ final class AppModel {
     var contractDocuments: [ContractDocument] = []
     var contractConsents: [ContractConsent] = []
     var notifications: [NotificationRecord] = []
+    var backgroundSync = BackgroundSyncPresentation()
+    var availableGuardianLinkCodes: [GuardianLinkCode] = []
     var focusedSessionID: ClassSessionID?
     var isLoading = false
     var hasLoaded = false
@@ -32,6 +36,41 @@ final class AppModel {
 
     init(repository: any MasterDanceRepository) {
         self.repository = repository
+    }
+
+    func performBackgroundOperation(
+        label: String,
+        successMessage: String,
+        operation: @escaping @MainActor () async throws -> Void
+    ) {
+        let id = UUID()
+        pendingBackgroundOperations.append(PendingBackgroundOperation(id: id, label: label))
+        syncNoticeGeneration = UUID()
+        backgroundSync.notice = nil
+        refreshBackgroundSyncActivity()
+
+        Task { @MainActor in
+            do {
+                try await operation()
+                completeBackgroundOperation(id: id, successMessage: successMessage, error: nil)
+            } catch {
+                completeBackgroundOperation(id: id, successMessage: successMessage, error: error)
+            }
+        }
+    }
+
+    func dismissBackgroundSyncNotice() {
+        syncNoticeGeneration = UUID()
+        backgroundSync.notice = nil
+    }
+
+    func retainGuardianLinkCode(_ code: GuardianLinkCode) {
+        availableGuardianLinkCodes.append(code)
+    }
+
+    func clearGuardianLinkCode() {
+        guard !availableGuardianLinkCodes.isEmpty else { return }
+        availableGuardianLinkCodes.removeFirst()
     }
 
     func reload() async {
@@ -585,6 +624,46 @@ final class AppModel {
         return dates
     }
 
+    private func refreshBackgroundSyncActivity() {
+        backgroundSync.activeCount = pendingBackgroundOperations.count
+        backgroundSync.activeLabel = pendingBackgroundOperations.last?.label
+    }
+
+    private func completeBackgroundOperation(
+        id: UUID,
+        successMessage: String,
+        error: Error?
+    ) {
+        pendingBackgroundOperations.removeAll { $0.id == id }
+        refreshBackgroundSyncActivity()
+
+        if let error {
+            syncNoticeGeneration = UUID()
+            backgroundSync.notice = .failure(error.localizedDescription)
+            return
+        }
+
+        guard pendingBackgroundOperations.isEmpty else { return }
+        if case .failure = backgroundSync.notice { return }
+        backgroundSync.notice = .success(successMessage)
+        scheduleSuccessNoticeDismissal()
+    }
+
+    private func scheduleSuccessNoticeDismissal() {
+        let generation = UUID()
+        syncNoticeGeneration = generation
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+            guard let self,
+                  self.syncNoticeGeneration == generation,
+                  self.pendingBackgroundOperations.isEmpty,
+                  case .success = self.backgroundSync.notice else {
+                return
+            }
+            self.backgroundSync.notice = nil
+        }
+    }
+
     private func generatedSessions(
         for courseID: CourseID,
         termID: TermID,
@@ -640,6 +719,11 @@ private enum ReferenceOrderKey: String {
     case instructors
 
     var defaultsKey: String { "md.referenceOrder.\(rawValue)" }
+}
+
+private struct PendingBackgroundOperation {
+    let id: UUID
+    let label: String
 }
 
 private final class ReferenceOrderStore {

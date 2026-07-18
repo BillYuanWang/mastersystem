@@ -254,7 +254,6 @@ private struct ContractDocumentEditorView: View {
     @State private var fileData: Data?
     @State private var fileName: String?
     @State private var showingFileImporter = false
-    @State private var isSaving = false
     @State private var errorMessage: String?
 
     @Environment(\.dismiss) private var dismiss
@@ -302,7 +301,7 @@ private struct ContractDocumentEditorView: View {
                 Button("取消") { dismiss() }
                 Button("保存") { save() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!canSave || isSaving)
+                    .disabled(!canSave)
             }
         }
         .formStyle(.grouped)
@@ -338,7 +337,6 @@ private struct ContractDocumentEditorView: View {
 
     private func save() {
         guard let termID else { return }
-        isSaving = true
         var document = original ?? ContractDocument(
             termID: termID,
             version: version,
@@ -348,16 +346,15 @@ private struct ContractDocumentEditorView: View {
         document.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         document.version = version.trimmingCharacters(in: .whitespacesAndNewlines)
         document.status = status
-
-        Task {
-            do {
-                try await model.saveContractDocument(document, fileData: fileData)
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                isSaving = false
-            }
+        let fileDataSnapshot = fileData
+        let isCreating = original == nil
+        model.performBackgroundOperation(
+            label: isCreating ? "上传合同" : "更新合同",
+            successMessage: isCreating ? "合同已添加" : "合同已更新"
+        ) {
+            try await model.saveContractDocument(document, fileData: fileDataSnapshot)
         }
+        dismiss()
     }
 }
 

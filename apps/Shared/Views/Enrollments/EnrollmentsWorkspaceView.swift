@@ -149,8 +149,6 @@ private struct EnrollmentEditorView: View {
 
     @State private var studentID: StudentID?
     @State private var courseID: CourseID?
-    @State private var isSaving = false
-    @State private var errorMessage: String?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -172,17 +170,12 @@ private struct EnrollmentEditorView: View {
             Text("第一版只创建整学期报名，不提供按次报名或价格字段。")
                 .font(MDType.compact)
                 .foregroundStyle(.secondary)
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(MDType.compact)
-                    .foregroundStyle(.red)
-            }
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }
                 Button("添加") { save() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(studentID == nil || courseID == nil || isSaving)
+                    .disabled(studentID == nil || courseID == nil)
             }
         }
         .padding(20)
@@ -200,16 +193,13 @@ private struct EnrollmentEditorView: View {
 
     private func save() {
         guard let studentID, let courseID else { return }
-        isSaving = true
-        Task {
-            do {
-                try await model.enroll(studentID: studentID, courseID: courseID)
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                isSaving = false
-            }
+        model.performBackgroundOperation(
+            label: "添加报名",
+            successMessage: "报名已添加"
+        ) {
+            try await model.enroll(studentID: studentID, courseID: courseID)
         }
+        dismiss()
     }
 }
 

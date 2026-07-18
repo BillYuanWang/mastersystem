@@ -8,8 +8,6 @@ struct StudentCourseManagerView: View {
     let student: Student
 
     @State private var selectedCourseID: CourseID?
-    @State private var isWorking = false
-    @State private var errorMessage: String?
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -56,13 +54,7 @@ struct StudentCourseManagerView: View {
                 Label("加入课程", systemImage: "plus")
                     .frame(maxWidth: .infinity)
             }
-            .disabled(selectedCourseID == nil || isWorking)
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(MDType.compact)
-                    .foregroundStyle(theme.danger)
-            }
+            .disabled(selectedCourseID == nil)
         }
     }
 
@@ -115,7 +107,6 @@ struct StudentCourseManagerView: View {
                     .font(.system(size: 9, weight: .semibold))
             }
             .buttonStyle(MDIconButtonStyle())
-            .disabled(isWorking)
             .help("移除课程")
         }
         .padding(9)
@@ -124,31 +115,22 @@ struct StudentCourseManagerView: View {
 
     private func addCourse() {
         guard let selectedCourseID else { return }
-        isWorking = true
-        errorMessage = nil
-        Task {
-            do {
-                try await model.enroll(studentID: student.id, courseID: selectedCourseID)
-                self.selectedCourseID = nil
-                isWorking = false
-            } catch {
-                errorMessage = error.localizedDescription
-                isWorking = false
-            }
+        let studentID = student.id
+        model.performBackgroundOperation(
+            label: "添加学员课程",
+            successMessage: "学员课程已添加"
+        ) {
+            try await model.enroll(studentID: studentID, courseID: selectedCourseID)
         }
+        self.selectedCourseID = nil
     }
 
     private func remove(_ enrollment: Enrollment) {
-        isWorking = true
-        errorMessage = nil
-        Task {
-            do {
-                try await model.removeEnrollment(id: enrollment.id)
-                isWorking = false
-            } catch {
-                errorMessage = error.localizedDescription
-                isWorking = false
-            }
+        model.performBackgroundOperation(
+            label: "移除学员课程",
+            successMessage: "学员课程已移除"
+        ) {
+            try await model.removeEnrollment(id: enrollment.id)
         }
     }
 }
