@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(21);
+select plan(23);
 
 select has_table('public', 'organizations', 'organizations table exists');
 select has_table('public', 'terms', 'terms table exists');
@@ -11,6 +11,27 @@ select has_table('public', 'class_sessions', 'class sessions table exists');
 select has_table('public', 'students', 'students table exists');
 select has_table('public', 'enrollments', 'enrollments table exists');
 select has_table('public', 'attendance', 'attendance table exists');
+select ok(
+  exists (
+    select 1
+    from pg_catalog.pg_enum e
+    join pg_catalog.pg_type t on t.oid = e.enumtypid
+    join pg_catalog.pg_namespace n on n.oid = t.typnamespace
+    where n.nspname = 'public'
+      and t.typname = 'attendance_status'
+      and e.enumlabel = 'trial'
+  ),
+  'attendance supports trial visits'
+);
+select ok(
+  exists (
+    select 1
+    from pg_catalog.pg_constraint
+    where conname = 'attendance_guest_status_without_enrollment_check'
+      and conrelid = 'public.attendance'::regclass
+  ),
+  'trial and makeup attendance use no enrollment link'
+);
 select has_table('public', 'leave_requests', 'leave requests table exists');
 select has_table('public', 'contract_documents', 'contract documents table exists');
 select has_table('public', 'notifications', 'notifications table exists');

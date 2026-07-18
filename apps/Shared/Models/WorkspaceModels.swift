@@ -123,6 +123,7 @@ enum AppModelError: LocalizedError {
     case missingGuardianPhone
     case invalidGuardianPhone
     case missingStudentName
+    case attendanceRequiresEnrollment
     case courseTermHasEnrollments
     case courseScheduleHasRecords
 
@@ -138,6 +139,7 @@ enum AppModelError: LocalizedError {
         case .missingGuardianPhone: "请输入监护人电话。"
         case .invalidGuardianPhone: "请输入 10 位美国电话号码。"
         case .missingStudentName: "请输入学员姓名。"
+        case .attendanceRequiresEnrollment: "出勤、请假和缺席只能记录在已报名课程中。"
         case .courseTermHasEnrollments: "这门课程已有报名，不能更换学期；请先处理报名。"
         case .courseScheduleHasRecords: "这门课程已有签到或请假记录，不能整体重排课次。"
         }

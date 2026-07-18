@@ -431,6 +431,10 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         ).execute()
     }
 
+    func deleteAttendance(id: AttendanceID) async throws {
+        try await client.from("attendance").delete().eq("id", value: id.rawValue).execute()
+    }
+
     func listLeaveRequests(
         sessionID: ClassSessionID?,
         studentID: StudentID?

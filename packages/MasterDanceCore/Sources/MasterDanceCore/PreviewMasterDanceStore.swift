@@ -290,6 +290,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
     }
 
     public func save(attendance: Attendance) { upsert(attendance, in: &data.attendance) }
+    public func deleteAttendance(id: AttendanceID) { remove(id: id, from: &data.attendance) }
 
     public func listLeaveRequests(
         sessionID: ClassSessionID? = nil,

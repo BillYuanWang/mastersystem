@@ -4,7 +4,7 @@ import Testing
 
 @Suite("Preview repository")
 struct PreviewMasterDanceStoreTests {
-    @Test("Enrollment remains separate from attendance")
+    @Test("Trial attendance remains separate from enrollment and can be removed")
     func attendanceDoesNotImplyEnrollment() async throws {
         let guardian = Guardian(displayName: "Trial Family")
         let store = PreviewMasterDanceStore(
@@ -15,7 +15,7 @@ struct PreviewMasterDanceStoreTests {
             sessionID: ClassSessionID(),
             studentID: student.id,
             enrollmentID: nil,
-            status: .present,
+            status: .trial,
             recordedAt: Date(timeIntervalSince1970: 1_000)
         )
 
@@ -33,6 +33,20 @@ struct PreviewMasterDanceStoreTests {
         )
         #expect(enrollments.isEmpty)
         #expect(attendanceRecords == [attendance])
+
+        try await store.deleteAttendance(id: attendance.id)
+        let remaining = try await store.listAttendance(sessionID: nil, studentID: student.id)
+        #expect(remaining.isEmpty)
+    }
+
+    @Test("Attendance statuses distinguish regular and guest visits")
+    func attendanceStatusSemantics() {
+        #expect(Set(AttendanceStatus.allCases) == [.present, .excused, .absent, .makeup, .trial])
+        #expect(AttendanceStatus.trial.isGuestAttendance)
+        #expect(AttendanceStatus.makeup.isGuestAttendance)
+        #expect(!AttendanceStatus.present.isGuestAttendance)
+        #expect(!AttendanceStatus.excused.isGuestAttendance)
+        #expect(!AttendanceStatus.absent.isGuestAttendance)
     }
 
     @Test("Enrollment queries and removal use stable identities")

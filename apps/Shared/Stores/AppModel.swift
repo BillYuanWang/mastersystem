@@ -583,11 +583,20 @@ final class AppModel {
     }
 
     func recordAttendance(sessionID: ClassSessionID, studentID: StudentID, status: AttendanceStatus) async throws {
-        let enrollmentID = session(id: sessionID).flatMap { session in
-            enrollments.first { $0.courseID == session.courseID && $0.studentID == studentID }?.id
+        let matchingEnrollmentID = session(id: sessionID).flatMap { session in
+            enrollments.first {
+                $0.courseID == session.courseID
+                    && $0.studentID == studentID
+                    && $0.status == .active
+            }?.id
+        }
+        let enrollmentID = status.isGuestAttendance ? nil : matchingEnrollmentID
+        guard status.isGuestAttendance || enrollmentID != nil else {
+            throw AppModelError.attendanceRequiresEnrollment
         }
         if let existing = attendance.first(where: { $0.sessionID == sessionID && $0.studentID == studentID }) {
             var updated = existing
+            updated.enrollmentID = enrollmentID
             updated.status = status
             updated.recordedAt = Date()
             try await repository.save(attendance: updated)
@@ -602,6 +611,11 @@ final class AppModel {
                 )
             )
         }
+        await reload()
+    }
+
+    func deleteAttendance(id: AttendanceID) async throws {
+        try await repository.deleteAttendance(id: id)
         await reload()
     }
 

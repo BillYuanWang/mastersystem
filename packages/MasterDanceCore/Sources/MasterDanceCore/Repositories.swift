@@ -60,6 +60,7 @@ public protocol EnrollmentRepository: Sendable {
 public protocol AttendanceRepository: Sendable {
     func listAttendance(sessionID: ClassSessionID?, studentID: StudentID?) async throws -> [Attendance]
     func save(attendance: Attendance) async throws
+    func deleteAttendance(id: AttendanceID) async throws
 }
 
 public protocol LeaveRequestRepository: Sendable {

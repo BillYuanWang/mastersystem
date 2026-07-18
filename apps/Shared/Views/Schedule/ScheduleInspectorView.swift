@@ -31,8 +31,10 @@ struct ScheduleInspectorView: View {
     private func inspector(session: ClassSession, course: Course, theme: MDTheme) -> some View {
         let roster = model.enrollments(forCourse: course.id)
         let records = model.attendance.filter { $0.sessionID == session.id }
-        let presentCount = records.filter { $0.status == .present || $0.status == .makeup }.count
+        let presentCount = records.filter { $0.status == .present }.count
         let leaveCount = records.filter { $0.status == .excused }.count
+        let trialCount = records.filter { $0.status == .trial }.count
+        let makeupCount = records.filter { $0.status == .makeup }.count
 
         return VStack(spacing: 0) {
             ScrollView {
@@ -141,6 +143,15 @@ struct ScheduleInspectorView: View {
                                 .foregroundStyle(theme.warning)
                         }
                         .font(MDType.compact)
+                        if trialCount > 0 || makeupCount > 0 {
+                            HStack(spacing: 12) {
+                                Label("试课 \(trialCount)", systemImage: "sparkles")
+                                    .foregroundStyle(theme.accent)
+                                Label("补课 \(makeupCount)", systemImage: "arrow.clockwise")
+                                    .foregroundStyle(theme.success)
+                            }
+                            .font(MDType.compact)
+                        }
                     }
                     .padding(16)
                 }
@@ -208,6 +219,7 @@ struct ScheduleInspectorView: View {
         case .absent: "缺席"
         case .excused: "请假"
         case .makeup: "补课"
+        case .trial: "试课"
         }
     }
 
@@ -215,6 +227,7 @@ struct ScheduleInspectorView: View {
         guard let record = attendanceRecord(for: enrollment, session: session) else { return theme.secondaryText }
         return switch record.status {
         case .present, .makeup: theme.success
+        case .trial: theme.accent
         case .excused: theme.warning
         case .absent: theme.danger
         }

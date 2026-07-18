@@ -318,6 +318,14 @@ public enum AttendanceStatus: String, Codable, CaseIterable, Sendable {
     case absent
     case excused
     case makeup
+    case trial
+
+    public var isGuestAttendance: Bool {
+        switch self {
+        case .makeup, .trial: true
+        case .present, .absent, .excused: false
+        }
+    }
 }
 
 public struct Attendance: Identifiable, Codable, Equatable, Sendable {
