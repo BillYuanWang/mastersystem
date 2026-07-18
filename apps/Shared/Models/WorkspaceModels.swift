@@ -80,22 +80,6 @@ enum ReferenceKind: String, CaseIterable, Identifiable {
     }
 }
 
-enum RoomScope: String, CaseIterable, Identifiable {
-    case both
-    case large
-    case small
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .both: "大小教室"
-        case .large: "大教室"
-        case .small: "小教室"
-        }
-    }
-}
-
 struct CourseCreationDraft {
     var name = ""
     var termID: TermID?

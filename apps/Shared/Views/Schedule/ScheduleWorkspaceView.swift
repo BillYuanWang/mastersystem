@@ -10,10 +10,12 @@ struct ScheduleWorkspaceView: View {
 
     @State private var selectedTermID: TermID?
     @State private var weekStart = Date().startOfWeek()
-    @State private var roomScope = RoomScope.both
+    @State private var selectedRoomIDs: Set<RoomID> = []
     @State private var selectedSessionID: ClassSessionID?
     @State private var searchText = ""
     @State private var zoom = 1.0
+    @State private var showingWeekPicker = false
+    @State private var showingRoomPicker = false
     @State private var showingPrintPreview = false
 
     @Environment(\.colorScheme) private var colorScheme
@@ -73,6 +75,9 @@ struct ScheduleWorkspaceView: View {
                 })?.id ?? filteredSessions.first?.id
             }
         }
+        .task(id: activeRoomSignature) {
+            reconcileRoomSelection()
+        }
         .sheet(isPresented: $showingPrintPreview) {
             SchedulePrintPreview(
                 model: model,
@@ -84,7 +89,8 @@ struct ScheduleWorkspaceView: View {
     }
 
     private var toolbar: some View {
-        HStack(spacing: 10) {
+        let theme = MDTheme(scheme: colorScheme)
+        return HStack(spacing: 10) {
             MDSectionTitle(chinese: "课表", english: "SCHEDULE")
 
             Spacer(minLength: 6)
@@ -95,7 +101,7 @@ struct ScheduleWorkspaceView: View {
                 }
             }
             .labelsHidden()
-            .frame(width: 128)
+            .frame(width: 190)
 
             Button {
                 shiftWeek(-1)
@@ -105,9 +111,30 @@ struct ScheduleWorkspaceView: View {
             .buttonStyle(MDIconButtonStyle())
             .help("上一周")
 
-            Text(weekLabel)
-                .font(MDType.monoStrong)
-                .frame(minWidth: 88)
+            Button {
+                showingWeekPicker.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 11, weight: .medium))
+                    Text(weekLabel)
+                        .font(MDType.monoStrong)
+                        .lineLimit(1)
+                }
+                .foregroundStyle(theme.primaryText)
+                .padding(.horizontal, 9)
+                .frame(width: 126, height: 28)
+                .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
+                .overlay {
+                    RoundedRectangle(cornerRadius: MDMetrics.radius)
+                        .stroke(theme.separator, lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingWeekPicker, arrowEdge: .bottom) {
+                weekPicker(theme: theme)
+            }
+            .help("选择日期")
 
             Button {
                 shiftWeek(1)
@@ -117,14 +144,7 @@ struct ScheduleWorkspaceView: View {
             .buttonStyle(MDIconButtonStyle())
             .help("下一周")
 
-            Picker("教室", selection: $roomScope) {
-                ForEach(RoomScope.allCases) { scope in
-                    Text(scope.title).tag(scope)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 238)
+            roomSelector(theme: theme)
 
             TextField("搜索", text: $searchText)
                 .textFieldStyle(.roundedBorder)
@@ -153,17 +173,174 @@ struct ScheduleWorkspaceView: View {
         .frame(height: 54)
     }
 
-    private var visibleRooms: [Room] {
-        let activeRooms = model.rooms.filter(\.isActive)
-        guard !activeRooms.isEmpty else { return [] }
-        switch roomScope {
-        case .both:
-            return Array(activeRooms.prefix(2))
-        case .large:
-            return [activeRooms.first(where: { $0.name.contains("大") }) ?? activeRooms[0]]
-        case .small:
-            return [activeRooms.first(where: { $0.name.contains("小") }) ?? activeRooms[min(1, activeRooms.count - 1)]]
+    private func weekPicker(theme: MDTheme) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text("选择周")
+                    .font(MDType.bodyStrong)
+                Spacer()
+                Text(weekLabel)
+                    .font(MDType.mono)
+                    .foregroundStyle(theme.secondaryText)
+                Button {
+                    selectWeek(containing: Date())
+                } label: {
+                    Image(systemName: "calendar.badge.clock")
+                }
+                .buttonStyle(MDIconButtonStyle())
+                .help("回到本周")
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 42)
+
+            Divider()
+
+            DatePicker(
+                "选择日期",
+                selection: weekDateSelection,
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+            .padding(10)
         }
+        .frame(width: 292)
+        .background(theme.background)
+    }
+
+    private func roomSelector(theme: MDTheme) -> some View {
+        Button {
+            showingRoomPicker.toggle()
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "door.left.hand.open")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(theme.accent)
+                Text(roomSelectionLabel)
+                    .font(MDType.bodyStrong)
+                    .foregroundStyle(theme.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                Spacer(minLength: 4)
+                Text(roomSelectionCount)
+                    .font(MDType.mono)
+                    .foregroundStyle(theme.secondaryText)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(theme.secondaryText)
+            }
+            .padding(.horizontal, 9)
+            .frame(width: 210, height: 28)
+            .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
+            .overlay {
+                RoundedRectangle(cornerRadius: MDMetrics.radius)
+                    .stroke(theme.separator, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(activeRooms.isEmpty)
+        .popover(isPresented: $showingRoomPicker, arrowEdge: .bottom) {
+            roomPicker(theme: theme)
+        }
+        .help("选择要显示的教室")
+    }
+
+    private func roomPicker(theme: MDTheme) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("显示教室")
+                    .font(MDType.bodyStrong)
+                Spacer()
+                Text(roomSelectionCount)
+                    .font(MDType.mono)
+                    .foregroundStyle(theme.secondaryText)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 38)
+
+            Divider()
+
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(activeRooms) { room in
+                        roomOption(room, theme: theme)
+                        if room.id != activeRooms.last?.id {
+                            Divider().padding(.leading, 40)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 280)
+        }
+        .frame(width: 260)
+        .background(theme.background)
+    }
+
+    private func roomOption(_ room: Room, theme: MDTheme) -> some View {
+        let isSelected = currentRoomSelection.contains(room.id)
+        let isDisabled = isSelected
+            ? currentRoomSelection.count == 1
+            : currentRoomSelection.count >= 2
+
+        return Button {
+            toggleRoom(room.id)
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? theme.accent : theme.secondaryText)
+                    .frame(width: 18)
+                Text(room.name)
+                    .font(MDType.body)
+                    .foregroundStyle(theme.primaryText)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 40)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled && !isSelected ? 0.48 : 1)
+        .help(roomOptionHelp(isSelected: isSelected, isDisabled: isDisabled))
+    }
+
+    private var activeRooms: [Room] {
+        model.rooms.filter(\.isActive)
+    }
+
+    private var visibleRooms: [Room] {
+        Array(activeRooms.filter { currentRoomSelection.contains($0.id) }.prefix(2))
+    }
+
+    private var currentRoomSelection: Set<RoomID> {
+        let activeIDs = Set(activeRooms.map(\.id))
+        let validSelection = selectedRoomIDs.intersection(activeIDs)
+        if !validSelection.isEmpty {
+            return Set(validSelection.prefix(2))
+        }
+        return Set(activeRooms.prefix(2).map(\.id))
+    }
+
+    private var activeRoomSignature: String {
+        activeRooms.map(\.id.description).joined(separator: "|")
+    }
+
+    private var roomSelectionLabel: String {
+        let names = visibleRooms.map(\.name)
+        return names.isEmpty ? "选择教室" : names.joined(separator: " + ")
+    }
+
+    private var roomSelectionCount: String {
+        guard !activeRooms.isEmpty else { return "0" }
+        return "\(visibleRooms.count)/\(min(2, activeRooms.count))"
+    }
+
+    private var weekDateSelection: Binding<Date> {
+        Binding(
+            get: { weekStart },
+            set: { selectWeek(containing: $0) }
+        )
     }
 
     private var filteredSessions: [ClassSession] {
@@ -204,6 +381,42 @@ struct ScheduleWorkspaceView: View {
     private func shiftWeek(_ amount: Int) {
         weekStart = Calendar.masterDance.date(byAdding: .day, value: amount * 7, to: weekStart) ?? weekStart
         selectedSessionID = nil
+    }
+
+    private func selectWeek(containing date: Date) {
+        weekStart = date.startOfWeek()
+        selectedSessionID = nil
+        showingWeekPicker = false
+    }
+
+    private func reconcileRoomSelection() {
+        let selection = currentRoomSelection
+        if selection != selectedRoomIDs {
+            selectedRoomIDs = selection
+        }
+    }
+
+    private func toggleRoom(_ roomID: RoomID) {
+        var selection = currentRoomSelection
+        if selection.contains(roomID) {
+            guard selection.count > 1 else { return }
+            selection.remove(roomID)
+        } else {
+            guard selection.count < 2 else { return }
+            selection.insert(roomID)
+        }
+        selectedRoomIDs = selection
+        selectedSessionID = nil
+    }
+
+    private func roomOptionHelp(isSelected: Bool, isDisabled: Bool) -> String {
+        if isSelected && isDisabled {
+            return "课表至少显示一间教室"
+        }
+        if !isSelected && isDisabled {
+            return "最多同时显示两间教室"
+        }
+        return isSelected ? "隐藏这间教室" : "显示这间教室"
     }
 
 }
