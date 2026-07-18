@@ -326,6 +326,13 @@ public enum AttendanceStatus: String, Codable, CaseIterable, Sendable {
         case .present, .absent, .excused: false
         }
     }
+
+    public var recordsPhysicalAttendance: Bool {
+        switch self {
+        case .present, .makeup, .trial: true
+        case .absent, .excused: false
+        }
+    }
 }
 
 public struct Attendance: Identifiable, Codable, Equatable, Sendable {

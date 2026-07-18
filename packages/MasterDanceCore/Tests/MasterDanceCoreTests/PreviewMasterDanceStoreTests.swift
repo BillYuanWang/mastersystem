@@ -47,6 +47,11 @@ struct PreviewMasterDanceStoreTests {
         #expect(!AttendanceStatus.present.isGuestAttendance)
         #expect(!AttendanceStatus.excused.isGuestAttendance)
         #expect(!AttendanceStatus.absent.isGuestAttendance)
+        #expect(AttendanceStatus.present.recordsPhysicalAttendance)
+        #expect(AttendanceStatus.trial.recordsPhysicalAttendance)
+        #expect(AttendanceStatus.makeup.recordsPhysicalAttendance)
+        #expect(!AttendanceStatus.absent.recordsPhysicalAttendance)
+        #expect(!AttendanceStatus.excused.recordsPhysicalAttendance)
     }
 
     @Test("Enrollment queries and removal use stable identities")

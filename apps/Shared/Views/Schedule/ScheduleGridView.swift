@@ -211,6 +211,7 @@ private struct CourseBlockView: View {
     let hasConflict: Bool
     let select: () -> Void
 
+    @State private var isShowingAttendancePreview = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -222,6 +223,7 @@ private struct CourseBlockView: View {
         } ?? 0
         let color = theme.courseColor(index: courseTypeIndex)
         let fontSize = blockFontSize
+        let preview = CourseAttendancePreview(model: model, session: session)
 
         Button(action: select) {
             ZStack(alignment: .topTrailing) {
@@ -267,10 +269,25 @@ private struct CourseBlockView: View {
                 RoundedRectangle(cornerRadius: 5)
                     .stroke(isSelected ? theme.accent : color.opacity(0.9), lineWidth: isSelected ? 2 : 1)
             )
+            .shadow(
+                color: isShowingAttendancePreview ? color.opacity(colorScheme == .dark ? 0.42 : 0.24) : .clear,
+                radius: 5,
+                y: 2
+            )
+            .scaleEffect(isShowingAttendancePreview ? 1.012 : 1)
             .contentShape(RoundedRectangle(cornerRadius: 5))
         }
         .buttonStyle(.plain)
-        .help(hoverText)
+        .animation(.easeOut(duration: 0.1), value: isShowingAttendancePreview)
+        .onHover { isShowingAttendancePreview = $0 }
+        .popover(
+            isPresented: $isShowingAttendancePreview,
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .trailing
+        ) {
+            CourseAttendanceHoverCard(preview: preview)
+        }
+        .accessibilityHint(hoverText)
     }
 
     private var blockFontSize: CGFloat {
