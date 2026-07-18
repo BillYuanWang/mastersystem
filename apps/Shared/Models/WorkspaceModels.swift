@@ -118,7 +118,10 @@ enum AppModelError: LocalizedError {
     case holidayOutsideTerm
     case invalidTermRange
     case missingGuardianName
+    case missingGuardianEmail
     case invalidGuardianEmail
+    case missingGuardianPhone
+    case invalidGuardianPhone
     case missingStudentName
 
     var errorDescription: String? {
@@ -128,7 +131,10 @@ enum AppModelError: LocalizedError {
         case .invalidTermRange: "结束日期必须晚于开始日期。"
         case .holidayOutsideTerm: "假期日期必须位于所选学期内。"
         case .missingGuardianName: "请输入监护人姓名。"
+        case .missingGuardianEmail: "请输入监护人邮箱。"
         case .invalidGuardianEmail: "请输入有效的监护人邮箱。"
+        case .missingGuardianPhone: "请输入监护人电话。"
+        case .invalidGuardianPhone: "请输入 10 位美国电话号码。"
         case .missingStudentName: "请输入学员姓名。"
         }
     }

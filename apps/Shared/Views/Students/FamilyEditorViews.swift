@@ -22,7 +22,8 @@ struct GuardianEditorView: View {
         original = guardian
         _displayName = State(initialValue: guardian?.displayName ?? "")
         _email = State(initialValue: guardian?.email ?? "")
-        _phone = State(initialValue: guardian?.phone ?? "")
+        let storedPhone = guardian?.phone ?? ""
+        _phone = State(initialValue: GuardianContact.formattedUSPhone(storedPhone) ?? storedPhone)
     }
 
     var body: some View {
@@ -36,9 +37,26 @@ struct GuardianEditorView: View {
                     MDSectionTitle(chinese: original == nil ? "添加监护人" : "编辑监护人")
 
                     Form {
-                        TextField("监护人姓名", text: $displayName)
-                        TextField("邮箱（选填）", text: $email)
-                        TextField("电话（选填）", text: $phone)
+                        LabeledContent("监护人姓名（必填）") {
+                            TextField("姓名", text: $displayName)
+                        }
+                        LabeledContent("邮箱（必填）") {
+                            TextField("name@example.com", text: $email)
+                        }
+                        if !trimmedEmail.isEmpty, !emailIsValid {
+                            Text("邮箱格式不正确。")
+                                .font(MDType.compact)
+                                .foregroundStyle(.red)
+                        }
+                        LabeledContent("电话（必填）") {
+                            TextField("+1 (000) 000-0000", text: $phone)
+                                .font(MDType.mono)
+                        }
+                        if !trimmedPhone.isEmpty, !phoneIsValid {
+                            Text("请输入 10 位美国电话号码。")
+                                .font(MDType.compact)
+                                .foregroundStyle(.red)
+                        }
                     }
                     .formStyle(.grouped)
 
@@ -53,10 +71,7 @@ struct GuardianEditorView: View {
                         Button("取消") { dismiss() }
                         Button(original == nil ? "创建" : "保存") { save() }
                             .keyboardShortcut(.defaultAction)
-                            .disabled(
-                                displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    || isSaving
-                            )
+                            .disabled(!canSave || isSaving)
                     }
                 }
             }
@@ -72,8 +87,8 @@ struct GuardianEditorView: View {
             do {
                 if var guardian = original {
                     guardian.displayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guardian.email = email.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-                    guardian.phone = phone.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                    guardian.email = email
+                    guardian.phone = phone
                     try await model.saveGuardian(guardian)
                     dismiss()
                 } else {
@@ -89,6 +104,28 @@ struct GuardianEditorView: View {
                 isSaving = false
             }
         }
+    }
+
+    private var trimmedEmail: String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedPhone: String {
+        phone.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var emailIsValid: Bool {
+        GuardianContact.normalizedEmail(trimmedEmail) != nil
+    }
+
+    private var phoneIsValid: Bool {
+        GuardianContact.formattedUSPhone(trimmedPhone) != nil
+    }
+
+    private var canSave: Bool {
+        !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && emailIsValid
+            && phoneIsValid
     }
 }
 

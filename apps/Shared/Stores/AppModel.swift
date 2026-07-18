@@ -320,19 +320,15 @@ final class AppModel {
         phone: String
     ) async throws -> GuardianLinkCode {
         let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let trimmedPhone = phone.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
             throw AppModelError.missingGuardianName
         }
-        if !trimmedEmail.isEmpty, !trimmedEmail.contains("@") {
-            throw AppModelError.invalidGuardianEmail
-        }
+        let contact = try normalizedGuardianContact(email: email, phone: phone)
 
         let guardian = Guardian(
             displayName: trimmedName,
-            email: trimmedEmail.isEmpty ? nil : trimmedEmail,
-            phone: trimmedPhone.isEmpty ? nil : trimmedPhone
+            email: contact.email,
+            phone: contact.phone
         )
         try await repository.save(guardian: guardian)
 
@@ -381,10 +377,35 @@ final class AppModel {
     func saveGuardian(_ guardian: Guardian) async throws {
         let name = guardian.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { throw AppModelError.missingGuardianName }
+        let contact = try normalizedGuardianContact(
+            email: guardian.email ?? "",
+            phone: guardian.phone ?? ""
+        )
         var updated = guardian
         updated.displayName = name
+        updated.email = contact.email
+        updated.phone = contact.phone
         try await repository.save(guardian: updated)
         await reload()
+    }
+
+    private func normalizedGuardianContact(
+        email: String,
+        phone: String
+    ) throws -> (email: String, phone: String) {
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedEmail.isEmpty else { throw AppModelError.missingGuardianEmail }
+        guard let normalizedEmail = GuardianContact.normalizedEmail(trimmedEmail) else {
+            throw AppModelError.invalidGuardianEmail
+        }
+
+        let trimmedPhone = phone.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPhone.isEmpty else { throw AppModelError.missingGuardianPhone }
+        guard let formattedPhone = GuardianContact.formattedUSPhone(trimmedPhone) else {
+            throw AppModelError.invalidGuardianPhone
+        }
+
+        return (normalizedEmail, formattedPhone)
     }
 
     func deleteGuardian(id: GuardianID) async throws {
