@@ -23,6 +23,7 @@ struct AdminAuthenticationRootView: View {
                     AppShell(
                         role: .administrator,
                         repository: repository,
+                        appearanceRawValue: $appearanceRawValue,
                         accountDisplayName: profile.displayName,
                         onManageAccount: { isShowingAccount = true },
                         onSignOut: { Task { await session.signOut() } }

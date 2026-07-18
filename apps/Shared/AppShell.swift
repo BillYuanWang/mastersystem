@@ -8,12 +8,13 @@ struct AppShell: View {
     let onManageAccount: (() -> Void)?
     let onSignOut: (() -> Void)?
 
-    @AppStorage("appearancePreference") private var appearanceRawValue = AppearancePreference.dark.rawValue
+    @Binding private var appearanceRawValue: String
     @State private var model: AppModel
 
     init(
         role: AppRole,
         repository: any MasterDanceRepository,
+        appearanceRawValue: Binding<String>,
         accountDisplayName: String? = nil,
         onManageAccount: (() -> Void)? = nil,
         onSignOut: (() -> Void)? = nil
@@ -22,6 +23,7 @@ struct AppShell: View {
         self.accountDisplayName = accountDisplayName
         self.onManageAccount = onManageAccount
         self.onSignOut = onSignOut
+        _appearanceRawValue = appearanceRawValue
         _model = State(initialValue: AppModel(repository: repository))
     }
 
@@ -51,7 +53,6 @@ struct AppShell: View {
             )
 #endif
         }
-        .preferredColorScheme(preferredColorScheme)
         .task {
             guard !model.hasLoaded else { return }
             await model.reload()
@@ -69,11 +70,4 @@ struct AppShell: View {
         }
     }
 
-    private var preferredColorScheme: ColorScheme? {
-        switch AppearancePreference(rawValue: appearanceRawValue) ?? .system {
-        case .system: nil
-        case .light: .light
-        case .dark: .dark
-        }
-    }
 }
