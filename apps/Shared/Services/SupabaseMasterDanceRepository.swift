@@ -221,6 +221,10 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
             .execute()
     }
 
+    func deleteSession(id: ClassSessionID) async throws {
+        try await client.from("class_sessions").delete().eq("id", value: id.rawValue).execute()
+    }
+
     func listStudents() async throws -> [Student] {
         let rows: [StudentRow] = try await client
             .from("students")

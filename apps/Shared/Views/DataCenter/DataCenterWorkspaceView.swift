@@ -11,6 +11,7 @@ struct DataCenterWorkspaceView: View {
     @State private var editor: DataCenterEditor?
     @State private var deletion: DataCenterDeletion?
     @State private var errorMessage: String?
+    @State private var referenceSort = ReferenceTableSort.custom
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -86,6 +87,9 @@ struct DataCenterWorkspaceView: View {
         } message: { item in
             Text("确定删除“\(item.name)”吗？已被其他资料使用的项目不会被删除。")
         }
+        .onChange(of: section) { _, _ in
+            referenceSort = .custom
+        }
     }
 
     @ViewBuilder
@@ -99,6 +103,7 @@ struct DataCenterWorkspaceView: View {
                 rows: filtered(model.instructors, text: { [$0.displayName, $0.notes ?? ""] }),
                 name: { $0.displayName },
                 values: { [$0.displayName, $0.notes ?? "—", $0.isActive ? "启用" : "停用"] },
+                reorder: { model.moveInstructor($0.id, to: $1.id) },
                 edit: { editor = .instructor($0) },
                 delete: { deletion = .instructor($0.id, $0.displayName) },
                 theme: theme
@@ -109,6 +114,7 @@ struct DataCenterWorkspaceView: View {
                 rows: filtered(model.ageGroups, text: { [$0.name, $0.notes ?? ""] }),
                 name: { $0.name },
                 values: { [$0.name, $0.notes ?? "—", $0.isActive ? "启用" : "停用"] },
+                reorder: { model.moveAgeGroup($0.id, to: $1.id) },
                 edit: { editor = .ageGroup($0) },
                 delete: { deletion = .ageGroup($0.id, $0.name) },
                 theme: theme
@@ -119,6 +125,7 @@ struct DataCenterWorkspaceView: View {
                 rows: filtered(model.rooms, text: { [$0.name] }),
                 name: { $0.name },
                 values: { [$0.name, $0.isActive ? "启用" : "停用"] },
+                reorder: { model.moveRoom($0.id, to: $1.id) },
                 edit: { editor = .room($0) },
                 delete: { deletion = .room($0.id, $0.name) },
                 theme: theme
@@ -131,6 +138,7 @@ struct DataCenterWorkspaceView: View {
                 values: {
                     [$0.name, $0.isPrivate ? "私课" : "组课", $0.notes ?? "—", $0.isActive ? "启用" : "停用"]
                 },
+                reorder: { model.moveCourseType($0.id, to: $1.id) },
                 edit: { editor = .courseType($0) },
                 delete: { deletion = .courseType($0.id, $0.name) },
                 theme: theme
@@ -208,12 +216,14 @@ struct DataCenterWorkspaceView: View {
         rows: [Value],
         name: @escaping (Value) -> String,
         values: @escaping (Value) -> [String],
+        reorder: @escaping (Value, Value) -> Void,
         edit: @escaping (Value) -> Void,
         delete: @escaping (Value) -> Void,
         theme: MDTheme
     ) -> some View {
-        VStack(spacing: 0) {
-            rowHeader(headers, theme: theme)
+        let displayedRows = sortedReferenceRows(rows, values: values)
+        return VStack(spacing: 0) {
+            referenceHeader(headers, theme: theme)
             if rows.isEmpty {
                 ContentUnavailableView(
                     "暂无\(section.singularTitle)",
@@ -223,8 +233,9 @@ struct DataCenterWorkspaceView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(rows) { row in
+                        ForEach(displayedRows) { row in
                             HStack(spacing: 0) {
+                                referenceDragHandle(for: row, theme: theme)
                                 ForEach(Array(zip(values(row), headers).enumerated()), id: \.offset) { index, pair in
                                     dataCell(
                                         pair.0,
@@ -240,12 +251,120 @@ struct DataCenterWorkspaceView: View {
                             }
                             .frame(minHeight: 40)
                             .help(name(row))
+                            .dropDestination(for: String.self) { items, _ in
+                                guard referenceSort == .custom,
+                                      let sourceToken = items.first,
+                                      let source = rows.first(where: { referenceToken($0) == sourceToken }),
+                                      source.id != row.id else {
+                                    return false
+                                }
+                                reorder(source, row)
+                                return true
+                            }
                             Divider()
                         }
                     }
                 }
             }
         }
+    }
+
+    private func referenceHeader(_ columns: [(String, CGFloat)], theme: MDTheme) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                referenceSort = .custom
+            } label: {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 11, weight: .medium))
+                    .frame(width: 30, height: 30)
+                    .foregroundStyle(referenceSort == .custom ? theme.accent : theme.secondaryText)
+            }
+            .buttonStyle(.plain)
+            .help("使用手动排序")
+
+            ForEach(Array(columns.enumerated()), id: \.offset) { index, column in
+                Button {
+                    toggleReferenceSort(column: index)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(column.0)
+                            .font(MDType.compactStrong)
+                            .lineLimit(1)
+                        if case let .column(selected, ascending) = referenceSort, selected == index {
+                            Image(systemName: ascending ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 8, weight: .bold))
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(theme.secondaryText)
+                    .frame(width: column.1, alignment: .leading)
+                    .padding(.leading, 10)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("按“\(column.0)”排序")
+            }
+
+            Text("操作")
+                .font(MDType.compactStrong)
+                .foregroundStyle(theme.secondaryText)
+                .frame(width: 70)
+            Spacer(minLength: 0)
+        }
+        .frame(height: 34)
+        .background(theme.subtleSurface)
+    }
+
+    @ViewBuilder
+    private func referenceDragHandle<Value: Identifiable>(for row: Value, theme: MDTheme) -> some View {
+        if referenceSort == .custom {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(theme.secondaryText.opacity(0.65))
+                .frame(width: 30, height: 40)
+                .contentShape(Rectangle())
+                .draggable(referenceToken(row))
+                .help("拖动排序")
+        } else {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(theme.secondaryText.opacity(0.2))
+                .frame(width: 30, height: 40)
+                .help("点击表头三横线恢复手动排序")
+        }
+    }
+
+    private func toggleReferenceSort(column: Int) {
+        switch referenceSort {
+        case let .column(selected, true) where selected == column:
+            referenceSort = .column(column, ascending: false)
+        case let .column(selected, false) where selected == column:
+            referenceSort = .custom
+        default:
+            referenceSort = .column(column, ascending: true)
+        }
+    }
+
+    private func sortedReferenceRows<Value: Identifiable>(
+        _ rows: [Value],
+        values: (Value) -> [String]
+    ) -> [Value] {
+        guard case let .column(index, ascending) = referenceSort else { return rows }
+        return rows.sorted { lhs, rhs in
+            let leftValues = values(lhs)
+            let rightValues = values(rhs)
+            let left = leftValues.indices.contains(index) ? leftValues[index] : ""
+            let right = rightValues.indices.contains(index) ? rightValues[index] : ""
+            let comparison = left.localizedCompare(right)
+            if comparison == .orderedSame {
+                return referenceToken(lhs) < referenceToken(rhs)
+            }
+            return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
+        }
+    }
+
+    private func referenceToken<Value: Identifiable>(_ value: Value) -> String {
+        String(describing: value.id)
     }
 
     private func dataHeader(
@@ -356,6 +475,11 @@ struct DataCenterWorkspaceView: View {
             }
         }
     }
+}
+
+private enum ReferenceTableSort: Equatable {
+    case custom
+    case column(Int, ascending: Bool)
 }
 
 private enum DataCenterSection: String, CaseIterable, Identifiable {

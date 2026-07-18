@@ -5,9 +5,10 @@ import SwiftUI
 @MainActor
 struct CourseEditorView: View {
     let model: AppModel
+    let original: Course?
 
     @State private var draft = CourseCreationDraft()
-    @State private var occurrenceCourseID = CourseID()
+    @State private var occurrenceCourseID: CourseID
     @State private var didConfigure = false
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -15,11 +16,20 @@ struct CourseEditorView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
 
+    init(model: AppModel, course: Course? = nil) {
+        self.model = model
+        original = course
+        _occurrenceCourseID = State(initialValue: course?.id ?? CourseID())
+    }
+
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(spacing: 0) {
             HStack {
-                MDSectionTitle(chinese: "添加课程", english: "NEW COURSE")
+                MDSectionTitle(
+                    chinese: original == nil ? "添加课程" : "编辑课程",
+                    english: original == nil ? "NEW COURSE" : "EDIT COURSE"
+                )
                 Spacer()
                 Text("\(activeOccurrenceCount) 次课")
                     .font(MDType.monoStrong)
@@ -37,6 +47,7 @@ struct CourseEditorView: View {
                                 GridRow {
                                     fieldLabel("课程名称")
                                     TextField("由你填写", text: $draft.name)
+                                        .frame(minWidth: 280)
                                 }
                                 GridRow {
                                     fieldLabel("学期")
@@ -46,6 +57,7 @@ struct CourseEditorView: View {
                                         }
                                     }
                                     .labelsHidden()
+                                    .frame(minWidth: 280, alignment: .leading)
                                 }
                                 GridRow {
                                     fieldLabel("年龄段")
@@ -55,6 +67,7 @@ struct CourseEditorView: View {
                                         }
                                     }
                                     .labelsHidden()
+                                    .frame(minWidth: 280, alignment: .leading)
                                 }
                                 GridRow {
                                     fieldLabel("教室")
@@ -64,6 +77,7 @@ struct CourseEditorView: View {
                                         }
                                     }
                                     .labelsHidden()
+                                    .frame(minWidth: 280, alignment: .leading)
                                 }
                                 GridRow {
                                     fieldLabel("授课老师")
@@ -73,6 +87,7 @@ struct CourseEditorView: View {
                                         }
                                     }
                                     .labelsHidden()
+                                    .frame(minWidth: 280, alignment: .leading)
                                 }
                                 GridRow {
                                     fieldLabel("课程种类")
@@ -82,6 +97,12 @@ struct CourseEditorView: View {
                                         }
                                     }
                                     .labelsHidden()
+                                    .frame(minWidth: 280, alignment: .leading)
+                                }
+                                GridRow {
+                                    fieldLabel("课程状态")
+                                    Toggle("启用课程", isOn: $draft.isActive)
+                                        .toggleStyle(.switch)
                                 }
                             }
                         }
@@ -129,7 +150,7 @@ struct CourseEditorView: View {
                     }
                     .padding(16)
                 }
-                .frame(width: 430)
+                .frame(width: 480)
 
                 Divider()
 
@@ -177,16 +198,17 @@ struct CourseEditorView: View {
                 }
                 Spacer()
                 Button("取消") { dismiss() }
-                Button("添加课程") { save() }
+                Button(original == nil ? "添加课程" : "保存修改") { save() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave || isSaving)
             }
             .padding(14)
         }
-        .frame(width: 860, height: 680)
+        .frame(width: 980, height: 700)
         .background(theme.background)
         .onAppear(perform: configureDraft)
-        .onChange(of: draft.termID) { _, newValue in
+        .onChange(of: draft.termID) { oldValue, newValue in
+            guard didConfigure, oldValue != nil, oldValue != newValue else { return }
             guard let newValue, let term = model.term(id: newValue) else { return }
             draft.startsOn = term.startsOn
             draft.endsOn = term.endsOn
@@ -336,14 +358,48 @@ struct CourseEditorView: View {
     private func configureDraft() {
         guard !didConfigure else { return }
         didConfigure = true
-        draft.termID = model.terms.first?.id
-        draft.ageGroupID = model.ageGroups.first?.id
-        draft.roomID = model.rooms.first?.id
-        draft.instructorID = model.instructors.first?.id
-        draft.courseTypeID = model.courseTypes.first?.id
-        if let term = model.terms.first {
-            draft.startsOn = term.startsOn
-            draft.endsOn = term.endsOn
+        if let original {
+            draft.name = original.name
+            draft.termID = original.termID
+            draft.ageGroupID = original.ageGroupID
+            draft.roomID = original.defaultRoomID
+            draft.instructorID = original.defaultInstructorID
+            draft.courseTypeID = original.courseTypeID
+            draft.notes = original.notes ?? ""
+            draft.isActive = original.isActive
+
+            let existingSessions = model.sessions(forCourse: original.id)
+            if let first = existingSessions.first, let last = existingSessions.last {
+                let calendar = Calendar.masterDance
+                draft.startsOn = calendar.startOfDay(for: first.startsAt)
+                draft.endsOn = calendar.startOfDay(for: last.startsAt)
+                draft.weekday = calendar.component(.weekday, from: first.startsAt)
+                draft.startTime = SessionClockTime(
+                    hour: calendar.component(.hour, from: first.startsAt),
+                    minute: calendar.component(.minute, from: first.startsAt)
+                )
+                draft.endTime = SessionClockTime(
+                    hour: calendar.component(.hour, from: first.endsAt),
+                    minute: calendar.component(.minute, from: first.endsAt)
+                )
+                let existingDates = Set(existingSessions.map { calendar.startOfDay(for: $0.startsAt) })
+                draft.excludedDates = Set(occurrenceDates.map(calendar.startOfDay(for:)).filter {
+                    !existingDates.contains($0)
+                })
+            } else if let term = model.term(id: original.termID) {
+                draft.startsOn = term.startsOn
+                draft.endsOn = term.endsOn
+            }
+        } else {
+            draft.termID = model.terms.first?.id
+            draft.ageGroupID = model.ageGroups.first?.id
+            draft.roomID = model.rooms.first?.id
+            draft.instructorID = model.instructors.first?.id
+            draft.courseTypeID = model.courseTypes.first?.id
+            if let term = model.terms.first {
+                draft.startsOn = term.startsOn
+                draft.endsOn = term.endsOn
+            }
         }
     }
 
@@ -352,7 +408,11 @@ struct CourseEditorView: View {
         errorMessage = nil
         Task {
             do {
-                try await model.createCourse(from: draft)
+                if let original {
+                    try await model.updateCourse(original, from: draft)
+                } else {
+                    try await model.createCourse(from: draft)
+                }
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

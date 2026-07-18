@@ -6,6 +6,7 @@ import Observation
 @Observable
 final class AppModel {
     @ObservationIgnored private let repository: any MasterDanceRepository
+    @ObservationIgnored private let referenceOrderStore = ReferenceOrderStore()
 
     var terms: [Term] = []
     var termHolidays: [TermHoliday] = []
@@ -46,10 +47,26 @@ final class AppModel {
             courseCategories = try await repository.listCourseCategories().sorted {
                 $0.name.localizedCompare($1.name) == .orderedAscending
             }
-            courseTypes = try await repository.listCourseTypes().sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-            ageGroups = try await repository.listAgeGroups().sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-            rooms = try await repository.listRooms().sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-            instructors = try await repository.listInstructors().sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+            courseTypes = referenceOrderStore.apply(
+                try await repository.listCourseTypes().sorted { $0.name.localizedCompare($1.name) == .orderedAscending },
+                key: .courseTypes,
+                id: { $0.id.description }
+            )
+            ageGroups = referenceOrderStore.apply(
+                try await repository.listAgeGroups().sorted { $0.name.localizedCompare($1.name) == .orderedAscending },
+                key: .ageGroups,
+                id: { $0.id.description }
+            )
+            rooms = referenceOrderStore.apply(
+                try await repository.listRooms().sorted { $0.name.localizedCompare($1.name) == .orderedAscending },
+                key: .rooms,
+                id: { $0.id.description }
+            )
+            instructors = referenceOrderStore.apply(
+                try await repository.listInstructors().sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending },
+                key: .instructors,
+                id: { $0.id.description }
+            )
             courses = try await repository.listCourses(termID: nil).sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
             sessions = try await repository.listSessions(courseID: nil).sorted { $0.startsAt < $1.startsAt }
             students = try await repository.listStudents().sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
@@ -224,6 +241,26 @@ final class AppModel {
         await reload()
     }
 
+    func moveCourseType(_ sourceID: CourseTypeID, to targetID: CourseTypeID) {
+        courseTypes = moving(courseTypes, sourceID: sourceID, to: targetID)
+        referenceOrderStore.save(courseTypes, key: .courseTypes, id: { $0.id.description })
+    }
+
+    func moveAgeGroup(_ sourceID: AgeGroupID, to targetID: AgeGroupID) {
+        ageGroups = moving(ageGroups, sourceID: sourceID, to: targetID)
+        referenceOrderStore.save(ageGroups, key: .ageGroups, id: { $0.id.description })
+    }
+
+    func moveRoom(_ sourceID: RoomID, to targetID: RoomID) {
+        rooms = moving(rooms, sourceID: sourceID, to: targetID)
+        referenceOrderStore.save(rooms, key: .rooms, id: { $0.id.description })
+    }
+
+    func moveInstructor(_ sourceID: InstructorID, to targetID: InstructorID) {
+        instructors = moving(instructors, sourceID: sourceID, to: targetID)
+        referenceOrderStore.save(instructors, key: .instructors, id: { $0.id.description })
+    }
+
     func saveCourse(_ course: Course) async throws {
         guard let type = courseType(id: course.courseTypeID) else {
             throw AppModelError.missingCourseFields
@@ -263,27 +300,67 @@ final class AppModel {
             defaultInstructorID: instructorID,
             courseTypeID: courseTypeID,
             format: selectedCourseType.isPrivate ? .privateLesson : .group,
-            notes: draft.notes.isEmpty ? nil : draft.notes
+            notes: draft.notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            isActive: draft.isActive
         )
-        let holidayDates = termHolidays
-            .filter { $0.termID == termID }
-            .reduce(into: Set<Date>()) { dates, holiday in
-                dates.formUnion(calendarDays(from: holiday.startsOn, through: holiday.endsOn))
-            }
-        let plan = WeeklySessionPlan(
-            courseID: course.id,
-            startsOn: draft.startsOn,
-            endsOn: draft.endsOn,
-            weekday: draft.weekday,
-            startTime: draft.startTime,
-            endTime: draft.endTime,
-            excludedDates: draft.excludedDates.union(holidayDates)
-        )
-        let generatedSessions = try RecurringSessionBuilder.sessions(for: plan, calendar: .masterDance)
+        let generatedSessions = try generatedSessions(for: course.id, termID: termID, draft: draft)
 
         try await repository.save(course: course)
         for session in generatedSessions {
             try await repository.save(session: session)
+        }
+        await reload()
+    }
+
+    func updateCourse(_ original: Course, from draft: CourseCreationDraft) async throws {
+        let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            !trimmedName.isEmpty,
+            let termID = draft.termID,
+            let ageGroupID = draft.ageGroupID,
+            let roomID = draft.roomID,
+            let instructorID = draft.instructorID,
+            let courseTypeID = draft.courseTypeID,
+            let selectedCourseType = courseType(id: courseTypeID)
+        else {
+            throw AppModelError.missingCourseFields
+        }
+
+        if original.termID != termID, enrollments.contains(where: { $0.courseID == original.id }) {
+            throw AppModelError.courseTermHasEnrollments
+        }
+
+        var updated = original
+        updated.termID = termID
+        updated.name = trimmedName
+        updated.ageGroupID = ageGroupID
+        updated.defaultRoomID = roomID
+        updated.defaultInstructorID = instructorID
+        updated.courseTypeID = courseTypeID
+        updated.format = selectedCourseType.isPrivate ? .privateLesson : .group
+        updated.notes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        updated.isActive = draft.isActive
+
+        let existingSessions = sessions(forCourse: original.id)
+        let replacementSessions = try generatedSessions(for: original.id, termID: termID, draft: draft)
+        let scheduleChanged = !sameSchedule(existingSessions, replacementSessions)
+        if scheduleChanged {
+            let existingSessionIDs = Set(existingSessions.map(\.id))
+            let hasAttendance = attendance.contains { existingSessionIDs.contains($0.sessionID) }
+            let hasLeaveRequests = leaveRequests.contains { existingSessionIDs.contains($0.sessionID) }
+            guard !hasAttendance, !hasLeaveRequests else {
+                throw AppModelError.courseScheduleHasRecords
+            }
+        }
+
+        try await repository.save(course: updated)
+        if scheduleChanged {
+            for session in existingSessions {
+                try await repository.deleteSession(id: session.id)
+            }
+            for session in replacementSessions {
+                try await repository.save(session: session)
+            }
         }
         await reload()
     }
@@ -507,4 +584,100 @@ final class AppModel {
         }
         return dates
     }
+
+    private func generatedSessions(
+        for courseID: CourseID,
+        termID: TermID,
+        draft: CourseCreationDraft
+    ) throws -> [ClassSession] {
+        let holidayDates = termHolidays
+            .filter { $0.termID == termID }
+            .reduce(into: Set<Date>()) { dates, holiday in
+                dates.formUnion(calendarDays(from: holiday.startsOn, through: holiday.endsOn))
+            }
+        let plan = WeeklySessionPlan(
+            courseID: courseID,
+            startsOn: draft.startsOn,
+            endsOn: draft.endsOn,
+            weekday: draft.weekday,
+            startTime: draft.startTime,
+            endTime: draft.endTime,
+            excludedDates: draft.excludedDates.union(holidayDates)
+        )
+        return try RecurringSessionBuilder.sessions(for: plan, calendar: .masterDance)
+    }
+
+    private func sameSchedule(_ lhs: [ClassSession], _ rhs: [ClassSession]) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        let left = lhs.sorted { $0.startsAt < $1.startsAt }
+        let right = rhs.sorted { $0.startsAt < $1.startsAt }
+        return zip(left, right).allSatisfy { pair in
+            pair.0.startsAt == pair.1.startsAt && pair.0.endsAt == pair.1.endsAt
+        }
+    }
+
+    private func moving<Value: Identifiable>(
+        _ values: [Value],
+        sourceID: Value.ID,
+        to targetID: Value.ID
+    ) -> [Value] {
+        guard sourceID != targetID,
+              let sourceIndex = values.firstIndex(where: { $0.id == sourceID }),
+              let targetIndex = values.firstIndex(where: { $0.id == targetID }) else {
+            return values
+        }
+        var result = values
+        let moved = result.remove(at: sourceIndex)
+        result.insert(moved, at: min(targetIndex, result.endIndex))
+        return result
+    }
+}
+
+private enum ReferenceOrderKey: String {
+    case courseTypes
+    case ageGroups
+    case rooms
+    case instructors
+
+    var defaultsKey: String { "md.referenceOrder.\(rawValue)" }
+}
+
+private final class ReferenceOrderStore {
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func apply<Value>(
+        _ values: [Value],
+        key: ReferenceOrderKey,
+        id: (Value) -> String
+    ) -> [Value] {
+        let storedOrder = defaults.stringArray(forKey: key.defaultsKey) ?? []
+        guard !storedOrder.isEmpty else { return values }
+        let positions = Dictionary(uniqueKeysWithValues: storedOrder.enumerated().map { ($0.element, $0.offset) })
+        return values.enumerated().sorted { lhs, rhs in
+            let left = positions[id(lhs.element)]
+            let right = positions[id(rhs.element)]
+            switch (left, right) {
+            case let (.some(left), .some(right)): return left < right
+            case (.some, .none): return true
+            case (.none, .some): return false
+            case (.none, .none): return lhs.offset < rhs.offset
+            }
+        }.map(\.element)
+    }
+
+    func save<Value>(
+        _ values: [Value],
+        key: ReferenceOrderKey,
+        id: (Value) -> String
+    ) {
+        defaults.set(values.map(id), forKey: key.defaultsKey)
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

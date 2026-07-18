@@ -128,7 +128,7 @@ public enum CourseFormat: String, Codable, CaseIterable, Sendable {
 
 public struct Course: Identifiable, Codable, Equatable, Sendable {
     public let id: CourseID
-    public let termID: TermID
+    public var termID: TermID
     public var name: String
     public var categoryID: CourseCategoryID
     public var ageGroupID: AgeGroupID

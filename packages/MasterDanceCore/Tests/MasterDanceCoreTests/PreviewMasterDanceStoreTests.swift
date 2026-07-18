@@ -355,4 +355,18 @@ struct PreviewMasterDanceStoreTests {
         }
         #expect(try await store.listTermHolidays(termID: term.id) == [validHoliday])
     }
+
+    @Test("Unlinked class sessions can be replaced")
+    func deletesUnlinkedSession() async throws {
+        let session = ClassSession(
+            courseID: CourseID(),
+            startsAt: Date(),
+            endsAt: Date().addingTimeInterval(3_600)
+        )
+        let store = PreviewMasterDanceStore(data: PreviewData(sessions: [session]))
+
+        try await store.deleteSession(id: session.id)
+
+        #expect(try await store.listSessions(courseID: session.courseID).isEmpty)
+    }
 }

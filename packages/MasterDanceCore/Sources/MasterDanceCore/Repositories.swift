@@ -36,6 +36,7 @@ public protocol CourseRepository: Sendable {
 public protocol ClassSessionRepository: Sendable {
     func listSessions(courseID: CourseID?) async throws -> [ClassSession]
     func save(session: ClassSession) async throws
+    func deleteSession(id: ClassSessionID) async throws
 }
 
 public protocol PeopleRepository: Sendable {

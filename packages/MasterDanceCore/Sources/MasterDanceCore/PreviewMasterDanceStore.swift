@@ -161,6 +161,12 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
     }
 
     public func save(session: ClassSession) { upsert(session, in: &data.sessions) }
+    public func deleteSession(id: ClassSessionID) throws {
+        let inUse = data.attendance.contains { $0.sessionID == id }
+            || data.leaveRequests.contains { $0.sessionID == id }
+        try requireUnused(!inUse, "这次课已有签到或请假记录，不能删除。")
+        remove(id: id, from: &data.sessions)
+    }
 
     public func listStudents() -> [Student] { data.students }
 

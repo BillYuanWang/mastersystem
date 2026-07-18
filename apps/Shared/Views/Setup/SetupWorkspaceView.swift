@@ -60,7 +60,7 @@ struct SetupWorkspaceView: View {
             CourseEditorView(model: model)
         }
         .sheet(item: $editingCourse) { course in
-            CourseMetadataEditorView(model: model, course: course)
+            CourseEditorView(model: model, course: course)
         }
         .alert(
             "确认删除",
@@ -199,111 +199,6 @@ private struct CourseSheetView: View {
         let start = session.startsAt.formatted(date: .omitted, time: .shortened)
         let end = session.endsAt.formatted(date: .omitted, time: .shortened)
         return "\(weekday) \(start)–\(end)"
-    }
-}
-
-private struct CourseMetadataEditorView: View {
-    let model: AppModel
-    let original: Course
-
-    @State private var name: String
-    @State private var ageGroupID: AgeGroupID
-    @State private var roomID: RoomID
-    @State private var instructorID: InstructorID
-    @State private var courseTypeID: CourseTypeID
-    @State private var notes: String
-    @State private var isActive: Bool
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-
-    @Environment(\.dismiss) private var dismiss
-
-    init(model: AppModel, course: Course) {
-        self.model = model
-        original = course
-        _name = State(initialValue: course.name)
-        _ageGroupID = State(initialValue: course.ageGroupID)
-        _roomID = State(initialValue: course.defaultRoomID)
-        _instructorID = State(initialValue: course.defaultInstructorID)
-        _courseTypeID = State(initialValue: course.courseTypeID)
-        _notes = State(initialValue: course.notes ?? "")
-        _isActive = State(initialValue: course.isActive)
-    }
-
-    var body: some View {
-        Form {
-            MDSectionTitle(chinese: "编辑课程")
-            TextField("课程名称", text: $name)
-            LabeledContent("所属学期") {
-                Text(model.term(id: original.termID)?.name ?? "—")
-                    .foregroundStyle(.secondary)
-            }
-            Picker("年龄段", selection: $ageGroupID) {
-                ForEach(model.ageGroups) { ageGroup in
-                    Text(ageGroup.name).tag(ageGroup.id)
-                }
-            }
-            Picker("教室", selection: $roomID) {
-                ForEach(model.rooms) { room in
-                    Text(room.name).tag(room.id)
-                }
-            }
-            Picker("授课老师", selection: $instructorID) {
-                ForEach(model.instructors) { instructor in
-                    Text(instructor.displayName).tag(instructor.id)
-                }
-            }
-            Picker("课程种类", selection: $courseTypeID) {
-                ForEach(model.courseTypes) { courseType in
-                    Text(courseType.name).tag(courseType.id)
-                }
-            }
-            TextField("备注", text: $notes, axis: .vertical)
-                .lineLimit(2...4)
-            Toggle("启用", isOn: $isActive)
-            Text("排课日期和时间保持不变；单次调整请在课表中处理。")
-                .font(MDType.compact)
-                .foregroundStyle(.secondary)
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(MDType.compact)
-                    .foregroundStyle(.red)
-            }
-            HStack {
-                Spacer()
-                Button("取消") { dismiss() }
-                Button("保存") { save() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .formStyle(.grouped)
-        .frame(width: 460)
-        .padding(8)
-    }
-
-    private func save() {
-        isSaving = true
-        var course = original
-        course.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        course.ageGroupID = ageGroupID
-        course.defaultRoomID = roomID
-        course.defaultInstructorID = instructorID
-        course.courseTypeID = courseTypeID
-        course.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? nil
-            : notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        course.isActive = isActive
-
-        Task {
-            do {
-                try await model.saveCourse(course)
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                isSaving = false
-            }
-        }
     }
 }
 

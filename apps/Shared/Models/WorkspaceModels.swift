@@ -110,6 +110,7 @@ struct CourseCreationDraft {
     var endTime = SessionClockTime(hour: 17, minute: 0)
     var excludedDates: Set<Date> = []
     var notes = ""
+    var isActive = true
 }
 
 enum AppModelError: LocalizedError {
@@ -123,6 +124,8 @@ enum AppModelError: LocalizedError {
     case missingGuardianPhone
     case invalidGuardianPhone
     case missingStudentName
+    case courseTermHasEnrollments
+    case courseScheduleHasRecords
 
     var errorDescription: String? {
         switch self {
@@ -136,6 +139,8 @@ enum AppModelError: LocalizedError {
         case .missingGuardianPhone: "请输入监护人电话。"
         case .invalidGuardianPhone: "请输入 10 位美国电话号码。"
         case .missingStudentName: "请输入学员姓名。"
+        case .courseTermHasEnrollments: "这门课程已有报名，不能更换学期；请先处理报名。"
+        case .courseScheduleHasRecords: "这门课程已有签到或请假记录，不能整体重排课次。"
         }
     }
 }

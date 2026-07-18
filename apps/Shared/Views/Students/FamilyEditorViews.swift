@@ -39,9 +39,11 @@ struct GuardianEditorView: View {
                     Form {
                         LabeledContent("监护人姓名（必填）") {
                             TextField("姓名", text: $displayName)
+                                .frame(minWidth: 360)
                         }
                         LabeledContent("邮箱（必填）") {
                             TextField("name@example.com", text: $email)
+                                .frame(minWidth: 360)
                         }
                         if !trimmedEmail.isEmpty, !emailIsValid {
                             Text("邮箱格式不正确。")
@@ -51,6 +53,7 @@ struct GuardianEditorView: View {
                         LabeledContent("电话（必填）") {
                             TextField("+1 (000) 000-0000", text: $phone)
                                 .font(MDType.mono)
+                                .frame(minWidth: 360)
                         }
                         if !trimmedPhone.isEmpty, !phoneIsValid {
                             Text("请输入 10 位美国电话号码。")
@@ -77,7 +80,7 @@ struct GuardianEditorView: View {
             }
         }
         .padding(20)
-        .frame(width: 460)
+        .frame(width: 660)
     }
 
     private func save() {
