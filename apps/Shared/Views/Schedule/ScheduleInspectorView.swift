@@ -42,7 +42,7 @@ struct ScheduleInspectorView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(course.name)
                                     .font(MDType.bodyStrong)
-                                Text((model.category(id: course.categoryID)?.name ?? "分类").uppercased())
+                                Text((model.courseType(id: course.courseTypeID)?.name ?? "课程种类").uppercased())
                                     .font(MDType.monoStrong)
                                     .foregroundStyle(theme.secondaryText)
                             }

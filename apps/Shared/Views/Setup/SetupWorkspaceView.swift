@@ -115,14 +115,13 @@ private struct CourseSheetView: View {
 
     private func courseHeader(theme: MDTheme) -> some View {
         HStack(spacing: 0) {
-            headerCell("课程名称", width: 190)
-            headerCell("分类", width: 105)
-            headerCell("年龄段", width: 95)
-            headerCell("教室", width: 85)
-            headerCell("老师", width: 90)
-            headerCell("每周时间", width: 155)
+            headerCell("课程名称", width: 220)
+            headerCell("年龄段", width: 105)
+            headerCell("教室", width: 90)
+            headerCell("老师", width: 100)
+            headerCell("每周时间", width: 170)
             headerCell("课次", width: 60)
-            headerCell("课程种类", width: 100)
+            headerCell("课程种类", width: 110)
             headerCell("状态", width: 60)
             headerCell("操作", width: 70)
             Spacer(minLength: 0)
@@ -138,12 +137,11 @@ private struct CourseSheetView: View {
         let courseSessions = model.sessions(forCourse: course.id)
         let firstSession = courseSessions.first
         return HStack(spacing: 0) {
-            dataCell(course.name, width: 190, strong: true)
-            dataCell(model.category(id: course.categoryID)?.name ?? "—", width: 105)
-            dataCell(model.ageGroup(id: course.ageGroupID)?.name ?? "—", width: 95)
-            dataCell(model.room(id: course.defaultRoomID)?.name ?? "—", width: 85)
-            dataCell(model.instructor(id: course.defaultInstructorID)?.displayName ?? "—", width: 90)
-            dataCell(firstSession.map(scheduleLabel) ?? "未排课", width: 155)
+            dataCell(course.name, width: 220, strong: true)
+            dataCell(model.ageGroup(id: course.ageGroupID)?.name ?? "—", width: 105)
+            dataCell(model.room(id: course.defaultRoomID)?.name ?? "—", width: 90)
+            dataCell(model.instructor(id: course.defaultInstructorID)?.displayName ?? "—", width: 100)
+            dataCell(firstSession.map(scheduleLabel) ?? "未排课", width: 170)
             dataCell("\(courseSessions.count)", width: 60, monospaced: true)
             HStack(spacing: 6) {
                 Text(course.format == .privateLesson ? "私" : "组")
@@ -154,7 +152,7 @@ private struct CourseSheetView: View {
                     .font(MDType.compact)
                     .lineLimit(1)
             }
-            .frame(width: 100, alignment: .leading)
+            .frame(width: 110, alignment: .leading)
             dataCell(course.isActive ? "启用" : "停用", width: 60)
             HStack(spacing: 3) {
                 Button {
@@ -186,7 +184,6 @@ private struct CourseSheetView: View {
         return model.courses.filter { course in
             let values = [
                 course.name,
-                model.category(id: course.categoryID)?.name ?? "",
                 model.ageGroup(id: course.ageGroupID)?.name ?? "",
                 model.room(id: course.defaultRoomID)?.name ?? "",
                 model.instructor(id: course.defaultInstructorID)?.displayName ?? "",
@@ -210,7 +207,6 @@ private struct CourseMetadataEditorView: View {
     let original: Course
 
     @State private var name: String
-    @State private var categoryID: CourseCategoryID
     @State private var ageGroupID: AgeGroupID
     @State private var roomID: RoomID
     @State private var instructorID: InstructorID
@@ -226,7 +222,6 @@ private struct CourseMetadataEditorView: View {
         self.model = model
         original = course
         _name = State(initialValue: course.name)
-        _categoryID = State(initialValue: course.categoryID)
         _ageGroupID = State(initialValue: course.ageGroupID)
         _roomID = State(initialValue: course.defaultRoomID)
         _instructorID = State(initialValue: course.defaultInstructorID)
@@ -242,11 +237,6 @@ private struct CourseMetadataEditorView: View {
             LabeledContent("所属学期") {
                 Text(model.term(id: original.termID)?.name ?? "—")
                     .foregroundStyle(.secondary)
-            }
-            Picker("课程分类", selection: $categoryID) {
-                ForEach(model.categories) { category in
-                    Text(category.name).tag(category.id)
-                }
             }
             Picker("年龄段", selection: $ageGroupID) {
                 ForEach(model.ageGroups) { ageGroup in
@@ -296,7 +286,6 @@ private struct CourseMetadataEditorView: View {
         isSaving = true
         var course = original
         course.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        course.categoryID = categoryID
         course.ageGroupID = ageGroupID
         course.defaultRoomID = roomID
         course.defaultInstructorID = instructorID
@@ -385,8 +374,6 @@ private struct ReferenceDataView: View {
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         HStack(spacing: 0) {
-            referenceColumn(kind: .category, values: model.categories.map(\.name), theme: theme)
-            Divider()
             referenceColumn(kind: .ageGroup, values: model.ageGroups.map(\.name), theme: theme)
             Divider()
             referenceColumn(kind: .room, values: model.rooms.map(\.name), theme: theme)
@@ -486,7 +473,7 @@ private struct TermEditorView: View {
 private struct ReferenceEditorView: View {
     let model: AppModel
 
-    @State private var kind = ReferenceKind.category
+    @State private var kind = ReferenceKind.ageGroup
     @State private var name = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -502,7 +489,7 @@ private struct ReferenceEditorView: View {
                 }
             }
             TextField("名称", text: $name)
-            Text("这里没有系统预设；分类、年龄段、教室和老师都由你维护。")
+            Text("这里没有系统预设；年龄段、教室和老师都由你维护。")
                 .font(MDType.compact)
                 .foregroundStyle(.secondary)
             if let errorMessage {

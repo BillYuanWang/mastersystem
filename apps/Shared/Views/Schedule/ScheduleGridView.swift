@@ -216,11 +216,11 @@ private struct CourseBlockView: View {
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         let course = model.course(id: session.courseID)
-        let category = course.flatMap { model.category(id: $0.categoryID) }
-        let categoryIndex = category.flatMap { selectedCategory in
-            model.categories.firstIndex(where: { $0.id == selectedCategory.id })
+        let courseType = course.flatMap { model.courseType(id: $0.courseTypeID) }
+        let courseTypeIndex = courseType.flatMap { selectedType in
+            model.courseTypes.firstIndex(where: { $0.id == selectedType.id })
         } ?? 0
-        let color = theme.courseColor(index: categoryIndex)
+        let color = theme.courseColor(index: courseTypeIndex)
         let fontSize = blockFontSize
 
         Button(action: select) {
@@ -229,7 +229,7 @@ private struct CourseBlockView: View {
                     Text(course?.name ?? "课程")
                         .font(.system(size: fontSize, weight: .semibold))
                         .padding(.trailing, 19)
-                    Text((category?.name ?? "分类").uppercased())
+                    Text((courseType?.name ?? "课程种类").uppercased())
                         .font(.system(size: fontSize - 1, weight: .medium, design: .monospaced))
                     Text(model.effectiveInstructor(for: session)?.displayName ?? "老师")
                         .font(.system(size: fontSize - 1))
@@ -285,11 +285,11 @@ private struct CourseBlockView: View {
 
     private var hoverText: String {
         let course = model.course(id: session.courseID)
-        let category = course.flatMap { model.category(id: $0.categoryID) }?.name ?? ""
+        let courseType = course.flatMap { model.courseType(id: $0.courseTypeID) }?.name ?? ""
         let age = course.flatMap { model.ageGroup(id: $0.ageGroupID) }?.name ?? ""
         let room = model.effectiveRoom(for: session)?.name ?? ""
         let roster = model.enrollments(forCourse: session.courseID).compactMap { model.student(id: $0.studentID)?.displayName }
-        return [course?.name ?? "课程", category, age, room, sessionTime, roster.joined(separator: "、")]
+        return [course?.name ?? "课程", courseType, age, room, sessionTime, roster.joined(separator: "、")]
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
     }

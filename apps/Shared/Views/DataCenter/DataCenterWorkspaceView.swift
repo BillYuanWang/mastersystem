@@ -123,16 +123,6 @@ struct DataCenterWorkspaceView: View {
                 delete: { deletion = .room($0.id, $0.name) },
                 theme: theme
             )
-        case .categories:
-            referenceTable(
-                headers: [("课程分类", 240), ("状态", 90)],
-                rows: filtered(model.categories, text: { [$0.name] }),
-                name: { $0.name },
-                values: { [$0.name, $0.isActive ? "启用" : "停用"] },
-                edit: { editor = .category($0) },
-                delete: { deletion = .category($0.id, $0.name) },
-                theme: theme
-            )
         case .courseTypes:
             referenceTable(
                 headers: [("课程种类", 180), ("属性", 90), ("备注", 240), ("状态", 90)],
@@ -337,8 +327,6 @@ struct DataCenterWorkspaceView: View {
             TermDataEditorView(model: model, term: term)
         case let .holiday(holiday):
             HolidayDataEditorView(model: model, holiday: holiday)
-        case let .category(value):
-            ReferenceDataEditorView(model: model, target: .category(value))
         case let .courseType(value):
             ReferenceDataEditorView(model: model, target: .courseType(value))
         case let .ageGroup(value):
@@ -358,7 +346,6 @@ struct DataCenterWorkspaceView: View {
                 switch item {
                 case let .term(id, _): try await model.deleteTerm(id: id)
                 case let .holiday(id, _): try await model.deleteTermHoliday(id: id)
-                case let .category(id, _): try await model.deleteCourseCategory(id: id)
                 case let .courseType(id, _): try await model.deleteCourseType(id: id)
                 case let .ageGroup(id, _): try await model.deleteAgeGroup(id: id)
                 case let .room(id, _): try await model.deleteRoom(id: id)
@@ -376,7 +363,6 @@ private enum DataCenterSection: String, CaseIterable, Identifiable {
     case instructors
     case ageGroups
     case rooms
-    case categories
     case courseTypes
 
     var id: String { rawValue }
@@ -387,7 +373,6 @@ private enum DataCenterSection: String, CaseIterable, Identifiable {
         case .instructors: "老师"
         case .ageGroups: "年龄段"
         case .rooms: "教室"
-        case .categories: "课程分类"
         case .courseTypes: "课程种类"
         }
     }
@@ -400,7 +385,6 @@ private enum DataCenterSection: String, CaseIterable, Identifiable {
         case .instructors: "person.crop.rectangle"
         case .ageGroups: "person.2"
         case .rooms: "door.left.hand.open"
-        case .categories: "square.grid.2x2"
         case .courseTypes: "tag"
         }
     }
@@ -411,7 +395,6 @@ private enum DataCenterSection: String, CaseIterable, Identifiable {
         case .instructors: .instructor(nil)
         case .ageGroups: .ageGroup(nil)
         case .rooms: .room(nil)
-        case .categories: .category(nil)
         case .courseTypes: .courseType(nil)
         }
     }
@@ -420,7 +403,6 @@ private enum DataCenterSection: String, CaseIterable, Identifiable {
 private enum DataCenterEditor: Identifiable {
     case term(Term?)
     case holiday(TermHoliday?)
-    case category(CourseCategory?)
     case courseType(CourseType?)
     case ageGroup(AgeGroup?)
     case room(Room?)
@@ -430,7 +412,6 @@ private enum DataCenterEditor: Identifiable {
         switch self {
         case let .term(value): "term-\(value?.id.description ?? "new")"
         case let .holiday(value): "holiday-\(value?.id.description ?? "new")"
-        case let .category(value): "category-\(value?.id.description ?? "new")"
         case let .courseType(value): "type-\(value?.id.description ?? "new")"
         case let .ageGroup(value): "age-\(value?.id.description ?? "new")"
         case let .room(value): "room-\(value?.id.description ?? "new")"
@@ -442,7 +423,6 @@ private enum DataCenterEditor: Identifiable {
 private enum DataCenterDeletion {
     case term(TermID, String)
     case holiday(TermHolidayID, String)
-    case category(CourseCategoryID, String)
     case courseType(CourseTypeID, String)
     case ageGroup(AgeGroupID, String)
     case room(RoomID, String)
@@ -452,7 +432,6 @@ private enum DataCenterDeletion {
         switch self {
         case let .term(_, name),
              let .holiday(_, name),
-             let .category(_, name),
              let .courseType(_, name),
              let .ageGroup(_, name),
              let .room(_, name),
@@ -609,7 +588,6 @@ private struct HolidayDataEditorView: View {
 }
 
 private enum ReferenceEditorTarget {
-    case category(CourseCategory?)
     case courseType(CourseType?)
     case ageGroup(AgeGroup?)
     case room(Room?)
@@ -617,7 +595,6 @@ private enum ReferenceEditorTarget {
 
     var title: String {
         switch self {
-        case .category: "课程分类"
         case .courseType: "课程种类"
         case .ageGroup: "年龄段"
         case .room: "教室"
@@ -643,11 +620,6 @@ private struct ReferenceDataEditorView: View {
         self.model = model
         self.target = target
         switch target {
-        case let .category(value):
-            _name = State(initialValue: value?.name ?? "")
-            _notes = State(initialValue: "")
-            _isActive = State(initialValue: value?.isActive ?? true)
-            _isPrivate = State(initialValue: false)
         case let .courseType(value):
             _name = State(initialValue: value?.name ?? "")
             _notes = State(initialValue: value?.notes ?? "")
@@ -699,7 +671,7 @@ private struct ReferenceDataEditorView: View {
     private var showsNotes: Bool {
         switch target {
         case .courseType, .ageGroup, .instructor: true
-        case .category, .room: false
+        case .room: false
         }
     }
 
@@ -710,11 +682,6 @@ private struct ReferenceDataEditorView: View {
         Task {
             do {
                 switch target {
-                case let .category(original):
-                    var value = original ?? CourseCategory(name: trimmedName)
-                    value.name = trimmedName
-                    value.isActive = isActive
-                    try await model.saveCourseCategory(value)
                 case let .courseType(original):
                     var value = original ?? CourseType(name: trimmedName, isPrivate: isPrivate)
                     value.name = trimmedName

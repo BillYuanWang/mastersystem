@@ -12,7 +12,6 @@ struct ScheduleWorkspaceView: View {
     @State private var weekStart = Date().startOfWeek()
     @State private var roomScope = RoomScope.both
     @State private var selectedSessionID: ClassSessionID?
-    @State private var selectedCategoryIDs: Set<CourseCategoryID> = []
     @State private var searchText = ""
     @State private var zoom = 1.0
     @State private var showingPrintPreview = false
@@ -127,30 +126,6 @@ struct ScheduleWorkspaceView: View {
             .labelsHidden()
             .frame(width: 238)
 
-            Menu {
-                ForEach(model.categories) { category in
-                    Button {
-                        toggleCategory(category.id)
-                    } label: {
-                        Label(
-                            category.name,
-                            systemImage: selectedCategoryIDs.contains(category.id) ? "checkmark" : "circle"
-                        )
-                    }
-                }
-                Divider()
-                Button("清除分类筛选") {
-                    selectedCategoryIDs.removeAll()
-                }
-                .disabled(selectedCategoryIDs.isEmpty)
-            } label: {
-                Image(systemName: selectedCategoryIDs.isEmpty ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .frame(width: MDMetrics.controlHeight, height: MDMetrics.controlHeight)
-            .help("课程分类筛选")
-
             TextField("搜索", text: $searchText)
                 .textFieldStyle(.roundedBorder)
                 .font(MDType.compact)
@@ -209,13 +184,10 @@ struct ScheduleWorkspaceView: View {
                 return false
             }
 
-            if !selectedCategoryIDs.isEmpty, !selectedCategoryIDs.contains(course.categoryID) {
-                return false
-            }
             if !query.isEmpty {
-                let category = model.category(id: course.categoryID)?.name ?? ""
+                let courseType = model.courseType(id: course.courseTypeID)?.name ?? ""
                 let instructor = model.effectiveInstructor(for: session)?.displayName ?? ""
-                return [course.name, category, instructor].contains {
+                return [course.name, courseType, instructor].contains {
                     $0.localizedCaseInsensitiveContains(query)
                 }
             }
@@ -234,13 +206,6 @@ struct ScheduleWorkspaceView: View {
         selectedSessionID = nil
     }
 
-    private func toggleCategory(_ categoryID: CourseCategoryID) {
-        if selectedCategoryIDs.contains(categoryID) {
-            selectedCategoryIDs.remove(categoryID)
-        } else {
-            selectedCategoryIDs.insert(categoryID)
-        }
-    }
 }
 
 private struct SchedulePrintPreview: View {

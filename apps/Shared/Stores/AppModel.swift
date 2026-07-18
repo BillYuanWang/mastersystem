@@ -9,7 +9,7 @@ final class AppModel {
 
     var terms: [Term] = []
     var termHolidays: [TermHoliday] = []
-    var categories: [CourseCategory] = []
+    private var courseCategories: [CourseCategory] = []
     var courseTypes: [CourseType] = []
     var ageGroups: [AgeGroup] = []
     var rooms: [Room] = []
@@ -43,7 +43,9 @@ final class AppModel {
         do {
             terms = try await repository.listTerms().sorted { $0.startsOn > $1.startsOn }
             termHolidays = try await repository.listTermHolidays(termID: nil).sorted { $0.startsOn < $1.startsOn }
-            categories = try await repository.listCourseCategories().sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+            courseCategories = try await repository.listCourseCategories().sorted {
+                $0.name.localizedCompare($1.name) == .orderedAscending
+            }
             courseTypes = try await repository.listCourseTypes().sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
             ageGroups = try await repository.listAgeGroups().sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
             rooms = try await repository.listRooms().sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
@@ -74,10 +76,6 @@ final class AppModel {
 
     func term(id: TermID) -> Term? {
         terms.first { $0.id == id }
-    }
-
-    func category(id: CourseCategoryID) -> CourseCategory? {
-        categories.first { $0.id == id }
     }
 
     func courseType(id: CourseTypeID) -> CourseType? {
@@ -186,16 +184,6 @@ final class AppModel {
         await reload()
     }
 
-    func saveCourseCategory(_ category: CourseCategory) async throws {
-        try await repository.save(courseCategory: category)
-        await reload()
-    }
-
-    func deleteCourseCategory(id: CourseCategoryID) async throws {
-        try await repository.deleteCourseCategory(id: id)
-        await reload()
-    }
-
     func saveCourseType(_ courseType: CourseType) async throws {
         try await repository.save(courseType: courseType)
         await reload()
@@ -256,7 +244,6 @@ final class AppModel {
         guard
             !trimmedName.isEmpty,
             let termID = draft.termID,
-            let categoryID = draft.categoryID,
             let ageGroupID = draft.ageGroupID,
             let roomID = draft.roomID,
             let instructorID = draft.instructorID,
@@ -265,6 +252,7 @@ final class AppModel {
         else {
             throw AppModelError.missingCourseFields
         }
+        let categoryID = try await hiddenCourseCategoryID()
 
         let course = Course(
             termID: termID,
@@ -305,8 +293,6 @@ final class AppModel {
         guard !trimmedName.isEmpty else { return }
 
         switch kind {
-        case .category:
-            try await repository.save(courseCategory: CourseCategory(name: trimmedName))
         case .ageGroup:
             try await repository.save(ageGroup: AgeGroup(name: trimmedName))
         case .room:
@@ -315,6 +301,17 @@ final class AppModel {
             try await repository.save(instructor: Instructor(displayName: trimmedName))
         }
         await reload()
+    }
+
+    private func hiddenCourseCategoryID() async throws -> CourseCategoryID {
+        if let existing = courseCategories.first(where: \.isActive) ?? courseCategories.first {
+            return existing.id
+        }
+
+        let fallback = CourseCategory(name: "系统默认")
+        try await repository.save(courseCategory: fallback)
+        courseCategories.append(fallback)
+        return fallback.id
     }
 
     func createGuardian(

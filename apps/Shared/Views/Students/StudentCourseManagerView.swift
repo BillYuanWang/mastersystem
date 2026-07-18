@@ -89,7 +89,7 @@ struct StudentCourseManagerView: View {
         return HStack(alignment: .top, spacing: 8) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(theme.courseColor(index: course.flatMap { course in
-                    model.categories.firstIndex(where: { $0.id == course.categoryID })
+                    model.courseTypes.firstIndex(where: { $0.id == course.courseTypeID })
                 } ?? 0))
                 .frame(width: 4)
 

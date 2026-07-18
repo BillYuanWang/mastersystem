@@ -57,7 +57,6 @@ enum SetupSection: String, CaseIterable, Identifiable {
 }
 
 enum ReferenceKind: String, CaseIterable, Identifiable {
-    case category
     case ageGroup
     case room
     case instructor
@@ -66,7 +65,6 @@ enum ReferenceKind: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .category: "课程分类"
         case .ageGroup: "年龄段"
         case .room: "教室"
         case .instructor: "授课老师"
@@ -75,7 +73,6 @@ enum ReferenceKind: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .category: "square.grid.2x2"
         case .ageGroup: "person.2"
         case .room: "door.left.hand.open"
         case .instructor: "person.crop.rectangle"
@@ -102,7 +99,6 @@ enum RoomScope: String, CaseIterable, Identifiable {
 struct CourseCreationDraft {
     var name = ""
     var termID: TermID?
-    var categoryID: CourseCategoryID?
     var ageGroupID: AgeGroupID?
     var roomID: RoomID?
     var instructorID: InstructorID?
@@ -127,7 +123,7 @@ enum AppModelError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingCourseFields: "请完成课程名称、学期、分类、课程种类、年龄段、教室和老师。"
+        case .missingCourseFields: "请完成课程名称、学期、课程种类、年龄段、教室和老师。"
         case .missingEnrollmentFields: "请选择学生和课程。"
         case .invalidTermRange: "结束日期必须晚于开始日期。"
         case .holidayOutsideTerm: "假期日期必须位于所选学期内。"

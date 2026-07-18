@@ -48,15 +48,6 @@ struct CourseEditorView: View {
                                     .labelsHidden()
                                 }
                                 GridRow {
-                                    fieldLabel("课程分类")
-                                    Picker("", selection: $draft.categoryID) {
-                                        ForEach(model.categories) { category in
-                                            Text(category.name).tag(Optional(category.id))
-                                        }
-                                    }
-                                    .labelsHidden()
-                                }
-                                GridRow {
                                     fieldLabel("年龄段")
                                     Picker("", selection: $draft.ageGroupID) {
                                         ForEach(model.ageGroups) { ageGroup in
@@ -241,7 +232,6 @@ struct CourseEditorView: View {
     private var canSave: Bool {
         !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && draft.termID != nil
-            && draft.categoryID != nil
             && draft.ageGroupID != nil
             && draft.roomID != nil
             && draft.instructorID != nil
@@ -347,7 +337,6 @@ struct CourseEditorView: View {
         guard !didConfigure else { return }
         didConfigure = true
         draft.termID = model.terms.first?.id
-        draft.categoryID = model.categories.first?.id
         draft.ageGroupID = model.ageGroups.first?.id
         draft.roomID = model.rooms.first?.id
         draft.instructorID = model.instructors.first?.id
