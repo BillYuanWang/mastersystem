@@ -125,12 +125,18 @@ enum AppModelError: LocalizedError {
     case missingCourseFields
     case missingEnrollmentFields
     case invalidTermRange
+    case missingGuardianName
+    case invalidGuardianEmail
+    case missingStudentName
 
     var errorDescription: String? {
         switch self {
         case .missingCourseFields: "请完成课程名称、学期、分类、年龄段、教室和老师。"
         case .missingEnrollmentFields: "请选择学生和课程。"
         case .invalidTermRange: "结束日期必须晚于开始日期。"
+        case .missingGuardianName: "请输入监护人姓名。"
+        case .invalidGuardianEmail: "请输入有效的监护人邮箱。"
+        case .missingStudentName: "请输入学员姓名。"
         }
     }
 }

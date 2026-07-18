@@ -179,20 +179,50 @@ public struct Guardian: Identifiable, Codable, Equatable, Sendable {
     public var displayName: String
     public var email: String?
     public var phone: String?
+    public var profileUserID: UUID?
     public var studentIDs: Set<StudentID>
+    public var activeLinkCodeHint: String?
+    public var activeLinkCodeExpiresAt: Date?
 
     public init(
         id: GuardianID = GuardianID(),
         displayName: String,
         email: String? = nil,
         phone: String? = nil,
-        studentIDs: Set<StudentID> = []
+        profileUserID: UUID? = nil,
+        studentIDs: Set<StudentID> = [],
+        activeLinkCodeHint: String? = nil,
+        activeLinkCodeExpiresAt: Date? = nil
     ) {
         self.id = id
         self.displayName = displayName
         self.email = email
         self.phone = phone
+        self.profileUserID = profileUserID
         self.studentIDs = studentIDs
+        self.activeLinkCodeHint = activeLinkCodeHint
+        self.activeLinkCodeExpiresAt = activeLinkCodeExpiresAt
+    }
+
+    public var isAccountLinked: Bool {
+        profileUserID != nil
+    }
+}
+
+public struct GuardianLinkCode: Identifiable, Codable, Equatable, Sendable {
+    public var id: GuardianID { guardianID }
+    public let guardianID: GuardianID
+    public let code: String
+    public let expiresAt: Date
+
+    public init(
+        guardianID: GuardianID,
+        code: String,
+        expiresAt: Date
+    ) {
+        self.guardianID = guardianID
+        self.code = code
+        self.expiresAt = expiresAt
     }
 }
 

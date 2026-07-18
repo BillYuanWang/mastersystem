@@ -133,6 +133,55 @@ struct PreviewMasterDanceStoreTests {
         #expect(secondGuardians == [guardian])
     }
 
+    @Test("A family owns child and adult learner profiles")
+    func familyCreatesMultipleLearners() async throws {
+        let guardian = Guardian(displayName: "Family")
+        let child = Student(displayName: "Child", kind: .child)
+        let adult = Student(displayName: "Adult Self", kind: .adult)
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(guardians: [guardian])
+        )
+
+        _ = try await store.create(student: child, for: guardian.id)
+        _ = try await store.create(student: adult, for: guardian.id)
+
+        let savedGuardian = try #require(
+            try await store.listGuardians(studentID: nil).first
+        )
+        #expect(savedGuardian.studentIDs == [child.id, adult.id])
+    }
+
+    @Test("Guardian link codes are one-time display values")
+    func guardianLinkCode() async throws {
+        let guardian = Guardian(displayName: "Family")
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(guardians: [guardian])
+        )
+
+        let issued = try await store.issueGuardianLinkCode(guardianID: guardian.id)
+        let updated = try #require(
+            try await store.listGuardians(studentID: nil).first
+        )
+
+        #expect(issued.guardianID == guardian.id)
+        #expect(issued.code.hasPrefix("MD-"))
+        #expect(updated.activeLinkCodeHint == String(issued.code.suffix(4)))
+        #expect(updated.activeLinkCodeExpiresAt == issued.expiresAt)
+    }
+
+    @Test("Existing learners can be placed into a family")
+    func linksExistingStudent() async throws {
+        let guardian = Guardian(displayName: "Family")
+        let student = Student(displayName: "Existing", kind: .child)
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(students: [student], guardians: [guardian])
+        )
+
+        try await store.link(studentID: student.id, to: guardian.id)
+        let linked = try await store.listGuardians(studentID: student.id)
+        #expect(linked.map(\.id) == [guardian.id])
+    }
+
     @Test("Appearance retains all requested modes")
     func appearanceModes() {
         #expect(Set(AppearancePreference.allCases) == [.system, .light, .dark])

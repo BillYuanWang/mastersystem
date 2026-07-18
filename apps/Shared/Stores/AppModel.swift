@@ -92,6 +92,24 @@ final class AppModel {
         students.first { $0.id == id }
     }
 
+    func guardian(id: GuardianID) -> Guardian? {
+        guardians.first { $0.id == id }
+    }
+
+    func students(for guardianID: GuardianID) -> [Student] {
+        guard let guardian = guardian(id: guardianID) else { return [] }
+        return students
+            .filter { guardian.studentIDs.contains($0.id) }
+            .sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+    }
+
+    var unassignedStudents: [Student] {
+        let assignedIDs = Set(guardians.flatMap(\.studentIDs))
+        return students
+            .filter { !assignedIDs.contains($0.id) }
+            .sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+    }
+
     func session(id: ClassSessionID) -> ClassSession? {
         sessions.first { $0.id == id }
     }
@@ -188,20 +206,67 @@ final class AppModel {
         await reload()
     }
 
-    func createStudent(displayName: String, kind: StudentKind, guardianName: String) async throws {
+    func createGuardian(
+        displayName: String,
+        email: String,
+        phone: String
+    ) async throws -> GuardianLinkCode {
+        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmedPhone = phone.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw AppModelError.missingGuardianName
+        }
+        if !trimmedEmail.isEmpty, !trimmedEmail.contains("@") {
+            throw AppModelError.invalidGuardianEmail
+        }
+
+        let guardian = Guardian(
+            displayName: trimmedName,
+            email: trimmedEmail.isEmpty ? nil : trimmedEmail,
+            phone: trimmedPhone.isEmpty ? nil : trimmedPhone
+        )
+        try await repository.save(guardian: guardian)
+
+        do {
+            let code = try await repository.issueGuardianLinkCode(guardianID: guardian.id)
+            await reload()
+            return code
+        } catch {
+            await reload()
+            throw error
+        }
+    }
+
+    func createStudent(
+        displayName: String,
+        legalName: String,
+        kind: StudentKind,
+        guardianID: GuardianID
+    ) async throws {
+        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLegalName = legalName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw AppModelError.missingStudentName
+        }
         let student = Student(
-            displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+            displayName: trimmedName,
+            legalName: trimmedLegalName.isEmpty ? nil : trimmedLegalName,
             kind: kind
         )
-        try await repository.save(student: student)
-
-        let trimmedGuardian = guardianName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if kind == .child, !trimmedGuardian.isEmpty {
-            try await repository.save(
-                guardian: Guardian(displayName: trimmedGuardian, studentIDs: [student.id])
-            )
-        }
+        _ = try await repository.create(student: student, for: guardianID)
         await reload()
+    }
+
+    func link(studentID: StudentID, to guardianID: GuardianID) async throws {
+        try await repository.link(studentID: studentID, to: guardianID)
+        await reload()
+    }
+
+    func issueGuardianLinkCode(guardianID: GuardianID) async throws -> GuardianLinkCode {
+        let code = try await repository.issueGuardianLinkCode(guardianID: guardianID)
+        await reload()
+        return code
     }
 
     func enroll(studentID: StudentID, courseID: CourseID) async throws {

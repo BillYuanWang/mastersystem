@@ -322,6 +322,7 @@ struct GuardianRow: Codable, Sendable {
     let id: UUID
     let organizationID: UUID
     let displayName: String
+    let profileUserID: UUID?
     let email: String?
     let phone: String?
 
@@ -329,6 +330,7 @@ struct GuardianRow: Codable, Sendable {
         case id
         case organizationID = "organization_id"
         case displayName = "display_name"
+        case profileUserID = "profile_user_id"
         case email
         case phone
     }
@@ -337,8 +339,77 @@ struct GuardianRow: Codable, Sendable {
         id = guardian.id.rawValue
         self.organizationID = organizationID
         displayName = guardian.displayName
+        profileUserID = guardian.profileUserID
         email = guardian.email
         phone = guardian.phone
+    }
+}
+
+struct GuardianLinkStatusRow: Decodable, Sendable {
+    let guardianID: UUID
+    let linkedUserID: UUID?
+    let activeCodeHint: String?
+    let activeCodeExpiresAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case guardianID = "guardian_id"
+        case linkedUserID = "linked_user_id"
+        case activeCodeHint = "active_code_hint"
+        case activeCodeExpiresAt = "active_code_expires_at"
+    }
+}
+
+struct GuardianLinkCodeRow: Decodable, Sendable {
+    let guardianID: UUID
+    let linkCode: String
+    let expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case guardianID = "guardian_id"
+        case linkCode = "link_code"
+        case expiresAt = "expires_at"
+    }
+
+    func domain() throws -> GuardianLinkCode {
+        GuardianLinkCode(
+            guardianID: GuardianID(serverID: guardianID),
+            code: linkCode,
+            expiresAt: try SupabaseDateCodec.timestamp(from: expiresAt)
+        )
+    }
+}
+
+struct CreateStudentForGuardianParameters: Encodable, Sendable {
+    let guardianID: UUID
+    let displayName: String
+    let legalName: String?
+    let kind: String
+
+    enum CodingKeys: String, CodingKey {
+        case guardianID = "target_guardian_id"
+        case displayName = "target_display_name"
+        case legalName = "target_legal_name"
+        case kind = "target_kind"
+    }
+}
+
+struct LinkStudentToGuardianParameters: Encodable, Sendable {
+    let guardianID: UUID
+    let studentID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case guardianID = "target_guardian_id"
+        case studentID = "target_student_id"
+    }
+}
+
+struct IssueGuardianLinkCodeParameters: Encodable, Sendable {
+    let guardianID: UUID
+    let validityDays: Int
+
+    enum CodingKeys: String, CodingKey {
+        case guardianID = "target_guardian_id"
+        case validityDays = "validity_days"
     }
 }
 

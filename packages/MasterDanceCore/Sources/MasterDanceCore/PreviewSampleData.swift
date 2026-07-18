@@ -94,11 +94,17 @@ public extension PreviewData {
         let students = studentNames.enumerated().map { index, name in
             Student(displayName: name, kind: index < 10 ? .child : .adult)
         }
-        let guardians = students.prefix(10).enumerated().map { index, student in
-            Guardian(
-                displayName: "\(student.displayName)家长",
-                email: "guardian\(index + 1)@example.com",
-                studentIDs: [student.id]
+        let guardians = students.enumerated().map { index, student in
+            let isAdult = student.kind == .adult
+            let isLinked = index.isMultiple(of: 3)
+            return Guardian(
+                displayName: isAdult ? student.displayName : "\(student.displayName)家长",
+                email: isAdult ? "adult\(index + 1)@example.com" : "guardian\(index + 1)@example.com",
+                phone: "949-555-\(String(format: "%04d", index + 100))",
+                profileUserID: isLinked ? UUID() : nil,
+                studentIDs: [student.id],
+                activeLinkCodeHint: isLinked ? nil : "A\(String(format: "%03d", index))",
+                activeLinkCodeExpiresAt: isLinked ? nil : calendar.date(byAdding: .day, value: 30, to: now)
             )
         }
 

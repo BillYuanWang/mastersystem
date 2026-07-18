@@ -1,0 +1,323 @@
+#if os(macOS)
+import MasterDanceCore
+import SwiftUI
+
+@MainActor
+struct GuardianInspectorView: View {
+    let model: AppModel
+    let guardian: Guardian
+
+    @State private var selectedStudentID: StudentID?
+    @State private var showingLearnerEditor = false
+    @State private var issuedCode: GuardianLinkCode?
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                guardianSummary(theme: theme)
+                    .padding(16)
+
+                Divider()
+
+                accountSection(theme: theme)
+                    .padding(16)
+
+                Divider()
+
+                learnerSection(theme: theme)
+                    .padding(16)
+
+                if let selectedStudent {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(selectedStudent.displayName)
+                                    .font(MDType.bodyStrong)
+                                Text(selectedStudent.kind == .adult ? "成人学员" : "少儿学员")
+                                    .font(MDType.mono)
+                                    .foregroundStyle(theme.secondaryText)
+                            }
+                            Spacer()
+                        }
+
+                        StudentCourseManagerView(model: model, student: selectedStudent)
+                            .id(selectedStudent.id)
+                    }
+                    .padding(16)
+                }
+            }
+        }
+        .foregroundStyle(theme.primaryText)
+        .background(theme.surface)
+        .task(id: guardian.studentIDs) {
+            chooseStudent()
+        }
+        .sheet(isPresented: $showingLearnerEditor) {
+            LearnerEditorView(model: model, guardianID: guardian.id)
+        }
+        .sheet(item: $issuedCode) { code in
+            GuardianLinkCodeSheet(code: code)
+        }
+    }
+
+    private var learners: [Student] {
+        model.students(for: guardian.id)
+    }
+
+    private var selectedStudent: Student? {
+        guard let selectedStudentID else { return nil }
+        return model.student(id: selectedStudentID)
+    }
+
+    private func guardianSummary(theme: MDTheme) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(guardian.displayName)
+                .font(MDType.bodyStrong)
+
+            if let email = guardian.email, !email.isEmpty {
+                Label(email, systemImage: "envelope")
+                    .font(MDType.compact)
+                    .foregroundStyle(theme.secondaryText)
+                    .textSelection(.enabled)
+            }
+            if let phone = guardian.phone, !phone.isEmpty {
+                Label(phone, systemImage: "phone")
+                    .font(MDType.compact)
+                    .foregroundStyle(theme.secondaryText)
+                    .textSelection(.enabled)
+            }
+            if guardian.email == nil, guardian.phone == nil {
+                Text("未填写联系方式")
+                    .font(MDType.compact)
+                    .foregroundStyle(theme.secondaryText)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func accountSection(theme: MDTheme) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("学员帐号")
+                    .font(MDType.bodyStrong)
+                Spacer()
+                HStack(spacing: 6) {
+                    MDStatusDot(color: guardian.isAccountLinked ? theme.success : theme.warning)
+                    Text(guardian.isAccountLinked ? "已连接" : "待认领")
+                        .font(MDType.compactStrong)
+                }
+            }
+
+            if guardian.isAccountLinked {
+                Text("监护人帐号已连接此家庭。")
+                    .font(MDType.compact)
+                    .foregroundStyle(theme.secondaryText)
+            } else {
+                if let hint = guardian.activeLinkCodeHint {
+                    HStack {
+                        Text("现有码")
+                            .font(MDType.compact)
+                            .foregroundStyle(theme.secondaryText)
+                        Text("•••• \(hint)")
+                            .font(MDType.monoStrong)
+                        Spacer()
+                        if let expiresAt = guardian.activeLinkCodeExpiresAt {
+                            Text(expiresAt.formatted(date: .numeric, time: .omitted))
+                                .font(MDType.mono)
+                                .foregroundStyle(theme.secondaryText)
+                        }
+                    }
+                }
+
+                Button {
+                    issueLinkCode()
+                } label: {
+                    Label(
+                        guardian.activeLinkCodeHint == nil ? "生成监护人码" : "重新生成监护人码",
+                        systemImage: guardian.activeLinkCodeHint == nil ? "key" : "arrow.clockwise"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .disabled(isWorking)
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(MDType.compact)
+                    .foregroundStyle(theme.danger)
+            }
+        }
+    }
+
+    private func learnerSection(theme: MDTheme) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("学员档案")
+                    .font(MDType.bodyStrong)
+                Text("\(learners.count)")
+                    .font(MDType.monoStrong)
+                    .foregroundStyle(theme.secondaryText)
+                Spacer()
+                Button {
+                    showingLearnerEditor = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(MDIconButtonStyle())
+                .help("在此家庭添加学员")
+            }
+
+            if learners.isEmpty {
+                Text("尚无学员档案")
+                    .font(MDType.compact)
+                    .foregroundStyle(theme.secondaryText)
+                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            }
+
+            ForEach(learners) { learner in
+                Button {
+                    selectedStudentID = learner.id
+                } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: learner.kind == .adult ? "person" : "figure.child")
+                            .frame(width: 16)
+                        Text(learner.displayName)
+                            .font(MDType.bodyStrong)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(learner.kind == .adult ? "成人" : "少儿")
+                            .font(MDType.compact)
+                            .foregroundStyle(theme.secondaryText)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(theme.secondaryText)
+                    }
+                    .padding(.horizontal, 9)
+                    .frame(height: 34)
+                    .contentShape(Rectangle())
+                    .background(
+                        selectedStudentID == learner.id ? theme.accent.opacity(0.11) : .clear,
+                        in: RoundedRectangle(cornerRadius: MDMetrics.radius)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func chooseStudent() {
+        if let selectedStudentID, learners.contains(where: { $0.id == selectedStudentID }) {
+            return
+        }
+        selectedStudentID = learners.first?.id
+    }
+
+    private func issueLinkCode() {
+        isWorking = true
+        errorMessage = nil
+        Task {
+            do {
+                issuedCode = try await model.issueGuardianLinkCode(guardianID: guardian.id)
+                isWorking = false
+            } catch {
+                errorMessage = error.localizedDescription
+                isWorking = false
+            }
+        }
+    }
+}
+
+@MainActor
+struct UnassignedStudentInspectorView: View {
+    let model: AppModel
+    let student: Student
+    let onLinked: (GuardianID) -> Void
+
+    @State private var selectedGuardianID: GuardianID?
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(student.displayName)
+                        .font(MDType.bodyStrong)
+                    Text(student.kind == .adult ? "成人学员 · 待归档" : "少儿学员 · 待归档")
+                        .font(MDType.mono)
+                        .foregroundStyle(theme.warning)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("归入家庭")
+                        .font(MDType.bodyStrong)
+                    Picker("监护人", selection: $selectedGuardianID) {
+                        Text("选择监护人").tag(Optional<GuardianID>.none)
+                        ForEach(model.guardians) { guardian in
+                            Text(guardian.displayName).tag(Optional(guardian.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
+
+                    Button {
+                        archiveStudent()
+                    } label: {
+                        Label("完成归档", systemImage: "tray.and.arrow.down")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .disabled(selectedGuardianID == nil || isWorking)
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(MDType.compact)
+                            .foregroundStyle(theme.danger)
+                    }
+                }
+                .padding(16)
+
+                Divider()
+
+                StudentCourseManagerView(model: model, student: student)
+                    .padding(16)
+            }
+        }
+        .foregroundStyle(theme.primaryText)
+        .background(theme.surface)
+        .task {
+            if selectedGuardianID == nil {
+                selectedGuardianID = model.guardians.first?.id
+            }
+        }
+    }
+
+    private func archiveStudent() {
+        guard let selectedGuardianID else { return }
+        isWorking = true
+        errorMessage = nil
+        Task {
+            do {
+                try await model.link(studentID: student.id, to: selectedGuardianID)
+                onLinked(selectedGuardianID)
+                isWorking = false
+            } catch {
+                errorMessage = error.localizedDescription
+                isWorking = false
+            }
+        }
+    }
+}
+#endif

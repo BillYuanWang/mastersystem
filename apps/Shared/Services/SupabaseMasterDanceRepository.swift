@@ -180,6 +180,20 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
             .execute()
             .value
 
+        let linkStatuses: [GuardianLinkStatusRow]
+        do {
+            linkStatuses = try await client
+                .rpc("admin_list_guardian_link_statuses")
+                .execute()
+                .value
+        } catch {
+            // Keeps an older backend readable while a new app/backend release rolls out.
+            linkStatuses = []
+        }
+        let linkStatusByGuardian = Dictionary(
+            uniqueKeysWithValues: linkStatuses.map { ($0.guardianID, $0) }
+        )
+
         let links: [GuardianStudentRow]
         if let studentID {
             links = try await client
@@ -200,16 +214,26 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
             .mapValues { Set($0.map { StudentID(serverID: $0.studentID) }) }
         let allowedGuardianIDs = Set(links.map(\.guardianID))
 
-        return guardianRows.compactMap { row in
+        return try guardianRows.compactMap { row in
             if studentID != nil, !allowedGuardianIDs.contains(row.id) {
                 return nil
+            }
+            let status = linkStatusByGuardian[row.id]
+            let activeCodeExpiresAt: Date?
+            if let value = status?.activeCodeExpiresAt {
+                activeCodeExpiresAt = try SupabaseDateCodec.timestamp(from: value)
+            } else {
+                activeCodeExpiresAt = nil
             }
             return Guardian(
                 id: GuardianID(serverID: row.id),
                 displayName: row.displayName,
                 email: row.email,
                 phone: row.phone,
-                studentIDs: studentIDsByGuardian[row.id] ?? []
+                profileUserID: status?.linkedUserID ?? row.profileUserID,
+                studentIDs: studentIDsByGuardian[row.id] ?? [],
+                activeLinkCodeHint: status?.activeCodeHint,
+                activeLinkCodeExpiresAt: activeCodeExpiresAt
             )
         }
     }
@@ -224,23 +248,52 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
             .upsert(GuardianRow(guardian, organizationID: organizationID))
             .execute()
 
-        try await client
-            .from("guardian_students")
-            .delete()
-            .eq("guardian_id", value: guardian.id.rawValue)
-            .execute()
+        for studentID in guardian.studentIDs {
+            try await link(studentID: studentID, to: guardian.id)
+        }
+    }
 
-        let links = guardian.studentIDs.map {
-            GuardianStudentRow(
-                organizationID: organizationID,
-                guardianID: guardian.id.rawValue,
-                studentID: $0.rawValue,
-                isPrimary: false
+    func create(student: Student, for guardianID: GuardianID) async throws -> Student {
+        let created: StudentRow = try await client
+            .rpc(
+                "admin_create_student_for_guardian",
+                params: CreateStudentForGuardianParameters(
+                    guardianID: guardianID.rawValue,
+                    displayName: student.displayName,
+                    legalName: student.legalName,
+                    kind: student.kind.rawValue
+                )
             )
-        }
-        if !links.isEmpty {
-            try await client.from("guardian_students").insert(links).execute()
-        }
+            .execute()
+            .value
+        return try created.domain()
+    }
+
+    func link(studentID: StudentID, to guardianID: GuardianID) async throws {
+        let _: GuardianStudentRow = try await client
+            .rpc(
+                "admin_link_student_to_guardian",
+                params: LinkStudentToGuardianParameters(
+                    guardianID: guardianID.rawValue,
+                    studentID: studentID.rawValue
+                )
+            )
+            .execute()
+            .value
+    }
+
+    func issueGuardianLinkCode(guardianID: GuardianID) async throws -> GuardianLinkCode {
+        let issued: GuardianLinkCodeRow = try await client
+            .rpc(
+                "admin_issue_guardian_link_code",
+                params: IssueGuardianLinkCodeParameters(
+                    guardianID: guardianID.rawValue,
+                    validityDays: 30
+                )
+            )
+            .execute()
+            .value
+        return try issued.domain()
     }
 
     func listEnrollments(

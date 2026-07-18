@@ -1,8 +1,8 @@
 # Master Dance
 
-Current test release: `v0.1.0`.
+Current test release: `v0.1.3`.
 
-Phase 4 native MD Desk macOS app and Supabase backend for the production Master Dance system.
+Native MD Desk macOS app and Supabase backend for the production Master Dance system.
 
 Master Dance formal product backend. / Master Dance 正式产品云端后端。
 
@@ -28,9 +28,13 @@ available as the Codex `Run` action. Optional modes are `--verify`, `--debug`,
 `--logs`, and `--telemetry`.
 
 MD Desk accepts administrator accounts only. The first Auth user completes the
-one-time school activation after signing in; after that, additional
-administrators are invited from the account menu inside MD Desk. There is no
-public administrator registration path.
+one-time school activation after signing in; additional administrators are
+invited from the account menu. There is no public administrator registration
+path.
+
+Administrators create a guardian first, add one or more child or adult learner
+profiles inside that family, then issue a hashed, expiring, one-time guardian
+code. A future iPhone account claims that code to access only its linked family.
 
 ## Verify Swift
 
@@ -64,8 +68,9 @@ See `supabase/README.md` and `docs/backend-operations.md` for deployment and rec
 
 ## Current boundaries
 
-The MVP supports term enrollment, scheduling, students and guardians,
-attendance, leave handling, contract-consent records, and notification records.
+The MVP supports term enrollment, scheduling, guardian-first learner profiles,
+one-time account linking, course enrollment, attendance, leave handling,
+contract-consent records, and notification records.
 Course categories, age groups, rooms, instructors, and course names are
 user-managed data. Pricing, per-class enrollment, credits, exceptional rule
 engines, parent course selection, and teacher login are intentionally absent.

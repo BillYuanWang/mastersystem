@@ -94,6 +94,56 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
     public func save(student: Student) { upsert(student, in: &data.students) }
     public func save(guardian: Guardian) { upsert(guardian, in: &data.guardians) }
 
+    public func create(student: Student, for guardianID: GuardianID) throws -> Student {
+        guard let guardianIndex = data.guardians.firstIndex(where: { $0.id == guardianID }) else {
+            throw PreviewRepositoryError.guardianNotFound
+        }
+
+        upsert(student, in: &data.students)
+        data.guardians[guardianIndex].studentIDs.insert(student.id)
+        return student
+    }
+
+    public func link(studentID: StudentID, to guardianID: GuardianID) throws {
+        guard data.students.contains(where: { $0.id == studentID }) else {
+            throw PreviewRepositoryError.studentNotFound
+        }
+        guard let guardianIndex = data.guardians.firstIndex(where: { $0.id == guardianID }) else {
+            throw PreviewRepositoryError.guardianNotFound
+        }
+        data.guardians[guardianIndex].studentIDs.insert(studentID)
+    }
+
+    public func issueGuardianLinkCode(guardianID: GuardianID) throws -> GuardianLinkCode {
+        guard let guardianIndex = data.guardians.firstIndex(where: { $0.id == guardianID }) else {
+            throw PreviewRepositoryError.guardianNotFound
+        }
+        guard !data.guardians[guardianIndex].isAccountLinked else {
+            throw PreviewRepositoryError.guardianAlreadyLinked
+        }
+
+        let randomPart = String(
+            UUID().uuidString
+                .replacingOccurrences(of: "-", with: "")
+                .uppercased()
+                .prefix(20)
+        )
+        let groups = stride(from: 0, to: randomPart.count, by: 4).map { offset in
+            let start = randomPart.index(randomPart.startIndex, offsetBy: offset)
+            let remaining = randomPart.distance(from: start, to: randomPart.endIndex)
+            let end = randomPart.index(start, offsetBy: min(4, remaining))
+            return String(randomPart[start..<end])
+        }
+        let expiresAt = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+        data.guardians[guardianIndex].activeLinkCodeHint = String(randomPart.suffix(4))
+        data.guardians[guardianIndex].activeLinkCodeExpiresAt = expiresAt
+        return GuardianLinkCode(
+            guardianID: guardianID,
+            code: "MD-" + groups.joined(separator: "-"),
+            expiresAt: expiresAt
+        )
+    }
+
     public func listEnrollments(
         termID: TermID? = nil,
         courseID: CourseID? = nil,
@@ -170,5 +220,22 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
 
     private func remove<Value: Identifiable>(id: Value.ID, from values: inout [Value]) where Value.ID: Equatable {
         values.removeAll { $0.id == id }
+    }
+}
+
+public enum PreviewRepositoryError: LocalizedError, Sendable {
+    case guardianNotFound
+    case studentNotFound
+    case guardianAlreadyLinked
+
+    public var errorDescription: String? {
+        switch self {
+        case .guardianNotFound:
+            "找不到这个监护人。"
+        case .studentNotFound:
+            "找不到这个学员档案。"
+        case .guardianAlreadyLinked:
+            "这个监护人已经连接帐号。"
+        }
     }
 }

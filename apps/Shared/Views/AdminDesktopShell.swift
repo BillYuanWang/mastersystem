@@ -25,6 +25,7 @@ struct AdminDesktopShell: View {
                 onSignOut: onSignOut
             )
             .frame(width: MDMetrics.railWidth)
+            .zIndex(20)
 
             Rectangle()
                 .fill(theme.separator)
@@ -65,6 +66,7 @@ private struct CompactRailView: View {
     let onSignOut: (() -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
+    @State private var hoveredItem: String?
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
@@ -82,7 +84,11 @@ private struct CompactRailView: View {
                 } label: {
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: MDMetrics.radius)
-                            .fill(selection == section ? theme.accent.opacity(0.13) : .clear)
+                            .fill(
+                                selection == section
+                                    ? theme.accent.opacity(0.13)
+                                    : (hoveredItem == section.id ? theme.subtleSurface : .clear)
+                            )
                             .frame(width: 42, height: 38)
 
                         if selection == section {
@@ -99,6 +105,14 @@ private struct CompactRailView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("\(section.title)，\(section.englishTitle)")
+                .onHover { isHovering in
+                    updateHover(section.id, isHovering: isHovering)
+                }
+                .overlay(alignment: .leading) {
+                    hoverLabel(id: section.id, title: section.title, englishTitle: section.englishTitle)
+                }
+                .zIndex(hoveredItem == section.id ? 10 : 0)
                 .help("\(section.title) / \(section.englishTitle)")
             }
 
@@ -117,13 +131,25 @@ private struct CompactRailView: View {
                         Label("退出登录", systemImage: "rectangle.portrait.and.arrow.right")
                     }
                 } label: {
-                    Image(systemName: "person.crop.circle")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(theme.secondaryText)
-                        .frame(width: 42, height: 38)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: MDMetrics.radius)
+                            .fill(hoveredItem == "account" ? theme.subtleSurface : .clear)
+                        Image(systemName: "person.crop.circle")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(theme.secondaryText)
+                    }
+                    .frame(width: 42, height: 38)
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
+                .accessibilityLabel("教务账号")
+                .onHover { isHovering in
+                    updateHover("account", isHovering: isHovering)
+                }
+                .overlay(alignment: .leading) {
+                    hoverLabel(id: "account", title: "教务账号", englishTitle: "ACCOUNT")
+                }
+                .zIndex(hoveredItem == "account" ? 10 : 0)
                 .help("教务账号 / ACCOUNT")
             }
 
@@ -137,13 +163,25 @@ private struct CompactRailView: View {
                         .tag(AppearancePreference.dark.rawValue)
                 }
             } label: {
-                Image(systemName: appearanceImage)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(theme.secondaryText)
-                    .frame(width: 42, height: 38)
+                ZStack {
+                    RoundedRectangle(cornerRadius: MDMetrics.radius)
+                        .fill(hoveredItem == "appearance" ? theme.subtleSurface : .clear)
+                    Image(systemName: appearanceImage)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(theme.secondaryText)
+                }
+                .frame(width: 42, height: 38)
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
+            .accessibilityLabel("外观")
+            .onHover { isHovering in
+                updateHover("appearance", isHovering: isHovering)
+            }
+            .overlay(alignment: .leading) {
+                hoverLabel(id: "appearance", title: "外观", englishTitle: "APPEARANCE")
+            }
+            .zIndex(hoveredItem == "appearance" ? 10 : 0)
             .help("外观 / APPEARANCE")
             .padding(.bottom, 12)
         }
@@ -157,6 +195,55 @@ private struct CompactRailView: View {
         case .light: "sun.max"
         case .dark: "moon"
         }
+    }
+
+    @ViewBuilder
+    private func hoverLabel(id: String, title: String, englishTitle: String) -> some View {
+        if hoveredItem == id {
+            RailHoverLabel(title: title, englishTitle: englishTitle)
+                .offset(x: 50)
+                .transition(.opacity.combined(with: .move(edge: .leading)))
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func updateHover(_ id: String, isHovering: Bool) {
+        withAnimation(.easeOut(duration: 0.1)) {
+            if isHovering {
+                hoveredItem = id
+            } else if hoveredItem == id {
+                hoveredItem = nil
+            }
+        }
+    }
+}
+
+private struct RailHoverLabel: View {
+    let title: String
+    let englishTitle: String
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        HStack(spacing: 7) {
+            Text(title)
+                .font(MDType.bodyStrong)
+                .foregroundStyle(theme.primaryText)
+            Text(englishTitle)
+                .font(MDType.monoStrong)
+                .foregroundStyle(theme.accent)
+        }
+        .fixedSize()
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
+        .overlay {
+            RoundedRectangle(cornerRadius: MDMetrics.radius)
+                .stroke(theme.separator, lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.34 : 0.14), radius: 7, y: 3)
+        .accessibilityHidden(true)
     }
 }
 #endif
