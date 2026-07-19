@@ -420,6 +420,7 @@ public struct ContractDocument: Identifiable, Codable, Equatable, Sendable {
     public var termID: TermID
     public var version: String
     public var title: String
+    public var bodyText: String
     public var storagePath: String
     public var status: ContractDocumentStatus
     public var publishedAt: Date?
@@ -429,6 +430,7 @@ public struct ContractDocument: Identifiable, Codable, Equatable, Sendable {
         termID: TermID,
         version: String,
         title: String,
+        bodyText: String = "",
         storagePath: String = "",
         status: ContractDocumentStatus = .draft,
         publishedAt: Date? = nil
@@ -437,10 +439,72 @@ public struct ContractDocument: Identifiable, Codable, Equatable, Sendable {
         self.termID = termID
         self.version = version
         self.title = title
+        self.bodyText = bodyText
         self.storagePath = storagePath
         self.status = status
         self.publishedAt = publishedAt
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case termID
+        case version
+        case title
+        case bodyText
+        case storagePath
+        case status
+        case publishedAt
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(ContractDocumentID.self, forKey: .id)
+        termID = try container.decode(TermID.self, forKey: .termID)
+        version = try container.decode(String.self, forKey: .version)
+        title = try container.decode(String.self, forKey: .title)
+        bodyText = try container.decodeIfPresent(String.self, forKey: .bodyText) ?? ""
+        storagePath = try container.decodeIfPresent(String.self, forKey: .storagePath) ?? ""
+        status = try container.decode(ContractDocumentStatus.self, forKey: .status)
+        publishedAt = try container.decodeIfPresent(Date.self, forKey: .publishedAt)
+    }
+}
+
+public enum ContractAgreementTemplate {
+    public static let placeholderTitle = "Master Dance 学员服务协议（测试版）"
+
+    public static let placeholderBody = """
+    重要提示
+
+    本协议仅用于 Master Dance 系统功能测试，不是最终法律文件。学校正式启用前，应由负责人审核并替换全部内容。
+
+    1. 课程安排
+
+    学校会根据学期计划安排课程、教室与授课老师。必要时，学校可以提前通知后调整课程时间、教室或授课老师。
+
+    2. 学员出勤
+
+    监护人应协助学员按时到课。迟到、缺席、请假、补课与试课记录以学校教务系统中的记录为准。
+
+    3. 请假与补课
+
+    请假应通过学校认可的方式提交。补课资格、可选课程和有效期限由学校当期规则决定。
+
+    4. 健康与安全
+
+    监护人应如实告知可能影响训练的健康情况，并确保学员遵守课堂安全要求和教师指导。
+
+    5. 通知与联系
+
+    学校可以通过 App、电子邮件、电话或其他已约定方式发送课程变动、签到和教务通知。
+
+    6. 电子签署
+
+    监护人在 App 中完成手写签名并点击“同意”后，表示已经阅读并接受当前显示版本。协议内容更新后，需要重新阅读并签署新版本。
+
+    7. 测试声明
+
+    当前文字为占位内容。请教务老师在正式使用前完成修改、审核和发布。
+    """
 }
 
 public enum ConsentSignerKind: String, Codable, CaseIterable, Sendable {

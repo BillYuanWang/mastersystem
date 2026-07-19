@@ -698,6 +698,7 @@ struct ContractDocumentRow: Codable, Sendable {
     let termID: UUID
     let version: String
     let title: String
+    let bodyText: String
     let storagePath: String
     let status: String
     let publishedAt: String?
@@ -708,6 +709,7 @@ struct ContractDocumentRow: Codable, Sendable {
         case termID = "term_id"
         case version
         case title
+        case bodyText = "body_text"
         case storagePath = "storage_path"
         case status
         case publishedAt = "published_at"
@@ -719,6 +721,7 @@ struct ContractDocumentRow: Codable, Sendable {
         termID = document.termID.rawValue
         version = document.version
         title = document.title
+        bodyText = document.bodyText
         storagePath = document.storagePath
         status = document.status.rawValue
         publishedAt = document.publishedAt.map(SupabaseDateCodec.timestampString(from:))
@@ -733,6 +736,7 @@ struct ContractDocumentRow: Codable, Sendable {
             termID: TermID(serverID: termID),
             version: version,
             title: title,
+            bodyText: bodyText,
             storagePath: storagePath,
             status: status,
             publishedAt: publishedAt.map { try SupabaseDateCodec.timestamp(from: $0) }

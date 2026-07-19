@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(39);
+select plan(53);
 
 select has_table('private', 'guardian_link_codes', 'guardian link codes use a private table');
 select hasnt_column('private', 'guardian_link_codes', 'link_code', 'raw guardian codes are never stored');
@@ -43,6 +43,42 @@ select ok(
     'public.record_guardian_registration_acceptance(text,uuid,text,text)'
   ) is not null,
   'service-only registration acceptance RPC exists'
+);
+select has_column(
+  'public',
+  'contract_documents',
+  'body_text',
+  'contracts store native agreement text'
+);
+select ok(
+  to_regprocedure(
+    'public.record_guardian_registration_agreement_acceptance(text,uuid,text,text)'
+  ) is not null,
+  'registration agreement acceptance verifies the displayed text hash'
+);
+select ok(
+  to_regprocedure('public.current_guardian_agreement()') is not null,
+  'guardian agreement gate RPC exists'
+);
+select ok(
+  to_regprocedure('public.accept_guardian_agreement(uuid,text,text)') is not null,
+  'guardian agreement signature RPC exists'
+);
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.current_guardian_agreement()',
+    'EXECUTE'
+  ),
+  'signed-in guardians may check agreement state'
+);
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.accept_guardian_agreement(uuid,text,text)',
+    'EXECUTE'
+  ),
+  'signed-in guardians may sign the required agreement'
 );
 select ok(
   not has_function_privilege(
@@ -126,6 +162,7 @@ insert into public.contract_documents (
   term_id,
   version,
   title,
+  body_text,
   storage_path,
   status,
   published_at
@@ -136,6 +173,7 @@ values (
   '92000000-0000-0000-0000-000000000030',
   'registration-v1',
   'Registration Contract',
+  'This native agreement body is long enough for registration and revision tests.',
   '92000000-0000-0000-0000-000000000001/registration-v1.pdf',
   'published',
   now()
@@ -338,10 +376,28 @@ select throws_ok(
 
 set local role service_role;
 
+select is(
+  public.guardian_registration_contract_manifest(
+    current_setting('test.guardian_code'),
+    '92000000-0000-0000-0000-000000000040'
+  )->>'body_text',
+  'This native agreement body is long enough for registration and revision tests.',
+  'registration manifest returns native agreement text'
+);
+
+select set_config(
+  'test.contract_hash',
+  public.guardian_registration_contract_manifest(
+    current_setting('test.guardian_code'),
+    '92000000-0000-0000-0000-000000000040'
+  )->>'content_sha256',
+  true
+);
+
 select lives_ok(
   format(
     $sql$
-      select public.record_guardian_registration_acceptance(
+      select public.record_guardian_registration_agreement_acceptance(
         %L,
         '92000000-0000-0000-0000-000000000040',
         %L,
@@ -354,7 +410,7 @@ select lives_ok(
         || decode(repeat('00', 128), 'hex'),
       'base64'
     ),
-    repeat('a', 64)
+    current_setting('test.contract_hash')
   ),
   'the trusted gateway can record the reviewed contract and signature'
 );
@@ -445,10 +501,16 @@ select is(
     join public.contract_consents consent
       on consent.id = signature.contract_consent_id
     where consent.signer_user_id = '92000000-0000-0000-0000-000000000011'
-      and signature.contract_sha256 = repeat('a', 64)
+      and signature.contract_sha256 = current_setting('test.contract_hash')
   ),
   1::bigint,
   'claiming preserves the signed contract hash and signature evidence'
+);
+
+select is(
+  public.current_guardian_agreement()->'agreement'->>'requires_acceptance',
+  'false',
+  'a guardian enters the app after signing the current agreement during registration'
 );
 
 select is(
@@ -505,6 +567,77 @@ select throws_ok(
   '23514',
   'Guardian is already linked to an account',
   'an administrator cannot issue a code for a linked guardian'
+);
+
+select lives_ok(
+  $$
+    select public.admin_publish_contract_revision(
+      '92000000-0000-0000-0000-000000000030',
+      'Registration Contract Updated',
+      'This revised native agreement changes the content and requires every guardian to sign again.'
+    )
+  $$,
+  'an administrator can atomically publish revised agreement text'
+);
+
+select is(
+  (
+    select count(*)
+    from public.contract_documents
+    where organization_id = '92000000-0000-0000-0000-000000000001'
+      and status = 'published'
+  ),
+  1::bigint,
+  'publishing a revision leaves exactly one active agreement'
+);
+
+select is(
+  (
+    select count(*)
+    from public.contract_documents
+    where id = '92000000-0000-0000-0000-000000000040'
+      and status = 'retired'
+  ),
+  1::bigint,
+  'the previously signed agreement remains as retired evidence'
+);
+
+select set_config(
+  'request.jwt.claim.sub',
+  '92000000-0000-0000-0000-000000000011',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"92000000-0000-0000-0000-000000000011","role":"authenticated"}',
+  true
+);
+
+select is(
+  public.current_guardian_agreement()->'agreement'->>'requires_acceptance',
+  'true',
+  'revising agreement text blocks the guardian until a new signature is recorded'
+);
+
+select lives_ok(
+  $$
+    select public.accept_guardian_agreement(
+      (public.current_guardian_agreement()->'agreement'->>'id')::uuid,
+      public.current_guardian_agreement()->'agreement'->>'sha256',
+      encode(
+        decode('89504e470d0a1a0a', 'hex')
+          || decode(repeat('00', 128), 'hex'),
+        'base64'
+      )
+    )
+  $$,
+  'the guardian can sign the revised in-app agreement'
+);
+
+select is(
+  public.current_guardian_agreement()->'agreement'->>'requires_acceptance',
+  'false',
+  'the app unlocks after the current revision is signed'
 );
 
 select * from finish();

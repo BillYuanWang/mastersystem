@@ -4,7 +4,8 @@ type ContractManifest = {
   id: string;
   title: string;
   version: string;
-  storage_path: string;
+  body_text: string;
+  content_sha256: string;
 };
 
 type Database = {
@@ -19,7 +20,7 @@ type Database = {
         };
         Returns: ContractManifest;
       };
-      record_guardian_registration_acceptance: {
+      record_guardian_registration_agreement_acceptance: {
         Args: {
           claim_code: string;
           target_document_id: string;
@@ -68,16 +69,6 @@ function isUUID(value: string): boolean {
     .test(value);
 }
 
-function bytesToHex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function sha256(data: ArrayBuffer): Promise<string> {
-  return bytesToHex(await crypto.subtle.digest("SHA-256", data));
-}
-
 function validPNGSignature(value: unknown): value is string {
   if (typeof value !== "string" || value.length < 172 || value.length > 700000) {
     return false;
@@ -124,7 +115,10 @@ export default {
         target_document_id: contractDocumentId,
       });
 
-    if (manifestError || !manifest?.storage_path) {
+    if (
+      manifestError || !manifest?.body_text ||
+      !/^[0-9a-f]{64}$/.test(manifest?.content_sha256 ?? "")
+    ) {
       const changed = manifestError?.message?.includes("Registration contract changed");
       return jsonError(
         changed
@@ -134,27 +128,21 @@ export default {
       );
     }
 
-    const { data: contractBlob, error: downloadError } = await context
-      .supabaseAdmin.storage.from("contracts").download(manifest.storage_path);
-
-    if (downloadError || !contractBlob) {
-      return jsonError("学校合同文件暂时无法读取，请稍后重试。", 503);
-    }
-
-    const contractBytes = await contractBlob.arrayBuffer();
-    const contractHash = await sha256(contractBytes);
+    const contractHash = manifest.content_sha256;
 
     if (action === "download") {
-      return new Response(contractBytes, {
-        status: 200,
-        headers: {
-          ...noStoreHeaders,
-          "Content-Type": "application/pdf",
-          "Content-Disposition": "inline",
-          "X-Contract-SHA256": contractHash,
-          "X-Content-Type-Options": "nosniff",
+      return Response.json(
+        {
+          agreement: {
+            id: manifest.id,
+            title: manifest.title,
+            version: manifest.version,
+            bodyText: manifest.body_text,
+            sha256: contractHash,
+          },
         },
-      });
+        { status: 200, headers: noStoreHeaders },
+      );
     }
 
     if (action !== "accept") {
@@ -172,7 +160,7 @@ export default {
     }
 
     const { data: acceptance, error: acceptanceError } = await context
-      .supabaseAdmin.rpc("record_guardian_registration_acceptance", {
+      .supabaseAdmin.rpc("record_guardian_registration_agreement_acceptance", {
         claim_code: invitationCode,
         target_document_id: contractDocumentId,
         signature_base64: body.signatureBase64,

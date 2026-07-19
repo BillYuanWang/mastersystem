@@ -71,6 +71,11 @@ public protocol LeaveRequestRepository: Sendable {
 public protocol ContractDocumentRepository: Sendable {
     func listContractDocuments(termID: TermID?) async throws -> [ContractDocument]
     func save(contractDocument: ContractDocument, fileData: Data?) async throws -> ContractDocument
+    func publishContractRevision(
+        termID: TermID,
+        title: String,
+        bodyText: String
+    ) async throws -> ContractDocument
     func deleteContractDocument(id: ContractDocumentID, storagePath: String) async throws
 }
 

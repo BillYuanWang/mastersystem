@@ -20,14 +20,18 @@ struct MobileWorkspaceView: View {
                 onSignOut: onSignOut
             )
         } else if let memberActions {
-            MobileMemberTabs(
-                role: role,
-                model: model,
-                actions: memberActions,
-                appearanceRawValue: $appearanceRawValue,
-                accountDisplayName: accountDisplayName,
-                onSignOut: onSignOut
-            )
+            if role == .guardian {
+                MobileGuardianAgreementGateView(
+                    model: model,
+                    actions: memberActions,
+                    signerDisplayName: accountDisplayName ?? "监护人",
+                    onSignOut: onSignOut
+                ) {
+                    memberTabs(actions: memberActions)
+                }
+            } else {
+                memberTabs(actions: memberActions)
+            }
         } else {
             ContentUnavailableView(
                 "账号服务暂不可用",
@@ -35,6 +39,17 @@ struct MobileWorkspaceView: View {
                 description: Text("请退出后重新登录。")
             )
         }
+    }
+
+    private func memberTabs(actions: MobileMemberActionService) -> some View {
+        MobileMemberTabs(
+            role: role,
+            model: model,
+            actions: actions,
+            appearanceRawValue: $appearanceRawValue,
+            accountDisplayName: accountDisplayName,
+            onSignOut: onSignOut
+        )
     }
 }
 
@@ -106,9 +121,7 @@ private struct MobileMemberTabs: View {
             NavigationStack {
                 MobileMemberInboxView(
                     model: model,
-                    actions: actions,
-                    signerKind: role == .adultStudent ? .adultStudent : .guardian,
-                    signerDisplayName: accountDisplayName ?? "监护人"
+                    actions: actions
                 )
             }
             .tabItem { Label("消息", systemImage: "bell") }

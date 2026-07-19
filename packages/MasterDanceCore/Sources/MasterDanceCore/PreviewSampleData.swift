@@ -188,6 +188,15 @@ public extension PreviewData {
             )
         ]
 
+        let agreement = ContractDocument(
+            termID: term.id,
+            version: "v1",
+            title: ContractAgreementTemplate.placeholderTitle,
+            bodyText: ContractAgreementTemplate.placeholderBody,
+            status: .published,
+            publishedAt: now
+        )
+
         return PreviewData(
             terms: [term],
             courseCategories: categories,
@@ -202,6 +211,7 @@ public extension PreviewData {
             enrollments: enrollments,
             attendance: attendance,
             leaveRequests: leaveRequests,
+            contractDocuments: [agreement],
             notifications: notifications
         )
     }

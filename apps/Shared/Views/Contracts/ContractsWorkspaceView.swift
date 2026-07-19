@@ -1,7 +1,6 @@
 #if os(macOS)
 import MasterDanceCore
 import SwiftUI
-import UniformTypeIdentifiers
 
 @MainActor
 struct ContractsWorkspaceView: View {
@@ -23,7 +22,7 @@ struct ContractsWorkspaceView: View {
                 MDSectionTitle(chinese: "合同")
 
                 Picker("合同内容", selection: $section) {
-                    Text("合同文件").tag(ContractSection.documents)
+                    Text("协议版本").tag(ContractSection.documents)
                     Text("签署记录").tag(ContractSection.consents)
                 }
                 .pickerStyle(.segmented)
@@ -51,7 +50,7 @@ struct ContractsWorkspaceView: View {
                         Image(systemName: "plus")
                     }
                     .buttonStyle(MDIconButtonStyle())
-                    .help("添加合同")
+                    .help("发布新协议")
                 }
             }
             .padding(.horizontal, 14)
@@ -92,22 +91,22 @@ struct ContractsWorkspaceView: View {
     private func documentList(theme: MDTheme) -> some View {
         VStack(spacing: 0) {
             contractHeader(
-                [("合同名称", 220), ("版本", 110), ("学期", 170), ("状态", 90), ("发布时间", 150), ("文件", 70)],
+                [("协议名称", 250), ("版本", 90), ("学期", 170), ("状态", 90), ("发布时间", 150), ("字数", 70)],
                 theme: theme
             )
             if filteredDocuments.isEmpty {
                 ContentUnavailableView(
-                    "暂无合同文件",
+                    "暂无协议",
                     systemImage: "doc.text",
-                    description: Text("点击右上角加号上传 PDF 合同。")
+                    description: Text("点击右上角加号创建并发布文字协议。")
                 )
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(filteredDocuments) { document in
                             HStack(spacing: 0) {
-                                contractCell(document.title, width: 220, strong: true)
-                                contractCell(document.version, width: 110, mono: true)
+                                contractCell(document.title, width: 250, strong: true)
+                                contractCell(document.version, width: 90, mono: true)
                                 contractCell(model.term(id: document.termID)?.name ?? "—", width: 170)
                                 contractCell(statusLabel(document.status), width: 90)
                                 contractCell(
@@ -115,7 +114,7 @@ struct ContractsWorkspaceView: View {
                                     width: 150,
                                     mono: true
                                 )
-                                contractCell(document.storagePath.isEmpty ? "缺少" : "PDF", width: 70)
+                                contractCell("\(document.bodyText.count)", width: 70, mono: true)
                                 HStack(spacing: 3) {
                                     Button {
                                         editorDocument = document
@@ -137,7 +136,10 @@ struct ContractsWorkspaceView: View {
                                 Spacer(minLength: 0)
                             }
                             .frame(minHeight: 42)
-                            .help(document.storagePath)
+                            .help(
+                                String(document.bodyText.prefix(180))
+                                    + (document.bodyText.count > 180 ? "…" : "")
+                            )
                             Divider()
                         }
                     }
@@ -203,6 +205,7 @@ struct ContractsWorkspaceView: View {
             [
                 document.title,
                 document.version,
+                document.bodyText,
                 model.term(id: document.termID)?.name ?? ""
             ].contains { $0.localizedCaseInsensitiveContains(query) }
         }
@@ -249,110 +252,126 @@ private struct ContractDocumentEditorView: View {
 
     @State private var termID: TermID?
     @State private var title: String
-    @State private var version: String
-    @State private var status: ContractDocumentStatus
-    @State private var fileData: Data?
-    @State private var fileName: String?
-    @State private var showingFileImporter = false
+    @State private var bodyText: String
     @State private var errorMessage: String?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     init(model: AppModel, document: ContractDocument?) {
         self.model = model
         original = document
         _termID = State(initialValue: document?.termID ?? model.terms.first?.id)
-        _title = State(initialValue: document?.title ?? "")
-        _version = State(initialValue: document?.version ?? "")
-        _status = State(initialValue: document?.status ?? .draft)
+        _title = State(initialValue: document?.title ?? ContractAgreementTemplate.placeholderTitle)
+        _bodyText = State(
+            initialValue: document?.bodyText.isEmpty == false
+                ? document?.bodyText ?? ContractAgreementTemplate.placeholderBody
+                : ContractAgreementTemplate.placeholderBody
+        )
     }
 
     var body: some View {
-        Form {
-            MDSectionTitle(chinese: original == nil ? "添加合同" : "编辑合同")
-            Picker("所属学期", selection: $termID) {
-                ForEach(model.terms) { term in
-                    Text(term.name).tag(Optional(term.id))
-                }
-            }
-            TextField("合同名称", text: $title)
-            TextField("版本", text: $version)
-            Picker("状态", selection: $status) {
-                Text("草稿").tag(ContractDocumentStatus.draft)
-                Text("已发布").tag(ContractDocumentStatus.published)
-                Text("已停用").tag(ContractDocumentStatus.retired)
-            }
-            HStack {
-                Text("PDF 文件")
-                Spacer()
-                Text(fileName ?? (original?.storagePath.isEmpty == false ? "已上传" : "未选择"))
-                    .mdFont(.compact)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Button("选择文件") { showingFileImporter = true }
-            }
-            if let errorMessage {
-                Text(errorMessage)
-                    .mdFont(.compact)
-                    .foregroundStyle(.red)
-            }
-            HStack {
+        let theme = MDTheme(scheme: colorScheme)
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                MDSectionTitle(chinese: original == nil ? "发布协议" : "发布协议新版本")
                 Spacer()
                 Button("取消") { dismiss() }
-                Button("保存") { save() }
+                Button("保存并发布") { save() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(theme.accent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave)
             }
+            .padding(18)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("所属学期")
+                            .mdFont(.compactStrong)
+                            .foregroundStyle(theme.secondaryText)
+                        Picker("所属学期", selection: $termID) {
+                            ForEach(model.terms) { term in
+                                Text(term.name).tag(Optional(term.id))
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(minWidth: 220)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("协议名称")
+                            .mdFont(.compactStrong)
+                            .foregroundStyle(theme.secondaryText)
+                        TextField("协议名称", text: $title)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(minWidth: 360)
+                    }
+                }
+
+                HStack {
+                    Text("协议正文")
+                        .mdFont(.bodyStrong)
+                    Spacer()
+                    Text("\(bodyText.count) 字")
+                        .mdFont(.mono)
+                        .foregroundStyle(theme.secondaryText)
+                }
+
+                TextEditor(text: $bodyText)
+                    .mdFont(.body)
+                    .lineSpacing(5)
+                    .scrollContentBackground(.hidden)
+                    .padding(12)
+                    .background(theme.raisedSurface)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: MDMetrics.radius)
+                            .stroke(theme.separator, lineWidth: 1)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: MDMetrics.radius))
+                    .frame(minHeight: 440)
+
+                Label(
+                    "保存后会发布新版本；所有监护人下次登录时都需要重新阅读并签名。",
+                    systemImage: "signature"
+                )
+                .mdFont(.compact)
+                .foregroundStyle(theme.secondaryText)
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .mdFont(.compact)
+                        .foregroundStyle(theme.danger)
+                }
+            }
+            .padding(18)
         }
-        .formStyle(.grouped)
-        .frame(width: 460)
-        .padding(8)
-        .fileImporter(
-            isPresented: $showingFileImporter,
-            allowedContentTypes: [.pdf],
-            allowsMultipleSelection: false,
-            onCompletion: importFile
-        )
+        .frame(minWidth: 760, idealWidth: 820, minHeight: 650)
+        .background(theme.background)
+        .foregroundStyle(theme.primaryText)
     }
 
     private var canSave: Bool {
         termID != nil
             && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && (fileData != nil || original?.storagePath.isEmpty == false)
-    }
-
-    private func importFile(_ result: Result<[URL], Error>) {
-        do {
-            guard let url = try result.get().first else { return }
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            fileData = try Data(contentsOf: url)
-            fileName = url.lastPathComponent
-            errorMessage = nil
-        } catch {
-            errorMessage = "无法读取这个 PDF：\(error.localizedDescription)"
-        }
+            && bodyText.trimmingCharacters(in: .whitespacesAndNewlines).count >= 20
     }
 
     private func save() {
         guard let termID else { return }
-        var document = original ?? ContractDocument(
-            termID: termID,
-            version: version,
-            title: title
-        )
-        document.termID = termID
-        document.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        document.version = version.trimmingCharacters(in: .whitespacesAndNewlines)
-        document.status = status
-        let fileDataSnapshot = fileData
         let isCreating = original == nil
         model.performBackgroundOperation(
-            label: isCreating ? "上传合同" : "更新合同",
-            successMessage: isCreating ? "合同已添加" : "合同已更新"
+            label: isCreating ? "发布协议" : "发布协议新版本",
+            successMessage: isCreating ? "协议已发布" : "协议新版本已发布"
         ) {
-            try await model.saveContractDocument(document, fileData: fileDataSnapshot)
+            try await model.publishContractRevision(
+                termID: termID,
+                title: title,
+                bodyText: bodyText
+            )
         }
         dismiss()
     }

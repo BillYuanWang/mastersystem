@@ -344,11 +344,48 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         fileData: Data?
     ) -> ContractDocument {
         var saved = contractDocument
+        if saved.status == .published, saved.publishedAt == nil {
+            saved.publishedAt = Date()
+        } else if saved.status == .draft {
+            saved.publishedAt = nil
+        }
         if saved.storagePath.isEmpty, fileData != nil {
             saved.storagePath = "preview/\(saved.id.rawValue.uuidString.lowercased()).pdf"
         }
         upsert(saved, in: &data.contractDocuments)
         return saved
+    }
+
+    public func publishContractRevision(
+        termID: TermID,
+        title: String,
+        bodyText: String
+    ) -> ContractDocument {
+        let maximumVersion = data.contractDocuments
+            .filter { $0.termID == termID }
+            .compactMap { document -> Int? in
+                let value = document.version.lowercased()
+                guard value.hasPrefix("v") else { return nil }
+                return Int(value.dropFirst())
+            }
+            .max() ?? 0
+
+        for index in data.contractDocuments.indices
+        where data.contractDocuments[index].termID == termID
+            && data.contractDocuments[index].status == .published {
+            data.contractDocuments[index].status = .retired
+        }
+
+        let revision = ContractDocument(
+            termID: termID,
+            version: "v\(maximumVersion + 1)",
+            title: title,
+            bodyText: bodyText,
+            status: .published,
+            publishedAt: Date()
+        )
+        data.contractDocuments.append(revision)
+        return revision
     }
 
     public func deleteContractDocument(

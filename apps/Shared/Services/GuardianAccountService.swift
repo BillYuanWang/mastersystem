@@ -24,8 +24,28 @@ struct GuardianRegistrationContractMetadata: Equatable, Sendable {
 
 struct GuardianRegistrationContractDocument: Equatable, Sendable {
     let metadata: GuardianRegistrationContractMetadata
-    let data: Data
+    let bodyText: String
     let sha256: String
+}
+
+private struct GuardianRegistrationContractEnvelope: Decodable, Sendable {
+    let agreement: GuardianRegistrationContractBodyRow
+}
+
+private struct GuardianRegistrationContractBodyRow: Decodable, Sendable {
+    let id: UUID
+    let title: String
+    let version: String
+    let bodyText: String
+    let sha256: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case version
+        case bodyText
+        case sha256
+    }
 }
 
 private struct GuardianRegistrationPreviewRow: Decodable, Sendable {
@@ -86,19 +106,29 @@ struct GuardianAccountService {
         )
         try validate(response: response, data: data)
 
-        guard data.starts(with: Data("%PDF".utf8)) else {
-            throw SupabaseRepositoryError.server("学校合同文件格式无效，请联系教务老师。")
+        let payload = try JSONDecoder().decode(
+            GuardianRegistrationContractEnvelope.self,
+            from: data
+        )
+        guard payload.agreement.id == invitation.contract.id,
+              payload.agreement.title == invitation.contract.title,
+              payload.agreement.version == invitation.contract.version else {
+            throw SupabaseRepositoryError.server("合同已更新，请重新验证邀请码。")
         }
-        let hash = response.value(forHTTPHeaderField: "X-Contract-SHA256")?
+        let hash = payload.agreement.sha256
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased() ?? ""
+            .lowercased()
         guard hash.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil else {
             throw SupabaseRepositoryError.server("无法验证合同版本，请稍后重试。")
+        }
+        let bodyText = payload.agreement.bodyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !bodyText.isEmpty else {
+            throw SupabaseRepositoryError.server("学校协议内容为空，请联系教务老师。")
         }
 
         return GuardianRegistrationContractDocument(
             metadata: invitation.contract,
-            data: data,
+            bodyText: bodyText,
             sha256: hash
         )
     }

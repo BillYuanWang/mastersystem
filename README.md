@@ -1,6 +1,6 @@
 # Master Dance
 
-Current local test release: `v0.1.8h`.
+Current local test release: `v0.1.9`.
 
 Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
 
@@ -35,8 +35,10 @@ path.
 Administrators create a guardian first, add one or more child or adult learner
 profiles inside that family, then issue a hashed, expiring, one-time guardian
 invitation. On iPhone, the parent validates that invitation first, receives the
-locked guardian email, and creates only a password. The resulting account can
-access only its linked family.
+locked guardian email, reads and signs the current in-app agreement, and creates
+only a password. The resulting account can access only its linked family. When
+an administrator publishes revised agreement text, every guardian must read and
+sign that new version before returning to the app.
 
 ## Run the iPhone app
 

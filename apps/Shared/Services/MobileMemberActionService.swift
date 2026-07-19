@@ -2,6 +2,32 @@ import Foundation
 import MasterDanceCore
 import Supabase
 
+struct MobileGuardianAgreement: Decodable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let termID: UUID
+    let title: String
+    let version: String
+    let bodyText: String
+    let sha256: String
+    let requiresAcceptance: Bool
+    let acceptedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case termID = "term_id"
+        case title
+        case version
+        case bodyText = "body_text"
+        case sha256
+        case requiresAcceptance = "requires_acceptance"
+        case acceptedAt = "accepted_at"
+    }
+}
+
+private struct MobileGuardianAgreementEnvelope: Decodable, Sendable {
+    let agreement: MobileGuardianAgreement?
+}
+
 @MainActor
 struct MobileMemberActionService {
     let client: SupabaseClient
@@ -73,11 +99,33 @@ struct MobileMemberActionService {
         try await queue.synchronizeIfNeeded()
     }
 
-    func downloadContract(path: String) async throws -> Data {
-        guard !path.isEmpty else { throw MobileMemberActionError.missingContract }
-        return try await client.storage
-            .from("contracts")
-            .download(path: path)
+    func currentGuardianAgreement() async throws -> MobileGuardianAgreement? {
+        let envelope: MobileGuardianAgreementEnvelope = try await client
+            .rpc("current_guardian_agreement")
+            .execute()
+            .value
+        return envelope.agreement
+    }
+
+    func acceptGuardianAgreement(
+        documentID: UUID,
+        displayedSHA256: String,
+        signaturePNG: Data
+    ) async throws {
+        guard signaturePNG.count >= 128 else {
+            throw MobileMemberActionError.invalidSignature
+        }
+        let _: GuardianAgreementAcceptanceRow = try await client
+            .rpc(
+                "accept_guardian_agreement",
+                params: GuardianAgreementAcceptanceParameters(
+                    documentID: documentID,
+                    displayedSHA256: displayedSHA256,
+                    signatureBase64: signaturePNG.base64EncodedString()
+                )
+            )
+            .execute()
+            .value
     }
 }
 
@@ -230,14 +278,36 @@ private enum PendingMobileMemberAction: Codable, Sendable {
 enum MobileMemberActionError: LocalizedError {
     case invalidEmail
     case invalidPhone
-    case missingContract
+    case invalidSignature
 
     var errorDescription: String? {
         switch self {
         case .invalidEmail: "请输入有效邮箱。"
         case .invalidPhone: "请输入 10 位美国电话号码。"
-        case .missingContract: "这份合同还没有可查看的 PDF。"
+        case .invalidSignature: "请先完成手写签名。"
         }
+    }
+}
+
+private struct GuardianAgreementAcceptanceParameters: Encodable, Sendable {
+    let documentID: UUID
+    let displayedSHA256: String
+    let signatureBase64: String
+
+    enum CodingKeys: String, CodingKey {
+        case documentID = "target_document_id"
+        case displayedSHA256 = "displayed_contract_sha256"
+        case signatureBase64 = "signature_base64"
+    }
+}
+
+private struct GuardianAgreementAcceptanceRow: Decodable, Sendable {
+    let contractDocumentID: UUID
+    let acceptedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case contractDocumentID = "contract_document_id"
+        case acceptedAt = "accepted_at"
     }
 }
 

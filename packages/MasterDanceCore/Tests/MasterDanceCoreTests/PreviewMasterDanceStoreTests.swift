@@ -219,6 +219,60 @@ struct PreviewMasterDanceStoreTests {
         #expect(Set(AppearancePreference.allCases) == [.system, .light, .dark])
     }
 
+    @Test("Preview data ships a native text agreement")
+    func previewAgreement() {
+        let data = PreviewData.masterDanceSample()
+        let agreement = data.contractDocuments.first
+
+        #expect(agreement?.status == .published)
+        #expect(agreement?.storagePath.isEmpty == true)
+        #expect(agreement?.bodyText.contains("系统功能测试") == true)
+    }
+
+    @Test("Publishing agreement text retires the prior version")
+    func publishingAgreementRevision() async throws {
+        let store = PreviewMasterDanceStore(data: .masterDanceSample())
+        let term = try #require(await store.listTerms().first)
+        let original = try #require(
+            await store.listContractDocuments(termID: term.id)
+                .first(where: { $0.status == .published })
+        )
+
+        let revision = await store.publishContractRevision(
+            termID: term.id,
+            title: "更新后的学员协议",
+            bodyText: "这是一份用于验证版本发布流程的协议正文，内容长度足够通过系统校验。"
+        )
+        let documents = await store.listContractDocuments(termID: term.id)
+
+        #expect(revision.version == "v2")
+        #expect(revision.status == .published)
+        #expect(documents.first(where: { $0.id == original.id })?.status == .retired)
+        #expect(documents.filter { $0.status == .published }.map(\.id) == [revision.id])
+    }
+
+    @Test("Legacy cached contracts decode without agreement text")
+    func legacyContractDecoding() throws {
+        let termID = TermID()
+        let documentID = ContractDocumentID()
+        let json = """
+        {
+          "id": { "rawValue": "\(documentID.rawValue.uuidString)" },
+          "termID": { "rawValue": "\(termID.rawValue.uuidString)" },
+          "version": "legacy",
+          "title": "Legacy PDF",
+          "storagePath": "contracts/legacy.pdf",
+          "status": "retired",
+          "publishedAt": null
+        }
+        """
+
+        let decoded = try JSONDecoder().decode(ContractDocument.self, from: Data(json.utf8))
+
+        #expect(decoded.bodyText.isEmpty)
+        #expect(decoded.storagePath == "contracts/legacy.pdf")
+    }
+
     @Test("Custom course references persist and sessions override defaults")
     func customCourseReferences() async throws {
         let term = Term(

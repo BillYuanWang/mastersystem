@@ -494,8 +494,14 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         var saved = contractDocument
         if saved.status == .published, saved.publishedAt == nil {
             saved.publishedAt = Date()
-        } else if saved.status != .published {
+        } else if saved.status == .draft {
             saved.publishedAt = nil
+        }
+
+        saved.title = saved.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        saved.bodyText = saved.bodyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !saved.bodyText.isEmpty else {
+            throw SupabaseRepositoryError.server("请填写协议正文。")
         }
 
         if let fileData {
@@ -515,16 +521,31 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
                 )
         }
 
-        guard !saved.storagePath.isEmpty else {
-            throw SupabaseRepositoryError.server("请先选择 PDF 合同文件。")
-        }
-
         let row = ContractDocumentRow(saved, organizationID: organizationID)
         let stored: ContractDocumentRow = try await client
             .from("contract_documents")
             .upsert(row)
             .select()
             .single()
+            .execute()
+            .value
+        return try stored.domain()
+    }
+
+    func publishContractRevision(
+        termID: TermID,
+        title: String,
+        bodyText: String
+    ) async throws -> ContractDocument {
+        let stored: ContractDocumentRow = try await client
+            .rpc(
+                "admin_publish_contract_revision",
+                params: PublishContractRevisionParameters(
+                    termID: termID.rawValue,
+                    title: title,
+                    bodyText: bodyText
+                )
+            )
             .execute()
             .value
         return try stored.domain()
@@ -611,5 +632,17 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         } catch {
             throw SupabaseRepositoryError.missingSession
         }
+    }
+}
+
+private struct PublishContractRevisionParameters: Encodable {
+    let termID: UUID
+    let title: String
+    let bodyText: String
+
+    enum CodingKeys: String, CodingKey {
+        case termID = "target_term_id"
+        case title = "document_title"
+        case bodyText = "document_body_text"
     }
 }

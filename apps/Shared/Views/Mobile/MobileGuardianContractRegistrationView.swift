@@ -1,6 +1,4 @@
 #if os(iOS)
-import PDFKit
-import PencilKit
 import SwiftUI
 
 @MainActor
@@ -156,36 +154,34 @@ struct MobileGuardianContractRegistrationView: View {
             }
 
             if let document {
-                let pdfDocument = PDFDocument(data: document.data)
-                if let pdfDocument, pdfDocument.pageCount > 0 {
-                    VStack(spacing: 10) {
-                        ForEach(0..<pdfDocument.pageCount, id: \.self) { pageIndex in
-                            MobileRegistrationPDFPageView(
-                                document: pdfDocument,
-                                pageIndex: pageIndex
+                VStack(alignment: .leading, spacing: 18) {
+                    MobileAgreementTextView(bodyText: document.bodyText)
+
+                    Divider()
+
+                    Label("已阅读至协议末尾", systemImage: "checkmark.circle")
+                        .mdFont(.compactStrong)
+                        .foregroundStyle(theme.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .padding(18)
+                .background(theme.raisedSurface)
+                .overlay {
+                    RoundedRectangle(cornerRadius: MDMetrics.radius)
+                        .stroke(theme.separator, lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: MDMetrics.radius))
+
+                Color.clear
+                    .frame(height: 1)
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: ContractBottomPreferenceKey.self,
+                                value: proxy.frame(in: .named(ContractScrollSpace.name)).maxY
                             )
-                            .aspectRatio(pageAspectRatio(pdfDocument, index: pageIndex), contentMode: .fit)
-                            .background(.white)
-                            .overlay {
-                                Rectangle().stroke(theme.separator, lineWidth: 1)
-                            }
-                            .accessibilityLabel("合同第 \(pageIndex + 1) 页，共 \(pdfDocument.pageCount) 页")
                         }
                     }
-
-                    Color.clear
-                        .frame(height: 1)
-                        .background {
-                            GeometryReader { proxy in
-                                Color.clear.preference(
-                                    key: ContractBottomPreferenceKey.self,
-                                    value: proxy.frame(in: .named(ContractScrollSpace.name)).maxY
-                                )
-                            }
-                        }
-                } else {
-                    contractFailure(theme: theme, message: "学校合同文件格式无效。")
-                }
             } else if session.isWorking {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -311,13 +307,6 @@ struct MobileGuardianContractRegistrationView: View {
         return password == confirmation ? theme.success : theme.danger
     }
 
-    private func pageAspectRatio(_ document: PDFDocument, index: Int) -> CGFloat {
-        guard let page = document.page(at: index) else { return 0.77 }
-        let bounds = page.bounds(for: .mediaBox)
-        guard bounds.height > 0 else { return 0.77 }
-        return bounds.width / bounds.height
-    }
-
     private func loadContract() async {
         session.clearMessages()
         document = nil
@@ -352,112 +341,6 @@ private struct ContractBottomPreferenceKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = min(value, nextValue())
-    }
-}
-
-private struct MobileRegistrationPDFPageView: UIViewRepresentable {
-    let document: PDFDocument
-    let pageIndex: Int
-
-    func makeUIView(context: Context) -> RegistrationPDFPageCanvas {
-        RegistrationPDFPageCanvas(page: document.page(at: pageIndex))
-    }
-
-    func updateUIView(_ view: RegistrationPDFPageCanvas, context: Context) {
-        view.page = document.page(at: pageIndex)
-    }
-}
-
-@MainActor
-private final class RegistrationPDFPageCanvas: UIView {
-    var page: PDFPage? {
-        didSet { setNeedsDisplay() }
-    }
-
-    init(page: PDFPage?) {
-        self.page = page
-        super.init(frame: .zero)
-        isOpaque = true
-        backgroundColor = .white
-        contentMode = .redraw
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func draw(_ rect: CGRect) {
-        guard let page, let context = UIGraphicsGetCurrentContext() else { return }
-        UIColor.white.setFill()
-        context.fill(bounds)
-
-        let pageBounds = page.bounds(for: .mediaBox)
-        guard pageBounds.width > 0, pageBounds.height > 0 else { return }
-        let scale = min(bounds.width / pageBounds.width, bounds.height / pageBounds.height)
-        let renderedWidth = pageBounds.width * scale
-        let renderedHeight = pageBounds.height * scale
-        let originX = (bounds.width - renderedWidth) / 2
-        let originY = (bounds.height - renderedHeight) / 2
-
-        context.saveGState()
-        context.translateBy(x: originX, y: originY + renderedHeight)
-        context.scaleBy(x: scale, y: -scale)
-        context.translateBy(x: -pageBounds.minX, y: -pageBounds.minY)
-        page.draw(with: .mediaBox, to: context)
-        context.restoreGState()
-    }
-}
-
-private struct MobileSignaturePad: UIViewRepresentable {
-    @Binding var signaturePNG: Data?
-    let clearGeneration: Int
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeUIView(context: Context) -> PKCanvasView {
-        let canvas = PKCanvasView()
-        canvas.delegate = context.coordinator
-        canvas.drawingPolicy = .anyInput
-        canvas.tool = PKInkingTool(.pen, color: .black, width: 3)
-        canvas.backgroundColor = .white
-        canvas.isOpaque = true
-        canvas.isScrollEnabled = false
-        canvas.alwaysBounceHorizontal = false
-        canvas.alwaysBounceVertical = false
-        return canvas
-    }
-
-    func updateUIView(_ canvas: PKCanvasView, context: Context) {
-        context.coordinator.parent = self
-        canvas.tool = PKInkingTool(.pen, color: .black, width: 3)
-        if context.coordinator.clearGeneration != clearGeneration {
-            context.coordinator.clearGeneration = clearGeneration
-            canvas.drawing = PKDrawing()
-        }
-    }
-
-    @MainActor
-    final class Coordinator: NSObject, PKCanvasViewDelegate {
-        var parent: MobileSignaturePad
-        var clearGeneration: Int
-
-        init(parent: MobileSignaturePad) {
-            self.parent = parent
-            clearGeneration = parent.clearGeneration
-        }
-
-        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-            let drawing = canvasView.drawing
-            guard !drawing.strokes.isEmpty, !drawing.bounds.isEmpty else {
-                parent.signaturePNG = nil
-                return
-            }
-            let imageBounds = drawing.bounds.insetBy(dx: -12, dy: -12)
-            parent.signaturePNG = drawing.image(from: imageBounds, scale: 2).pngData()
-        }
     }
 }
 #endif

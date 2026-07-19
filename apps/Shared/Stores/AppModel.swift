@@ -760,6 +760,30 @@ final class AppModel {
         }
     }
 
+    func publishContractRevision(
+        termID: TermID,
+        title: String,
+        bodyText: String
+    ) async throws {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBody = bodyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            throw SupabaseRepositoryError.server("请输入协议名称。")
+        }
+        guard trimmedBody.count >= 20 else {
+            throw SupabaseRepositoryError.server("协议正文至少需要 20 个字符。")
+        }
+
+        try await withImmediateCloudActivity(label: "发布协议") {
+            _ = try await repository.publishContractRevision(
+                termID: termID,
+                title: trimmedTitle,
+                bodyText: trimmedBody
+            )
+            await reload()
+        }
+    }
+
     func deleteContractDocument(_ document: ContractDocument) async throws {
         try await withCloudActivity(label: "删除合同") {
             try await repository.deleteContractDocument(id: document.id, storagePath: document.storagePath)

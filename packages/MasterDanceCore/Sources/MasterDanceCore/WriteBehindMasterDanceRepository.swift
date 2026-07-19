@@ -360,6 +360,26 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
         return saved
     }
 
+    public func publishContractRevision(
+        termID: TermID,
+        title: String,
+        bodyText: String
+    ) async throws -> ContractDocument {
+        try await ensureSnapshot()
+        _ = try await synchronizeIfNeeded()
+        let saved = try await remote.publishContractRevision(
+            termID: termID,
+            title: title,
+            bodyText: bodyText
+        )
+        let snapshot = try await fetchRemoteSnapshot()
+        await local.replace(with: snapshot)
+        hasSnapshot = true
+        lastRemoteRefreshAt = Date()
+        try await persist()
+        return saved
+    }
+
     public func deleteContractDocument(
         id: ContractDocumentID,
         storagePath: String

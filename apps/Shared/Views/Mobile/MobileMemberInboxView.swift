@@ -1,14 +1,11 @@
 #if os(iOS)
 import MasterDanceCore
-import PDFKit
 import SwiftUI
 
 @MainActor
 struct MobileMemberInboxView: View {
     let model: AppModel
     let actions: MobileMemberActionService
-    let signerKind: ConsentSignerKind
-    let signerDisplayName: String
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -42,10 +39,7 @@ struct MobileMemberInboxView: View {
                         NavigationLink {
                             MobileContractDetailView(
                                 model: model,
-                                actions: actions,
-                                document: document,
-                                signerKind: signerKind,
-                                signerDisplayName: signerDisplayName
+                                document: document
                             )
                         } label: {
                             contractRow(document, theme: theme)
@@ -165,155 +159,46 @@ private struct MobileNotificationDetailView: View {
 @MainActor
 private struct MobileContractDetailView: View {
     let model: AppModel
-    let actions: MobileMemberActionService
     let document: ContractDocument
-    let signerKind: ConsentSignerKind
-    let signerDisplayName: String
-
-    @State private var pdfData: Data?
-    @State private var errorMessage: String?
-    @State private var showingConsentOptions = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
-        VStack(spacing: 0) {
-            if let pdfData {
-                MobilePDFView(data: pdfData)
-            } else if let errorMessage {
-                ContentUnavailableView(
-                    "无法打开合同",
-                    systemImage: "doc.badge.exclamationmark",
-                    description: Text(errorMessage)
-                )
-            } else {
-                ProgressView("正在读取合同")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-
-            Divider()
-
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(document.title)
-                        .mdFont(.bodyStrong)
-                        .lineLimit(1)
-                    Text(consentSummary)
-                        .mdFont(.compact)
-                        .foregroundStyle(theme.secondaryText)
-                        .lineLimit(1)
+                        .mdFont(size: 20, weight: .bold)
+                        .foregroundStyle(theme.primaryText)
+                    HStack(spacing: 8) {
+                        Text("版本 \(document.version)")
+                            .mdFont(.mono)
+                        Label(
+                            hasConsent ? "已签署" : "未签署",
+                            systemImage: hasConsent ? "checkmark.seal.fill" : "exclamationmark.circle"
+                        )
+                        .mdFont(.compactStrong)
+                        .foregroundStyle(hasConsent ? theme.success : theme.danger)
+                    }
+                    .foregroundStyle(theme.secondaryText)
                 }
-                Spacer()
-                Button {
-                    showingConsentOptions = true
-                } label: {
-                    Label("确认合同", systemImage: "signature")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(theme.accent)
+
+                Divider()
+
+                MobileAgreementTextView(bodyText: document.bodyText)
             }
-            .padding(12)
-            .background(theme.raisedSurface)
+            .padding(20)
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity)
         }
+        .background(theme.background)
         .navigationTitle("合同")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: document.id) { await loadPDF() }
-        .confirmationDialog(
-            "选择确认范围",
-            isPresented: $showingConsentOptions,
-            titleVisibility: .visible
-        ) {
-            if !hasTermConsent {
-                Button("确认整个学期") {
-                    consent(enrollmentID: nil)
-                }
-            }
-            ForEach(eligibleEnrollments) { enrollment in
-                if !hasConsent(enrollmentID: enrollment.id) {
-                    Button("仅确认：\(model.course(id: enrollment.courseID)?.name ?? "课程")") {
-                        consent(enrollmentID: enrollment.id)
-                    }
-                }
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("合同可以覆盖整个学期，也可以只关联某一门已报名课程。")
-        }
     }
 
-    private var eligibleEnrollments: [Enrollment] {
-        model.enrollments
-            .filter { $0.termID == document.termID && $0.status == .active }
-            .sorted {
-                (model.course(id: $0.courseID)?.name ?? "")
-                    .localizedCompare(model.course(id: $1.courseID)?.name ?? "") == .orderedAscending
-            }
-    }
-
-    private var hasTermConsent: Bool {
+    private var hasConsent: Bool {
         model.contractConsents.contains {
             $0.contractDocumentID == document.id && $0.enrollmentID == nil
-        }
-    }
-
-    private func hasConsent(enrollmentID: EnrollmentID) -> Bool {
-        model.contractConsents.contains {
-            $0.contractDocumentID == document.id && $0.enrollmentID == enrollmentID
-        }
-    }
-
-    private var consentSummary: String {
-        let count = model.contractConsents.filter { $0.contractDocumentID == document.id }.count
-        return count == 0 ? "尚未确认 · 版本 \(document.version)" : "已确认 \(count) 项范围 · 版本 \(document.version)"
-    }
-
-    private func loadPDF() async {
-        guard pdfData == nil else { return }
-        do {
-            pdfData = try await model.performCloudAction(label: "读取合同") {
-                try await actions.downloadContract(path: document.storagePath)
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func consent(enrollmentID: EnrollmentID?) {
-        Task {
-            do {
-                try await actions.recordContractConsent(
-                    documentID: document.id,
-                    enrollmentID: enrollmentID,
-                    signerDisplayName: signerDisplayName
-                )
-                model.applyLocalContractConsent(
-                    documentID: document.id,
-                    enrollmentID: enrollmentID,
-                    signerKind: signerKind,
-                    signerDisplayName: signerDisplayName
-                )
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-}
-
-private struct MobilePDFView: UIViewRepresentable {
-    let data: Data
-
-    func makeUIView(context: Context) -> PDFView {
-        let view = PDFView()
-        view.autoScales = true
-        view.displayMode = .singlePageContinuous
-        view.displayDirection = .vertical
-        view.document = PDFDocument(data: data)
-        return view
-    }
-
-    func updateUIView(_ view: PDFView, context: Context) {
-        if view.document?.dataRepresentation() != data {
-            view.document = PDFDocument(data: data)
         }
     }
 }
