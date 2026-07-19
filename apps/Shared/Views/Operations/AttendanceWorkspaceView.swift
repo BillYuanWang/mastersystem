@@ -340,7 +340,7 @@ struct AttendanceWorkspaceView: View {
                     Image(systemName: "xmark")
                 }
                 .buttonStyle(MDIconButtonStyle())
-                .help("移除\(kind.shortTitle)记录")
+                .help("取消\(kind.shortTitle)，恢复为未记录")
                 .frame(width: AttendanceColumns.action)
             }
         }
@@ -473,8 +473,8 @@ struct AttendanceWorkspaceView: View {
     private func deleteSpecialAttendance(_ record: Attendance, kind: AttendanceGuestKind) {
         deletingAttendanceID = record.id
         model.performBackgroundOperation(
-            label: "移除\(kind.shortTitle)记录",
-            successMessage: "已移除\(kind.shortTitle)记录",
+            label: "取消\(kind.shortTitle)",
+            successMessage: "已取消\(kind.shortTitle)，恢复为未记录",
             completion: { _ in deletingAttendanceID = nil }
         ) {
             try await model.deleteAttendance(id: record.id)
@@ -504,9 +504,21 @@ private struct AttendanceRow: View {
             )
 
             HStack(spacing: 12) {
-                statusButton(.present, current: record?.status, color: theme.success)
-                statusButton(.excused, current: record?.status, color: theme.warning)
-                statusButton(.absent, current: record?.status, color: theme.danger)
+                statusButton(.present, record: record, color: theme.success)
+                statusButton(.excused, record: record, color: theme.warning)
+                statusButton(.absent, record: record, color: theme.danger)
+                if let record {
+                    Button {
+                        updateAttendance(nil, record: record)
+                    } label: {
+                        Label("取消", systemImage: "arrow.uturn.backward")
+                            .mdFont(.compact)
+                            .foregroundStyle(theme.secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSaving)
+                    .help("取消签到状态，恢复为未记录")
+                }
             }
             .padding(.leading, 10)
             .frame(width: AttendanceColumns.regularStatus, alignment: .leading)
@@ -528,9 +540,28 @@ private struct AttendanceRow: View {
         .frame(minHeight: 42)
     }
 
-    private func statusButton(_ status: AttendanceStatus, current: AttendanceStatus?, color: Color) -> some View {
-        Button {
-            isSaving = true
+    private func statusButton(
+        _ status: AttendanceStatus,
+        record: Attendance?,
+        color: Color
+    ) -> some View {
+        let isCurrent = record?.status == status
+        return Button {
+            updateAttendance(isCurrent ? nil : status, record: record)
+        } label: {
+            Label(attendanceStatusLabel(status), systemImage: isCurrent ? "checkmark.circle.fill" : "circle")
+                .mdFont(.compact)
+                .foregroundStyle(isCurrent ? color : .secondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(isSaving)
+        .help(isCurrent ? "再次点击取消\(attendanceStatusLabel(status))" : "标记为\(attendanceStatusLabel(status))")
+    }
+
+    private func updateAttendance(_ status: AttendanceStatus?, record: Attendance?) {
+        guard status != nil || record != nil else { return }
+        isSaving = true
+        if let status {
             model.performBackgroundOperation(
                 label: "记录签到",
                 successMessage: "签到已记录",
@@ -542,13 +573,15 @@ private struct AttendanceRow: View {
                     status: status
                 )
             }
-        } label: {
-            Label(attendanceStatusLabel(status), systemImage: current == status ? "checkmark.circle.fill" : "circle")
-                .mdFont(.compact)
-                .foregroundStyle(current == status ? color : .secondary)
+        } else if let record {
+            model.performBackgroundOperation(
+                label: "取消签到状态",
+                successMessage: "已恢复为未记录",
+                completion: { _ in isSaving = false }
+            ) {
+                try await model.deleteAttendance(id: record.id)
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(isSaving)
     }
 }
 

@@ -72,6 +72,34 @@ struct WriteBehindMasterDanceRepositoryTests {
         #expect(try await repository.synchronizeIfNeeded() == 0)
     }
 
+    @Test("Cancelling attendance restores unrecorded state before synchronization")
+    func cancellingAttendanceBeforeSync() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let remote = PreviewMasterDanceStore()
+        let repository = WriteBehindMasterDanceRepository(
+            remote: remote,
+            cacheDirectory: directory,
+            cacheKey: "attendance-cancellation"
+        )
+        _ = try await repository.listTerms()
+
+        let record = Attendance(
+            sessionID: ClassSessionID(),
+            studentID: StudentID(),
+            status: .present,
+            recordedAt: Date(timeIntervalSince1970: 1_000)
+        )
+        try await repository.save(attendance: record)
+        try await repository.deleteAttendance(id: record.id)
+
+        #expect(await repository.pendingMutationCount() == 1)
+        #expect(try await repository.listAttendance(sessionID: nil, studentID: nil).isEmpty)
+        #expect(try await repository.synchronizeIfNeeded() == 1)
+        #expect(await remote.listAttendance(sessionID: nil, studentID: nil).isEmpty)
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("master-dance-write-behind-\(UUID().uuidString)", isDirectory: true)

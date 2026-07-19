@@ -233,7 +233,7 @@ private struct MobileAttendanceSessionView: View {
         let record = model.attendanceRecord(sessionID: session.id, studentID: student.id)
         return HStack(spacing: 10) {
             Button {
-                setAttendance(record?.status == .present ? nil : .present, student: student, session: session)
+                setAttendance(record == nil ? .present : nil, student: student, session: session)
             } label: {
                 Image(systemName: record == nil ? "circle" : record!.status.mobileSystemImage)
                     .font(.system(size: 19, weight: .semibold))
@@ -241,7 +241,11 @@ private struct MobileAttendanceSessionView: View {
                     .frame(width: 28, height: 32)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(record == nil ? "标记出勤" : record!.status.mobileTitle)
+            .accessibilityLabel(
+                record == nil
+                    ? "标记出勤"
+                    : "取消\(record!.status.mobileTitle)，恢复为未记录"
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(student.displayName)
@@ -256,17 +260,26 @@ private struct MobileAttendanceSessionView: View {
             Menu {
                 ForEach([AttendanceStatus.present, .excused, .absent], id: \.self) { status in
                     Button {
-                        setAttendance(status, student: student, session: session)
+                        setAttendance(
+                            record?.status == status ? nil : status,
+                            student: student,
+                            session: session
+                        )
                     } label: {
-                        Label(status.mobileTitle, systemImage: status.mobileSystemImage)
+                        Label(
+                            status.mobileTitle,
+                            systemImage: record?.status == status
+                                ? "checkmark.circle.fill"
+                                : status.mobileSystemImage
+                        )
                     }
                 }
                 if record != nil {
                     Divider()
-                    Button(role: .destructive) {
+                    Button {
                         setAttendance(nil, student: student, session: session)
                     } label: {
-                        Label("清除记录", systemImage: "trash")
+                        Label("取消签到状态", systemImage: "arrow.uturn.backward")
                     }
                 }
             } label: {
@@ -281,6 +294,18 @@ private struct MobileAttendanceSessionView: View {
                         .mdFont(.compactStrong)
                         .foregroundStyle(theme.secondaryText)
                 }
+            }
+
+            if record != nil {
+                Button {
+                    setAttendance(nil, student: student, session: session)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.secondaryText)
+                .accessibilityLabel("取消签到状态，恢复为未记录")
             }
         }
         .padding(.vertical, 3)
@@ -317,7 +342,7 @@ private struct MobileAttendanceSessionView: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(theme.secondaryText)
-                        .accessibilityLabel("移除")
+                        .accessibilityLabel("取消\(status.mobileTitle)，恢复为未记录")
                     }
                 }
                 Button {
@@ -363,9 +388,10 @@ private struct MobileAttendanceSessionView: View {
     }
 
     private func removeAttendance(_ record: Attendance) {
+        let studentName = model.student(id: record.studentID)?.displayName ?? "学员"
         model.performBackgroundOperation(
-            label: "清除签到",
-            successMessage: "签到记录已清除"
+            label: "取消签到状态",
+            successMessage: "\(studentName)已恢复为未记录"
         ) {
             try await model.deleteAttendance(id: record.id)
         }
