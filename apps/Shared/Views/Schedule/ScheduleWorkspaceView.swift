@@ -14,6 +14,7 @@ struct ScheduleWorkspaceView: View {
     @State private var selectedSessionID: ClassSessionID?
     @State private var searchText = ""
     @State private var zoom = 1.0
+    @State private var fontScale = 1.0
     @State private var showingWeekPicker = false
     @State private var showingRoomPicker = false
     @State private var showingPrintPreview = false
@@ -43,7 +44,8 @@ struct ScheduleWorkspaceView: View {
                         rooms: visibleRooms,
                         sessions: filteredSessions,
                         selectedSessionID: $selectedSessionID,
-                        zoom: zoom
+                        zoom: zoom,
+                        fontScale: fontScale
                     )
                 }
             }
@@ -83,14 +85,15 @@ struct ScheduleWorkspaceView: View {
                 model: model,
                 weekStart: weekStart,
                 rooms: visibleRooms,
-                sessions: filteredSessions
+                sessions: filteredSessions,
+                fontScale: fontScale
             )
         }
     }
 
     private var toolbar: some View {
         let theme = MDTheme(scheme: colorScheme)
-        return HStack(spacing: 10) {
+        return HStack(spacing: 7) {
             MDSectionTitle(chinese: "课表", english: "SCHEDULE")
 
             Spacer(minLength: 6)
@@ -149,7 +152,7 @@ struct ScheduleWorkspaceView: View {
             TextField("搜索", text: $searchText)
                 .textFieldStyle(.roundedBorder)
                 .font(MDType.compact)
-                .frame(width: 118)
+                .frame(width: 100)
 
             Button {
                 showingPrintPreview = true
@@ -163,9 +166,24 @@ struct ScheduleWorkspaceView: View {
                 .font(MDType.compact)
                 .foregroundStyle(.secondary)
             Slider(value: $zoom, in: 0.82...1.38)
-                .frame(width: 76)
+                .frame(width: 64)
                 .help("调整时间轴比例")
             Image(systemName: "plus")
+                .font(MDType.compact)
+                .foregroundStyle(.secondary)
+
+            Rectangle()
+                .fill(theme.separator)
+                .frame(width: 1, height: 18)
+
+            Image(systemName: "textformat.size.smaller")
+                .font(MDType.compact)
+                .foregroundStyle(.secondary)
+            Slider(value: $fontScale, in: 0.72...1.35)
+                .frame(width: 64)
+                .help("调整课程块字体大小")
+                .accessibilityLabel("课程块字体大小")
+            Image(systemName: "textformat.size.larger")
                 .font(MDType.compact)
                 .foregroundStyle(.secondary)
         }
@@ -426,6 +444,7 @@ private struct SchedulePrintPreview: View {
     let weekStart: Date
     let rooms: [Room]
     let sessions: [ClassSession]
+    let fontScale: Double
 
     @Environment(\.dismiss) private var dismiss
 
@@ -441,7 +460,8 @@ private struct SchedulePrintPreview: View {
                             model: model,
                             weekStart: weekStart,
                             rooms: rooms,
-                            sessions: sessions
+                            sessions: sessions,
+                            fontScale: fontScale
                         )
                     )
                 }
@@ -455,7 +475,8 @@ private struct SchedulePrintPreview: View {
                 model: model,
                 weekStart: weekStart,
                 rooms: rooms,
-                sessions: sessions
+                sessions: sessions,
+                fontScale: fontScale
             )
             .padding(20)
         }
@@ -468,6 +489,7 @@ private struct SchedulePrintDocument: View {
     let weekStart: Date
     let rooms: [Room]
     let sessions: [ClassSession]
+    let fontScale: Double
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -484,7 +506,8 @@ private struct SchedulePrintDocument: View {
                 rooms: rooms,
                 sessions: sessions,
                 selectedSessionID: .constant(nil),
-                zoom: 1
+                zoom: 1,
+                fontScale: fontScale
             )
         }
         .padding(18)

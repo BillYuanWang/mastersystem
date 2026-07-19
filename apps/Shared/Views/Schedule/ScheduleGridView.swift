@@ -10,6 +10,7 @@ struct ScheduleGridView: View {
     let sessions: [ClassSession]
     @Binding var selectedSessionID: ClassSessionID?
     let zoom: Double
+    let fontScale: Double
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -134,6 +135,7 @@ struct ScheduleGridView: View {
                         session: session,
                         width: laneWidth - 5,
                         height: placement.height,
+                        fontScale: fontScale,
                         isSelected: selectedSessionID == session.id,
                         hasConflict: hasConflict(session),
                         select: { selectedSessionID = session.id }
@@ -207,6 +209,7 @@ private struct CourseBlockView: View {
     let session: ClassSession
     let width: CGFloat
     let height: CGFloat
+    let fontScale: Double
     let isSelected: Bool
     let hasConflict: Bool
     let select: () -> Void
@@ -222,7 +225,7 @@ private struct CourseBlockView: View {
             model.courseTypes.firstIndex(where: { $0.id == selectedType.id })
         } ?? 0
         let color = theme.courseColor(index: courseTypeIndex)
-        let fontSize = blockFontSize
+        let fontSize = max(6, min(14, blockFontSize * CGFloat(fontScale)))
         let preview = CourseAttendancePreview(model: model, session: session)
 
         Button(action: select) {
