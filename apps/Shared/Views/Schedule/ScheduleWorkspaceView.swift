@@ -126,7 +126,7 @@ struct ScheduleWorkspaceView: View {
                 }
                 .foregroundStyle(theme.primaryText)
                 .padding(.horizontal, 9)
-                .frame(width: 126, height: 28)
+                .frame(width: 148, height: 28)
                 .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
                 .overlay {
                     RoundedRectangle(cornerRadius: MDMetrics.radius)
@@ -363,7 +363,9 @@ struct ScheduleWorkspaceView: View {
 
     private var filteredSessions: [ClassSession] {
         let calendar = Calendar.masterDance
-        guard let weekEnd = calendar.date(byAdding: .day, value: 5, to: weekStart) else { return [] }
+        guard let weekEnd = ScheduleWeek.endExclusive(startingAt: weekStart, calendar: calendar) else {
+            return []
+        }
         let visibleRoomIDs = Set(visibleRooms.map(\.id))
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -391,13 +393,15 @@ struct ScheduleWorkspaceView: View {
     }
 
     private var weekLabel: String {
-        let end = Calendar.masterDance.date(byAdding: .day, value: 4, to: weekStart) ?? weekStart
-        return "\(weekStart.formatted(.dateTime.month(.abbreviated).day()))–\(end.formatted(.dateTime.day()))"
-            .uppercased()
+        ScheduleWeek.rangeLabel(startingAt: weekStart)
     }
 
     private func shiftWeek(_ amount: Int) {
-        weekStart = Calendar.masterDance.date(byAdding: .day, value: amount * 7, to: weekStart) ?? weekStart
+        weekStart = Calendar.masterDance.date(
+            byAdding: .day,
+            value: amount * ScheduleWeek.dayCount,
+            to: weekStart
+        ) ?? weekStart
         selectedSessionID = nil
     }
 
@@ -499,7 +503,7 @@ private struct SchedulePrintDocument: View {
                 Text("MASTER DANCE")
                     .mdFont(.monoStrong)
                 Spacer()
-                Text(weekStart.formatted(date: .long, time: .omitted))
+                Text(ScheduleWeek.rangeLabel(startingAt: weekStart, includesYear: true))
                     .mdFont(.mono)
             }
             ScheduleGridView(

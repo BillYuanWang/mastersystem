@@ -47,7 +47,10 @@ struct ScheduleGridView: View {
     }
 
     private func dayHeader(width: CGFloat, theme: MDTheme) -> some View {
-        let laneWidth = max(1, (width - timeColumnWidth) / CGFloat(5 * max(1, rooms.count)))
+        let laneWidth = max(
+            1,
+            (width - timeColumnWidth) / CGFloat(ScheduleWeek.dayCount * max(1, rooms.count))
+        )
         return HStack(spacing: 0) {
             Text("时间")
                 .mdFont(.mono)
@@ -60,12 +63,18 @@ struct ScheduleGridView: View {
                         Text(day.formatted(.dateTime.weekday(.abbreviated)).uppercased())
                         Text(day.formatted(.dateTime.month(.abbreviated).day()).uppercased())
                         if calendar.isDateInToday(day) {
-                            Text("今天")
+                            Circle()
+                                .fill(theme.accent)
+                                .frame(width: 5, height: 5)
+                                .accessibilityLabel("今天")
                                 .foregroundStyle(theme.accent)
                         }
                     }
                     .mdFont(.monoStrong)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
                     .foregroundStyle(calendar.isDateInToday(day) ? theme.accent : theme.secondaryText)
+                    .padding(.horizontal, 4)
                     .frame(height: 30)
 
                     HStack(spacing: 0) {
@@ -96,7 +105,7 @@ struct ScheduleGridView: View {
     }
 
     private func timelineBody(width: CGFloat, height: CGFloat, theme: MDTheme) -> some View {
-        let laneCount = 5 * max(1, rooms.count)
+        let laneCount = days.count * max(1, rooms.count)
         let laneWidth = max(1, (width - timeColumnWidth) / CGFloat(laneCount))
         return ZStack(alignment: .topLeading) {
             theme.background
@@ -149,7 +158,7 @@ struct ScheduleGridView: View {
     }
 
     private var days: [Date] {
-        (0..<5).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
+        ScheduleWeek.days(startingAt: weekStart, calendar: calendar)
     }
 
     private func placement(for session: ClassSession, laneWidth: CGFloat, height: CGFloat) -> SessionPlacement? {
