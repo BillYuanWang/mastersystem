@@ -8,6 +8,7 @@ final class AppModel {
     @ObservationIgnored private let repository: any MasterDanceRepository
     @ObservationIgnored private let referenceOrderStore = ReferenceOrderStore()
     @ObservationIgnored private var pendingBackgroundOperations: [PendingBackgroundOperation] = []
+    @ObservationIgnored private var pendingCloudOperations: [PendingCloudOperation] = []
     @ObservationIgnored private var syncNoticeGeneration = UUID()
 
     var terms: [Term] = []
@@ -28,6 +29,7 @@ final class AppModel {
     var contractConsents: [ContractConsent] = []
     var notifications: [NotificationRecord] = []
     var backgroundSync = BackgroundSyncPresentation()
+    var cloudActivity = CloudActivityPresentation()
     var availableGuardianLinkCodes: [GuardianLinkCode] = []
     var focusedSessionID: ClassSessionID?
     var isLoading = false
@@ -207,8 +209,10 @@ final class AppModel {
             endsOn: endsOn,
             status: .draft
         )
-        try await repository.save(term: term)
-        await reload()
+        try await withCloudActivity(label: "创建学期") {
+            try await repository.save(term: term)
+            await reload()
+        }
     }
 
     func saveTerm(_ term: Term) async throws {
@@ -218,13 +222,17 @@ final class AppModel {
         }) else {
             throw AppModelError.holidayOutsideTerm
         }
-        try await repository.save(term: term)
-        await reload()
+        try await withCloudActivity(label: "保存学期") {
+            try await repository.save(term: term)
+            await reload()
+        }
     }
 
     func deleteTerm(id: TermID) async throws {
-        try await repository.deleteTerm(id: id)
-        await reload()
+        try await withCloudActivity(label: "删除学期") {
+            try await repository.deleteTerm(id: id)
+            await reload()
+        }
     }
 
     func saveTermHoliday(_ holiday: TermHoliday) async throws {
@@ -234,53 +242,73 @@ final class AppModel {
               holiday.endsOn <= term.endsOn else {
             throw AppModelError.holidayOutsideTerm
         }
-        try await repository.save(termHoliday: holiday)
-        await reload()
+        try await withCloudActivity(label: "保存假期") {
+            try await repository.save(termHoliday: holiday)
+            await reload()
+        }
     }
 
     func deleteTermHoliday(id: TermHolidayID) async throws {
-        try await repository.deleteTermHoliday(id: id)
-        await reload()
+        try await withCloudActivity(label: "删除假期") {
+            try await repository.deleteTermHoliday(id: id)
+            await reload()
+        }
     }
 
     func saveCourseType(_ courseType: CourseType) async throws {
-        try await repository.save(courseType: courseType)
-        await reload()
+        try await withCloudActivity(label: "保存课程种类") {
+            try await repository.save(courseType: courseType)
+            await reload()
+        }
     }
 
     func deleteCourseType(id: CourseTypeID) async throws {
-        try await repository.deleteCourseType(id: id)
-        await reload()
+        try await withCloudActivity(label: "删除课程种类") {
+            try await repository.deleteCourseType(id: id)
+            await reload()
+        }
     }
 
     func saveAgeGroup(_ ageGroup: AgeGroup) async throws {
-        try await repository.save(ageGroup: ageGroup)
-        await reload()
+        try await withCloudActivity(label: "保存年龄段") {
+            try await repository.save(ageGroup: ageGroup)
+            await reload()
+        }
     }
 
     func deleteAgeGroup(id: AgeGroupID) async throws {
-        try await repository.deleteAgeGroup(id: id)
-        await reload()
+        try await withCloudActivity(label: "删除年龄段") {
+            try await repository.deleteAgeGroup(id: id)
+            await reload()
+        }
     }
 
     func saveRoom(_ room: Room) async throws {
-        try await repository.save(room: room)
-        await reload()
+        try await withCloudActivity(label: "保存教室") {
+            try await repository.save(room: room)
+            await reload()
+        }
     }
 
     func deleteRoom(id: RoomID) async throws {
-        try await repository.deleteRoom(id: id)
-        await reload()
+        try await withCloudActivity(label: "删除教室") {
+            try await repository.deleteRoom(id: id)
+            await reload()
+        }
     }
 
     func saveInstructor(_ instructor: Instructor) async throws {
-        try await repository.save(instructor: instructor)
-        await reload()
+        try await withCloudActivity(label: "保存授课老师") {
+            try await repository.save(instructor: instructor)
+            await reload()
+        }
     }
 
     func deleteInstructor(id: InstructorID) async throws {
-        try await repository.deleteInstructor(id: id)
-        await reload()
+        try await withCloudActivity(label: "删除授课老师") {
+            try await repository.deleteInstructor(id: id)
+            await reload()
+        }
     }
 
     func moveCourseType(_ sourceID: CourseTypeID, to targetID: CourseTypeID) {
@@ -309,13 +337,17 @@ final class AppModel {
         }
         var updated = course
         updated.format = type.isPrivate ? .privateLesson : .group
-        try await repository.save(course: updated)
-        await reload()
+        try await withCloudActivity(label: "保存课程") {
+            try await repository.save(course: updated)
+            await reload()
+        }
     }
 
     func deleteCourse(id: CourseID) async throws {
-        try await repository.deleteCourse(id: id)
-        await reload()
+        try await withCloudActivity(label: "删除课程") {
+            try await repository.deleteCourse(id: id)
+            await reload()
+        }
     }
 
     func createCourse(from draft: CourseCreationDraft) async throws {
@@ -331,27 +363,29 @@ final class AppModel {
         else {
             throw AppModelError.missingCourseFields
         }
-        let categoryID = try await hiddenCourseCategoryID()
+        try await withCloudActivity(label: "创建课程") {
+            let categoryID = try await hiddenCourseCategoryID()
 
-        let course = Course(
-            termID: termID,
-            name: trimmedName,
-            categoryID: categoryID,
-            ageGroupID: ageGroupID,
-            defaultRoomID: roomID,
-            defaultInstructorID: instructorID,
-            courseTypeID: courseTypeID,
-            format: selectedCourseType.isPrivate ? .privateLesson : .group,
-            notes: draft.notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            isActive: draft.isActive
-        )
-        let generatedSessions = try generatedSessions(for: course.id, termID: termID, draft: draft)
+            let course = Course(
+                termID: termID,
+                name: trimmedName,
+                categoryID: categoryID,
+                ageGroupID: ageGroupID,
+                defaultRoomID: roomID,
+                defaultInstructorID: instructorID,
+                courseTypeID: courseTypeID,
+                format: selectedCourseType.isPrivate ? .privateLesson : .group,
+                notes: draft.notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                isActive: draft.isActive
+            )
+            let generatedSessions = try generatedSessions(for: course.id, termID: termID, draft: draft)
 
-        try await repository.save(course: course)
-        for session in generatedSessions {
-            try await repository.save(session: session)
+            try await repository.save(course: course)
+            for session in generatedSessions {
+                try await repository.save(session: session)
+            }
+            await reload()
         }
-        await reload()
     }
 
     func updateCourse(_ original: Course, from draft: CourseCreationDraft) async throws {
@@ -395,31 +429,35 @@ final class AppModel {
             }
         }
 
-        try await repository.save(course: updated)
-        if scheduleChanged {
-            for session in existingSessions {
-                try await repository.deleteSession(id: session.id)
+        try await withCloudActivity(label: "更新课程") {
+            try await repository.save(course: updated)
+            if scheduleChanged {
+                for session in existingSessions {
+                    try await repository.deleteSession(id: session.id)
+                }
+                for session in replacementSessions {
+                    try await repository.save(session: session)
+                }
             }
-            for session in replacementSessions {
-                try await repository.save(session: session)
-            }
+            await reload()
         }
-        await reload()
     }
 
     func createReference(kind: ReferenceKind, name: String) async throws {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }
 
-        switch kind {
-        case .ageGroup:
-            try await repository.save(ageGroup: AgeGroup(name: trimmedName))
-        case .room:
-            try await repository.save(room: Room(name: trimmedName))
-        case .instructor:
-            try await repository.save(instructor: Instructor(displayName: trimmedName))
+        try await withCloudActivity(label: "创建\(kind.title)") {
+            switch kind {
+            case .ageGroup:
+                try await repository.save(ageGroup: AgeGroup(name: trimmedName))
+            case .room:
+                try await repository.save(room: Room(name: trimmedName))
+            case .instructor:
+                try await repository.save(instructor: Instructor(displayName: trimmedName))
+            }
+            await reload()
         }
-        await reload()
     }
 
     private func hiddenCourseCategoryID() async throws -> CourseCategoryID {
@@ -449,15 +487,17 @@ final class AppModel {
             email: contact.email,
             phone: contact.phone
         )
-        try await repository.save(guardian: guardian)
+        return try await withCloudActivity(label: "创建监护人") {
+            try await repository.save(guardian: guardian)
 
-        do {
-            let code = try await repository.issueGuardianLinkCode(guardianID: guardian.id)
-            await reload()
-            return code
-        } catch {
-            await reload()
-            throw error
+            do {
+                let code = try await repository.issueGuardianLinkCode(guardianID: guardian.id)
+                await reload()
+                return code
+            } catch {
+                await reload()
+                throw error
+            }
         }
     }
 
@@ -478,19 +518,25 @@ final class AppModel {
             legalName: trimmedLegalName.isEmpty ? nil : trimmedLegalName,
             kind: kind
         )
-        _ = try await repository.create(student: student, for: guardianID)
-        await reload()
+        try await withCloudActivity(label: "创建学员") {
+            _ = try await repository.create(student: student, for: guardianID)
+            await reload()
+        }
     }
 
     func link(studentID: StudentID, to guardianID: GuardianID) async throws {
-        try await repository.link(studentID: studentID, to: guardianID)
-        await reload()
+        try await withCloudActivity(label: "关联学员") {
+            try await repository.link(studentID: studentID, to: guardianID)
+            await reload()
+        }
     }
 
     func issueGuardianLinkCode(guardianID: GuardianID) async throws -> GuardianLinkCode {
-        let code = try await repository.issueGuardianLinkCode(guardianID: guardianID)
-        await reload()
-        return code
+        try await withCloudActivity(label: "生成监护人码") {
+            let code = try await repository.issueGuardianLinkCode(guardianID: guardianID)
+            await reload()
+            return code
+        }
     }
 
     func saveGuardian(_ guardian: Guardian) async throws {
@@ -504,8 +550,10 @@ final class AppModel {
         updated.displayName = name
         updated.email = contact.email
         updated.phone = contact.phone
-        try await repository.save(guardian: updated)
-        await reload()
+        try await withCloudActivity(label: "保存监护人") {
+            try await repository.save(guardian: updated)
+            await reload()
+        }
     }
 
     private func normalizedGuardianContact(
@@ -528,8 +576,10 @@ final class AppModel {
     }
 
     func deleteGuardian(id: GuardianID) async throws {
-        try await repository.deleteGuardian(id: id)
-        await reload()
+        try await withCloudActivity(label: "删除监护人") {
+            try await repository.deleteGuardian(id: id)
+            await reload()
+        }
     }
 
     func saveStudent(_ student: Student) async throws {
@@ -537,49 +587,61 @@ final class AppModel {
         guard !name.isEmpty else { throw AppModelError.missingStudentName }
         var updated = student
         updated.displayName = name
-        try await repository.save(student: updated)
-        await reload()
+        try await withCloudActivity(label: "保存学员") {
+            try await repository.save(student: updated)
+            await reload()
+        }
     }
 
     func deleteStudent(id: StudentID) async throws {
-        try await repository.deleteStudent(id: id)
-        await reload()
+        try await withCloudActivity(label: "删除学员") {
+            try await repository.deleteStudent(id: id)
+            await reload()
+        }
     }
 
     func saveContractDocument(_ document: ContractDocument, fileData: Data?) async throws {
-        _ = try await repository.save(contractDocument: document, fileData: fileData)
-        await reload()
+        try await withCloudActivity(label: "保存合同") {
+            _ = try await repository.save(contractDocument: document, fileData: fileData)
+            await reload()
+        }
     }
 
     func deleteContractDocument(_ document: ContractDocument) async throws {
-        try await repository.deleteContractDocument(id: document.id, storagePath: document.storagePath)
-        await reload()
+        try await withCloudActivity(label: "删除合同") {
+            try await repository.deleteContractDocument(id: document.id, storagePath: document.storagePath)
+            await reload()
+        }
     }
 
     func enroll(studentID: StudentID, courseID: CourseID) async throws {
         guard let course = course(id: courseID) else {
             throw AppModelError.missingEnrollmentFields
         }
-        if let existing = enrollments.first(where: { $0.studentID == studentID && $0.courseID == courseID }) {
-            var restored = existing
-            restored.status = .active
-            try await repository.save(enrollment: restored)
-        } else {
-            try await repository.save(
-                enrollment: Enrollment(
-                    termID: course.termID,
-                    courseID: courseID,
-                    studentID: studentID,
-                    enrolledAt: Date()
+        try await withCloudActivity(label: "添加报名") {
+            if let existing = enrollments.first(where: { $0.studentID == studentID && $0.courseID == courseID }) {
+                var restored = existing
+                restored.status = .active
+                try await repository.save(enrollment: restored)
+            } else {
+                try await repository.save(
+                    enrollment: Enrollment(
+                        termID: course.termID,
+                        courseID: courseID,
+                        studentID: studentID,
+                        enrolledAt: Date()
+                    )
                 )
-            )
+            }
+            await reload()
         }
-        await reload()
     }
 
     func removeEnrollment(id: EnrollmentID) async throws {
-        try await repository.deleteEnrollment(id: id)
-        await reload()
+        try await withCloudActivity(label: "移除报名") {
+            try await repository.deleteEnrollment(id: id)
+            await reload()
+        }
     }
 
     func recordAttendance(sessionID: ClassSessionID, studentID: StudentID, status: AttendanceStatus) async throws {
@@ -594,29 +656,33 @@ final class AppModel {
         guard status.isGuestAttendance || enrollmentID != nil else {
             throw AppModelError.attendanceRequiresEnrollment
         }
-        if let existing = attendance.first(where: { $0.sessionID == sessionID && $0.studentID == studentID }) {
-            var updated = existing
-            updated.enrollmentID = enrollmentID
-            updated.status = status
-            updated.recordedAt = Date()
-            try await repository.save(attendance: updated)
-        } else {
-            try await repository.save(
-                attendance: Attendance(
-                    sessionID: sessionID,
-                    studentID: studentID,
-                    enrollmentID: enrollmentID,
-                    status: status,
-                    recordedAt: Date()
+        try await withCloudActivity(label: "记录签到") {
+            if let existing = attendance.first(where: { $0.sessionID == sessionID && $0.studentID == studentID }) {
+                var updated = existing
+                updated.enrollmentID = enrollmentID
+                updated.status = status
+                updated.recordedAt = Date()
+                try await repository.save(attendance: updated)
+            } else {
+                try await repository.save(
+                    attendance: Attendance(
+                        sessionID: sessionID,
+                        studentID: studentID,
+                        enrollmentID: enrollmentID,
+                        status: status,
+                        recordedAt: Date()
+                    )
                 )
-            )
+            }
+            await reload()
         }
-        await reload()
     }
 
     func deleteAttendance(id: AttendanceID) async throws {
-        try await repository.deleteAttendance(id: id)
-        await reload()
+        try await withCloudActivity(label: "删除签到记录") {
+            try await repository.deleteAttendance(id: id)
+            await reload()
+        }
     }
 
     func resolveLeaveRequest(id: LeaveRequestID, status: LeaveRequestStatus) async throws {
@@ -624,8 +690,10 @@ final class AppModel {
         guard var request = leaveRequests.first(where: { $0.id == id }) else { return }
         request.status = status
         request.resolvedAt = Date()
-        try await repository.save(leaveRequest: request)
-        await reload()
+        try await withCloudActivity(label: "处理请假") {
+            try await repository.save(leaveRequest: request)
+            await reload()
+        }
     }
 
     private func calendarDays(from startsOn: Date, through endsOn: Date) -> Set<Date> {
@@ -644,6 +712,25 @@ final class AppModel {
     private func refreshBackgroundSyncActivity() {
         backgroundSync.activeCount = pendingBackgroundOperations.count
         backgroundSync.activeLabel = pendingBackgroundOperations.last?.label
+    }
+
+    private func withCloudActivity<Value>(
+        label: String,
+        operation: @MainActor () async throws -> Value
+    ) async rethrows -> Value {
+        let id = UUID()
+        pendingCloudOperations.append(PendingCloudOperation(id: id, label: label))
+        refreshCloudActivity()
+        defer {
+            pendingCloudOperations.removeAll { $0.id == id }
+            refreshCloudActivity()
+        }
+        return try await operation()
+    }
+
+    private func refreshCloudActivity() {
+        cloudActivity.activeCount = pendingCloudOperations.count
+        cloudActivity.activeLabel = pendingCloudOperations.last?.label
     }
 
     private func completeBackgroundOperation(
@@ -739,6 +826,11 @@ private enum ReferenceOrderKey: String {
 }
 
 private struct PendingBackgroundOperation {
+    let id: UUID
+    let label: String
+}
+
+private struct PendingCloudOperation {
     let id: UUID
     let label: String
 }

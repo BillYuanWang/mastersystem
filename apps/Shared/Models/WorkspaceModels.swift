@@ -112,6 +112,15 @@ struct BackgroundSyncPresentation: Equatable {
     }
 }
 
+struct CloudActivityPresentation: Equatable {
+    var activeCount = 0
+    var activeLabel: String?
+
+    var isActive: Bool {
+        activeCount > 0
+    }
+}
+
 enum AppModelError: LocalizedError {
     case missingCourseFields
     case missingEnrollmentFields

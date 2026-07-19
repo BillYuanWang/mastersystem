@@ -68,6 +68,15 @@ struct AppShell: View {
                     .padding(.top, 8)
             }
         }
+        .overlay {
+            if model.cloudActivity.isActive {
+                CloudSyncLoader(label: model.cloudActivity.activeLabel)
+                    .allowsHitTesting(false)
+                    .transition(.scale(scale: 0.94).combined(with: .opacity))
+                    .zIndex(100)
+            }
+        }
+        .animation(.easeOut(duration: 0.16), value: model.cloudActivity.isActive)
     }
 
 }

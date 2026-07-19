@@ -126,6 +126,15 @@ struct AdministratorAccountSheet: View {
             session.clearMessages()
             await session.loadAdministrators()
         }
+        .overlay {
+            if session.isWorking {
+                CloudSyncLoader(label: "正在同步教务账号")
+                    .allowsHitTesting(false)
+                    .transition(.scale(scale: 0.94).combined(with: .opacity))
+                    .zIndex(100)
+            }
+        }
+        .animation(.easeOut(duration: 0.16), value: session.isWorking)
     }
 
     private func invite() {
