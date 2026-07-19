@@ -100,6 +100,7 @@ private struct MobileSignInAndRegistrationView: View {
     @State private var verifiedInvitation: GuardianRegistrationInvitation?
     @State private var showingRegistrationContract = false
     @State private var showingPasswordReset = false
+    @State private var isCompletingRegistration = false
     @Environment(\.colorScheme) private var colorScheme
 
     init(session: MobileSessionModel) {
@@ -212,17 +213,31 @@ private struct MobileSignInAndRegistrationView: View {
                     session: session,
                     invitation: invitation,
                     onCancel: { showingRegistrationContract = false },
-                    onCompleted: { showingRegistrationContract = false }
+                    onCompleted: { completeRegistration(invitation) }
                 )
             }
         }
         .onChange(of: mode) {
+            if isCompletingRegistration {
+                isCompletingRegistration = false
+                return
+            }
             password = ""
             invitationCode = ""
             verifiedInvitation = nil
             showingRegistrationContract = false
             session.clearMessages()
         }
+    }
+
+    private func completeRegistration(_ invitation: GuardianRegistrationInvitation) {
+        isCompletingRegistration = true
+        email = invitation.email
+        password = ""
+        invitationCode = ""
+        verifiedInvitation = nil
+        showingRegistrationContract = false
+        mode = .signIn
     }
 
     private var canSubmit: Bool {

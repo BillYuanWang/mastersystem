@@ -182,21 +182,21 @@ final class MobileSessionModel {
             try pendingInvitationStore.save(
                 PendingGuardianInvitation(code: invitation.code, email: email)
             )
+            authStorage.setSessionPersistenceEnabled(false)
             let response = try await client.auth.signUp(
                 email: email,
                 password: password,
                 redirectTo: callbackURL
             )
-            accountEmail = response.user.email ?? email
-            if let session = response.session {
-                beginLoginRetention(rememberLogin: retentionStore.remembersLogin)
-                try await finishAuthentication(userID: session.user.id)
-            } else {
-                profile = nil
-                repository = nil
-                phase = .emailConfirmationRequired(email)
-                clearLoginRetention()
-            }
+            let registeredEmail = response.user.email ?? email
+            try? await client.auth.signOut(scope: .local)
+            clearAuthenticatedState()
+            clearLoginRetention()
+            accountEmail = registeredEmail
+            phase = .signedOut
+            noticeMessage = response.session == nil
+                ? "注册已提交。请先完成邮箱确认，再使用新密码登录。"
+                : "注册成功，请使用刚刚设置的密码登录。"
             didRegister = true
         }
         return didRegister
