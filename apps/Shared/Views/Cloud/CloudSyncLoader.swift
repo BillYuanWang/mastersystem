@@ -1,144 +1,117 @@
 import SwiftUI
 
-struct CloudSyncLoader: View {
+struct CloudSyncOverlay: View {
+    let isActive: Bool
     let label: String?
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isVisible = false
+    @State private var visibleSince: Date?
+
+    var body: some View {
+        ZStack {
+            if isVisible {
+                CloudSyncLoader(label: label)
+                    .transition(.scale(scale: 0.97).combined(with: .opacity))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+        .task(id: isActive) {
+            if isActive {
+                await showAfterDelay()
+            } else {
+                await hideAfterMinimumDuration()
+            }
+        }
+    }
+
+    private func showAfterDelay() async {
+        do {
+            try await Task.sleep(nanoseconds: 120_000_000)
+        } catch {
+            return
+        }
+        guard !Task.isCancelled else { return }
+        visibleSince = Date()
+        withAnimation(.smooth(duration: 0.18)) {
+            isVisible = true
+        }
+    }
+
+    private func hideAfterMinimumDuration() async {
+        if let visibleSince {
+            let elapsed = Date().timeIntervalSince(visibleSince)
+            let remaining = max(0, 0.32 - elapsed)
+            if remaining > 0 {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+                } catch {
+                    return
+                }
+            }
+        }
+        guard !Task.isCancelled else { return }
+        withAnimation(.smooth(duration: 0.16)) {
+            isVisible = false
+        }
+        visibleSince = nil
+    }
+}
+
+private struct CloudSyncLoader: View {
+    let label: String?
+
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { context in
-            let elapsed = context.date.timeIntervalSinceReferenceDate
-            VStack(spacing: 7) {
-                CloudSyncGlyph(
-                    elapsed: elapsed,
-                    reduceMotion: reduceMotion,
-                    cloudColor: colorScheme == .dark ? theme.accent : theme.primaryText,
-                    arrowColor: colorScheme == .dark ? theme.warning : theme.accent,
-                    trackColor: theme.secondaryText.opacity(colorScheme == .dark ? 0.42 : 0.28)
-                )
-                .frame(width: 76, height: 58)
+        HStack(spacing: 10) {
+            SmoothActivityIndicator(tint: theme.primaryText)
+                .frame(width: 18, height: 18)
 
-                Text(label ?? "正在同步云端")
-                    .mdFont(.compactStrong)
-                    .foregroundStyle(theme.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(width: 128)
-            .frame(minHeight: 104)
-            .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
-            .overlay {
-                RoundedRectangle(cornerRadius: MDMetrics.radius)
-                    .stroke(theme.separator, lineWidth: 1)
-            }
-            .shadow(
-                color: .black.opacity(colorScheme == .dark ? 0.34 : 0.15),
-                radius: 13,
-                y: 5
-            )
+            Text(label ?? "正在同步")
+                .mdFont(.compactStrong)
+                .foregroundStyle(theme.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
         }
+        .padding(.horizontal, 14)
+        .frame(minWidth: 132, minHeight: 46)
+        .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
+        .overlay {
+            RoundedRectangle(cornerRadius: MDMetrics.radius)
+                .stroke(theme.separator, lineWidth: 1)
+        }
+        .shadow(
+            color: .black.opacity(colorScheme == .dark ? 0.26 : 0.10),
+            radius: 7,
+            y: 2
+        )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label ?? "正在同步云端")
+        .accessibilityLabel(label ?? "正在同步")
     }
 }
 
-private struct CloudSyncGlyph: View {
-    let elapsed: TimeInterval
-    let reduceMotion: Bool
-    let cloudColor: Color
-    let arrowColor: Color
-    let trackColor: Color
+private struct SmoothActivityIndicator: View {
+    let tint: Color
 
     var body: some View {
-        let dashPhase = reduceMotion ? CGFloat.zero : CGFloat(-elapsed * 25)
-        let rotation = reduceMotion ? Double.zero : elapsed * 150
+        TimelineView(.periodic(from: .now, by: 1.0 / 60.0)) { timeline in
+            let cycle = timeline.date.timeIntervalSinceReferenceDate
+                .truncatingRemainder(dividingBy: 0.78) / 0.78
 
-        ZStack {
-            CloudOutlineShape()
-                .stroke(trackColor, lineWidth: 1.2)
+            ZStack {
+                Circle()
+                    .stroke(tint.opacity(0.16), lineWidth: 2.2)
 
-            CloudOutlineShape()
-                .trim(from: 0.03, to: 0.97)
-                .stroke(
-                    cloudColor,
-                    style: StrokeStyle(
-                        lineWidth: 2.2,
-                        lineCap: .round,
-                        lineJoin: .round,
-                        dash: [12, 7],
-                        dashPhase: dashPhase
+                Circle()
+                    .trim(from: 0.06, to: 0.72)
+                    .stroke(
+                        tint,
+                        style: StrokeStyle(lineWidth: 2.2, lineCap: .round)
                     )
-                )
-
-            VStack(spacing: 4) {
-                movingLine(index: 0, width: 27)
-                movingLine(index: 1, width: 39)
-                movingLine(index: 2, width: 23)
+                    .rotationEffect(.degrees(cycle * 360))
             }
-            .offset(y: 8)
-
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(arrowColor)
-                .rotationEffect(.degrees(rotation))
-                .offset(y: -23)
         }
-    }
-
-    private func movingLine(index: Int, width: CGFloat) -> some View {
-        let offset = reduceMotion
-            ? CGFloat.zero
-            : CGFloat(sin(elapsed * 2.8 + Double(index) * 1.9) * 6)
-        return Capsule()
-            .fill(cloudColor.opacity(index == 1 ? 0.92 : 0.64))
-            .frame(width: width, height: 2)
-            .offset(x: offset)
-    }
-}
-
-private struct CloudOutlineShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        let width = rect.width
-        let height = rect.height
-        var path = Path()
-
-        path.move(to: CGPoint(x: width * 0.23, y: height * 0.82))
-        path.addCurve(
-            to: CGPoint(x: width * 0.06, y: height * 0.64),
-            control1: CGPoint(x: width * 0.12, y: height * 0.82),
-            control2: CGPoint(x: width * 0.06, y: height * 0.74)
-        )
-        path.addCurve(
-            to: CGPoint(x: width * 0.20, y: height * 0.43),
-            control1: CGPoint(x: width * 0.06, y: height * 0.52),
-            control2: CGPoint(x: width * 0.11, y: height * 0.44)
-        )
-        path.addCurve(
-            to: CGPoint(x: width * 0.38, y: height * 0.38),
-            control1: CGPoint(x: width * 0.25, y: height * 0.38),
-            control2: CGPoint(x: width * 0.31, y: height * 0.37)
-        )
-        path.addCurve(
-            to: CGPoint(x: width * 0.72, y: height * 0.40),
-            control1: CGPoint(x: width * 0.47, y: height * 0.08),
-            control2: CGPoint(x: width * 0.66, y: height * 0.17)
-        )
-        path.addCurve(
-            to: CGPoint(x: width * 0.93, y: height * 0.59),
-            control1: CGPoint(x: width * 0.85, y: height * 0.38),
-            control2: CGPoint(x: width * 0.93, y: height * 0.47)
-        )
-        path.addCurve(
-            to: CGPoint(x: width * 0.78, y: height * 0.82),
-            control1: CGPoint(x: width * 0.93, y: height * 0.73),
-            control2: CGPoint(x: width * 0.88, y: height * 0.82)
-        )
-        path.addLine(to: CGPoint(x: width * 0.23, y: height * 0.82))
-
-        return path
     }
 }

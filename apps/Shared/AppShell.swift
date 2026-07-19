@@ -94,14 +94,12 @@ struct AppShell: View {
             }
         }
         .overlay {
-            if model.cloudActivity.isActive {
-                CloudSyncLoader(label: model.cloudActivity.activeLabel)
-                    .allowsHitTesting(false)
-                    .transition(.scale(scale: 0.94).combined(with: .opacity))
-                    .zIndex(100)
-            }
+            CloudSyncOverlay(
+                isActive: model.cloudActivity.isActive,
+                label: model.cloudActivity.activeLabel
+            )
+            .zIndex(100)
         }
-        .animation(.easeOut(duration: 0.16), value: model.cloudActivity.isActive)
 #if os(iOS)
         .overlay(alignment: .bottom) {
             if model.backgroundSync.isVisible {

@@ -85,6 +85,7 @@ private actor MobileMemberActionQueue {
     private let client: SupabaseClient
     private let cacheURL: URL
     private var pending: [QueuedMobileMemberAction]
+    private var hasLoadedCache = false
     private var isSynchronizing = false
 
     init(client: SupabaseClient, cacheDirectory: URL, cacheKey: String) {
@@ -94,15 +95,11 @@ private actor MobileMemberActionQueue {
         }.joined()
         cacheURL = cacheDirectory
             .appendingPathComponent("mobile-actions-\(safeCacheKey).json", isDirectory: false)
-        if let data = try? Data(contentsOf: cacheURL),
-           let decoded = try? JSONDecoder().decode([QueuedMobileMemberAction].self, from: data) {
-            pending = decoded
-        } else {
-            pending = []
-        }
+        pending = []
     }
 
     func enqueue(_ action: PendingMobileMemberAction) throws {
+        loadCacheIfNeeded()
         let queued = QueuedMobileMemberAction(action: action)
         let firstReplaceableIndex = isSynchronizing ? 1 : 0
         if firstReplaceableIndex < pending.count,
@@ -116,6 +113,7 @@ private actor MobileMemberActionQueue {
     }
 
     func synchronizeIfNeeded() async throws -> Int {
+        loadCacheIfNeeded()
         guard !isSynchronizing, !pending.isEmpty else { return 0 }
         isSynchronizing = true
         defer { isSynchronizing = false }
@@ -128,6 +126,16 @@ private actor MobileMemberActionQueue {
             try persist()
         }
         return synchronizedCount
+    }
+
+    private func loadCacheIfNeeded() {
+        guard !hasLoadedCache else { return }
+        hasLoadedCache = true
+        guard let data = try? Data(contentsOf: cacheURL),
+              let decoded = try? JSONDecoder().decode([QueuedMobileMemberAction].self, from: data) else {
+            return
+        }
+        pending = decoded
     }
 
     private func persist() throws {

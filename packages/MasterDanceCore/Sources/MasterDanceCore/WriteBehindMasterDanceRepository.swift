@@ -12,6 +12,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
     private let cacheURL: URL
     private var pendingMutations: [QueuedMutation]
     private var hasSnapshot: Bool
+    private var hasLoadedCache = false
     private var isSynchronizing = false
     private var lastRemoteRefreshAt: Date?
 
@@ -27,25 +28,19 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
         cacheURL = cacheDirectory
             .appendingPathComponent("master-dance-\(safeCacheKey).json", isDirectory: false)
 
-        if let data = try? Data(contentsOf: cacheURL),
-           let envelope = try? JSONDecoder().decode(CacheEnvelope.self, from: data),
-           envelope.version == CacheEnvelope.currentVersion {
-            local = PreviewMasterDanceStore(data: envelope.snapshot)
-            pendingMutations = envelope.pendingMutations
-            hasSnapshot = true
-        } else {
-            local = PreviewMasterDanceStore()
-            pendingMutations = []
-            hasSnapshot = false
-        }
+        local = PreviewMasterDanceStore()
+        pendingMutations = []
+        hasSnapshot = false
     }
 
-    public func pendingMutationCount() -> Int {
-        pendingMutations.count
+    public func pendingMutationCount() async -> Int {
+        await loadCacheIfNeeded()
+        return pendingMutations.count
     }
 
     @discardableResult
     public func synchronizeIfNeeded() async throws -> Int {
+        await loadCacheIfNeeded()
         guard !isSynchronizing, !pendingMutations.isEmpty else { return 0 }
         isSynchronizing = true
         defer { isSynchronizing = false }
@@ -62,6 +57,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 
     @discardableResult
     public func refreshFromRemoteIfClean() async throws -> Bool {
+        await loadCacheIfNeeded()
         guard pendingMutations.isEmpty, !isSynchronizing else { return false }
         if let lastRemoteRefreshAt,
            Date().timeIntervalSince(lastRemoteRefreshAt) < 5 {
@@ -399,12 +395,28 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
     }
 
     private func ensureSnapshot() async throws {
+        await loadCacheIfNeeded()
         guard !hasSnapshot else { return }
         let snapshot = try await fetchRemoteSnapshot()
         await local.replace(with: snapshot)
         hasSnapshot = true
         lastRemoteRefreshAt = Date()
         try await persist()
+    }
+
+    private func loadCacheIfNeeded() async {
+        guard !hasLoadedCache else { return }
+        hasLoadedCache = true
+
+        guard let data = try? Data(contentsOf: cacheURL),
+              let envelope = try? JSONDecoder().decode(CacheEnvelope.self, from: data),
+              envelope.version == CacheEnvelope.currentVersion else {
+            return
+        }
+
+        await local.replace(with: envelope.snapshot)
+        pendingMutations = envelope.pendingMutations
+        hasSnapshot = true
     }
 
     private func fetchRemoteSnapshot() async throws -> PreviewData {

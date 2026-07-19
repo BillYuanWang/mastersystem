@@ -56,12 +56,8 @@ struct AdminSignInView: View {
 
                 Button(action: signIn) {
                     HStack(spacing: 7) {
-                        if session.isWorking {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.right")
-                        }
-                        Text("登录")
+                        Image(systemName: session.isWorking ? "ellipsis" : "arrow.right")
+                        Text(session.isWorking ? "请稍候" : "登录")
                     }
                     .frame(maxWidth: .infinity)
                 }

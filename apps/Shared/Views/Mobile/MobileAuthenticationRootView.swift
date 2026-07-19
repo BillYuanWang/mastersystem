@@ -47,14 +47,12 @@ struct MobileAuthenticationRootView: View {
             .padding(.horizontal, 12)
         }
         .overlay {
-            if session.isWorking {
-                CloudSyncLoader(label: "正在连接云端")
-                    .allowsHitTesting(false)
-                    .transition(.scale(scale: 0.94).combined(with: .opacity))
-                    .zIndex(100)
-            }
+            CloudSyncOverlay(
+                isActive: session.isWorking,
+                label: "正在连接"
+            )
+            .zIndex(100)
         }
-        .animation(.easeOut(duration: 0.16), value: session.isWorking)
         .sheet(isPresented: passwordUpdateBinding) {
             MobilePasswordUpdateView(session: session)
                 .interactiveDismissDisabled()
@@ -156,8 +154,8 @@ private struct MobileSignInAndRegistrationView: View {
 
                 Button(action: submit) {
                     Label(
-                        submitTitle,
-                        systemImage: submitSystemImage
+                        session.isWorking ? "请稍候" : submitTitle,
+                        systemImage: session.isWorking ? "ellipsis" : submitSystemImage
                     )
                     .frame(maxWidth: .infinity)
                     .frame(height: 46)

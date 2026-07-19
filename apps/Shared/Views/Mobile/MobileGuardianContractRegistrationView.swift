@@ -61,11 +61,10 @@ struct MobileGuardianContractRegistrationView: View {
                 }
             }
             .overlay {
-                if session.isWorking, document != nil {
-                    CloudSyncLoader(label: "正在安全保存")
-                        .allowsHitTesting(false)
-                        .transition(.scale(scale: 0.94).combined(with: .opacity))
-                }
+                CloudSyncOverlay(
+                    isActive: session.isWorking && document != nil,
+                    label: "正在安全保存"
+                )
             }
         }
         .interactiveDismissDisabled(session.isWorking)
