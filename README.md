@@ -1,6 +1,6 @@
 # Master Dance
 
-Current local test release: `v0.1.8f`.
+Current local test release: `v0.1.8g`.
 
 Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
 

@@ -27,6 +27,9 @@ struct MobileAccountProfile: Equatable, Sendable {
 final class MobileSessionModel {
     @ObservationIgnored private let configuration: SupabaseConfiguration
     @ObservationIgnored private let client: SupabaseClient
+    @ObservationIgnored private let authStorage: SessionAwareAuthStorage
+    @ObservationIgnored private let retentionStore: LoginRetentionStore
+    @ObservationIgnored private var expirationTask: Task<Void, Never>?
     @ObservationIgnored private var cachedMemberActions: MobileMemberActionService?
     @ObservationIgnored private let pendingInvitationStore = PendingGuardianInvitationStore()
 
@@ -41,16 +44,41 @@ final class MobileSessionModel {
 
     init(configuration: SupabaseConfiguration = .production) {
         self.configuration = configuration
-        client = configuration.makeClient()
+        let retentionStore = LoginRetentionStore()
+        self.retentionStore = retentionStore
+        let configuredClient = configuration.makeSessionClient(
+            persistSession: retentionStore.remembersLogin
+        )
+        client = configuredClient.client
+        authStorage = configuredClient.authStorage
     }
 
     var memberActions: MobileMemberActionService? { cachedMemberActions }
+    var defaultRememberLogin: Bool { retentionStore.remembersLogin }
 
     func restore() async {
         guard phase == .restoring else { return }
+        let rememberLogin = retentionStore.remembersLogin
+        authStorage.setSessionPersistenceEnabled(rememberLogin)
+        guard rememberLogin else {
+            retentionStore.clearAuthentication()
+            clearAuthenticatedState()
+            phase = .signedOut
+            return
+        }
+        if let authenticatedAt = retentionStore.authenticatedAt,
+           !LoginRetentionPolicy.isWithinMaximumDuration(authenticatedAt: authenticatedAt) {
+            await expireRetainedLogin()
+            return
+        }
+
         do {
             let session = try await client.auth.session
             accountEmail = session.user.email
+            beginLoginRetention(
+                rememberLogin: true,
+                authenticatedAt: retentionStore.authenticatedAt ?? Date()
+            )
             try await finishAuthentication(userID: session.user.id)
         } catch {
             if phase == .guardianLinkRequired {
@@ -62,17 +90,25 @@ final class MobileSessionModel {
         }
     }
 
-    func signIn(email: String, password: String) async {
+    func signIn(email: String, password: String, rememberLogin: Bool) async {
         let email = normalizedEmail(email)
         guard !email.isEmpty, !password.isEmpty else {
             errorMessage = "请输入邮箱和密码。"
             return
         }
 
+        retentionStore.setRememberLogin(rememberLogin)
+        authStorage.setSessionPersistenceEnabled(rememberLogin)
         await runCloudAction {
-            let session = try await client.auth.signIn(email: email, password: password)
-            accountEmail = session.user.email
-            try await finishAuthentication(userID: session.user.id)
+            do {
+                let session = try await client.auth.signIn(email: email, password: password)
+                accountEmail = session.user.email
+                beginLoginRetention(rememberLogin: rememberLogin)
+                try await finishAuthentication(userID: session.user.id)
+            } catch {
+                await forceSignOut()
+                throw error
+            }
         }
     }
 
@@ -153,11 +189,13 @@ final class MobileSessionModel {
             )
             accountEmail = response.user.email ?? email
             if let session = response.session {
+                beginLoginRetention(rememberLogin: retentionStore.remembersLogin)
                 try await finishAuthentication(userID: session.user.id)
             } else {
                 profile = nil
                 repository = nil
                 phase = .emailConfirmationRequired(email)
+                clearLoginRetention()
             }
             didRegister = true
         }
@@ -232,8 +270,11 @@ final class MobileSessionModel {
         guard url.scheme == "masterdance" else { return }
         let isRecovery = url.absoluteString.localizedCaseInsensitiveContains("recovery")
         await runCloudAction {
+            let rememberLogin = retentionStore.remembersLogin
+            authStorage.setSessionPersistenceEnabled(rememberLogin)
             let session = try await client.auth.session(from: url)
             accountEmail = session.user.email
+            beginLoginRetention(rememberLogin: rememberLogin)
             try await finishAuthentication(userID: session.user.id)
             needsPasswordUpdate = isRecovery
         }
@@ -248,6 +289,15 @@ final class MobileSessionModel {
         noticeMessage = nil
     }
 
+    func enforceLoginRetention() async {
+        guard phase == .ready || phase == .guardianLinkRequired else { return }
+        guard let authenticatedAt = retentionStore.authenticatedAt,
+              LoginRetentionPolicy.isWithinMaximumDuration(authenticatedAt: authenticatedAt) else {
+            await expireRetainedLogin()
+            return
+        }
+    }
+
     private func signOut(showNotice: Bool) async {
         isWorking = true
         defer { isWorking = false }
@@ -257,6 +307,7 @@ final class MobileSessionModel {
             errorMessage = friendlyMessage(for: error)
         }
         clearAuthenticatedState()
+        clearLoginRetention()
         phase = .signedOut
         if showNotice {
             noticeMessage = "已经退出登录。"
@@ -342,6 +393,61 @@ final class MobileSessionModel {
         } catch {
             errorMessage = friendlyMessage(for: error)
         }
+    }
+
+    private func forceSignOut() async {
+        try? await client.auth.signOut()
+        clearAuthenticatedState()
+        clearLoginRetention()
+        phase = .signedOut
+    }
+
+    private func beginLoginRetention(
+        rememberLogin: Bool,
+        authenticatedAt: Date = Date()
+    ) {
+        retentionStore.recordAuthentication(
+            rememberLogin: rememberLogin,
+            at: authenticatedAt
+        )
+        scheduleExpiration(authenticatedAt: authenticatedAt)
+    }
+
+    private func scheduleExpiration(authenticatedAt: Date) {
+        cancelExpirationTimer()
+        let expirationDate = LoginRetentionPolicy.expirationDate(authenticatedAt: authenticatedAt)
+        let seconds = max(0, expirationDate.timeIntervalSinceNow)
+        let nanoseconds = UInt64(seconds * 1_000_000_000)
+        expirationTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: nanoseconds)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await self?.enforceLoginRetention()
+        }
+    }
+
+    private func expireRetainedLogin() async {
+        cancelExpirationTimer()
+        try? await client.auth.signOut(scope: .local)
+        authStorage.setSessionPersistenceEnabled(false)
+        retentionStore.clearAuthentication()
+        clearAuthenticatedState()
+        phase = .signedOut
+        noticeMessage = nil
+        errorMessage = "登录已超过 180 天，请重新登录。"
+    }
+
+    private func clearLoginRetention() {
+        cancelExpirationTimer()
+        retentionStore.clearAuthentication()
+    }
+
+    private func cancelExpirationTimer() {
+        expirationTask?.cancel()
+        expirationTask = nil
     }
 
     private func clearAuthenticatedState() {

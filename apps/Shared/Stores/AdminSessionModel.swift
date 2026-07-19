@@ -25,6 +25,9 @@ struct AdministratorProfile: Identifiable, Equatable, Sendable {
 final class AdminSessionModel {
     @ObservationIgnored private let configuration: SupabaseConfiguration
     @ObservationIgnored private let client: SupabaseClient
+    @ObservationIgnored private let authStorage: SessionAwareAuthStorage
+    @ObservationIgnored private let retentionStore: LoginRetentionStore
+    @ObservationIgnored private var expirationTask: Task<Void, Never>?
 
     var phase = AdminSessionPhase.restoring
     var profile: AdministratorProfile?
@@ -37,13 +40,39 @@ final class AdminSessionModel {
 
     init(configuration: SupabaseConfiguration = .production) {
         self.configuration = configuration
-        client = configuration.makeClient()
+        let retentionStore = LoginRetentionStore()
+        self.retentionStore = retentionStore
+        let configuredClient = configuration.makeSessionClient(
+            persistSession: retentionStore.remembersLogin
+        )
+        client = configuredClient.client
+        authStorage = configuredClient.authStorage
     }
+
+    var defaultRememberLogin: Bool { retentionStore.remembersLogin }
 
     func restore() async {
         guard phase == .restoring else { return }
+        let rememberLogin = retentionStore.remembersLogin
+        authStorage.setSessionPersistenceEnabled(rememberLogin)
+        guard rememberLogin else {
+            retentionStore.clearAuthentication()
+            clearAuthenticatedState()
+            phase = .signedOut
+            return
+        }
+        if let authenticatedAt = retentionStore.authenticatedAt,
+           !LoginRetentionPolicy.isWithinMaximumDuration(authenticatedAt: authenticatedAt) {
+            await expireRetainedLogin()
+            return
+        }
+
         do {
             let session = try await client.auth.session
+            beginLoginRetention(
+                rememberLogin: true,
+                authenticatedAt: retentionStore.authenticatedAt ?? Date()
+            )
             try await finishAuthentication(userID: session.user.id)
         } catch {
             clearAuthenticatedState()
@@ -51,7 +80,7 @@ final class AdminSessionModel {
         }
     }
 
-    func signIn(email: String, password: String) async {
+    func signIn(email: String, password: String, rememberLogin: Bool) async {
         let email = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !email.isEmpty, !password.isEmpty else {
             errorMessage = "请输入邮箱和密码。"
@@ -61,10 +90,13 @@ final class AdminSessionModel {
         isWorking = true
         errorMessage = nil
         noticeMessage = nil
+        retentionStore.setRememberLogin(rememberLogin)
+        authStorage.setSessionPersistenceEnabled(rememberLogin)
         defer { isWorking = false }
 
         do {
             let session = try await client.auth.signIn(email: email, password: password)
+            beginLoginRetention(rememberLogin: rememberLogin)
             try await finishAuthentication(userID: session.user.id)
         } catch {
             await forceSignOut()
@@ -113,8 +145,11 @@ final class AdminSessionModel {
         defer { isWorking = false }
 
         do {
+            let rememberLogin = retentionStore.remembersLogin
+            authStorage.setSessionPersistenceEnabled(rememberLogin)
             client.auth.handle(url)
             let session = try await client.auth.session
+            beginLoginRetention(rememberLogin: rememberLogin)
             try await finishAuthentication(userID: session.user.id)
             needsPasswordSetup = true
         } catch {
@@ -153,7 +188,17 @@ final class AdminSessionModel {
             errorMessage = friendlyMessage(for: error)
         }
         clearAuthenticatedState()
+        clearLoginRetention()
         phase = .signedOut
+    }
+
+    func enforceLoginRetention() async {
+        guard phase == .ready || phase == .activationRequired else { return }
+        guard let authenticatedAt = retentionStore.authenticatedAt,
+              LoginRetentionPolicy.isWithinMaximumDuration(authenticatedAt: authenticatedAt) else {
+            await expireRetainedLogin()
+            return
+        }
     }
 
     func loadAdministrators() async {
@@ -267,7 +312,56 @@ final class AdminSessionModel {
     private func forceSignOut() async {
         try? await client.auth.signOut()
         clearAuthenticatedState()
+        clearLoginRetention()
         phase = .signedOut
+    }
+
+    private func beginLoginRetention(
+        rememberLogin: Bool,
+        authenticatedAt: Date = Date()
+    ) {
+        retentionStore.recordAuthentication(
+            rememberLogin: rememberLogin,
+            at: authenticatedAt
+        )
+        scheduleExpiration(authenticatedAt: authenticatedAt)
+    }
+
+    private func scheduleExpiration(authenticatedAt: Date) {
+        cancelExpirationTimer()
+        let expirationDate = LoginRetentionPolicy.expirationDate(authenticatedAt: authenticatedAt)
+        let seconds = max(0, expirationDate.timeIntervalSinceNow)
+        let nanoseconds = UInt64(seconds * 1_000_000_000)
+        expirationTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: nanoseconds)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await self?.enforceLoginRetention()
+        }
+    }
+
+    private func expireRetainedLogin() async {
+        cancelExpirationTimer()
+        try? await client.auth.signOut(scope: .local)
+        authStorage.setSessionPersistenceEnabled(false)
+        retentionStore.clearAuthentication()
+        clearAuthenticatedState()
+        phase = .signedOut
+        noticeMessage = nil
+        errorMessage = "登录已超过 180 天，请重新登录。"
+    }
+
+    private func clearLoginRetention() {
+        cancelExpirationTimer()
+        retentionStore.clearAuthentication()
+    }
+
+    private func cancelExpirationTimer() {
+        expirationTask?.cancel()
+        expirationTask = nil
     }
 
     private func clearAuthenticatedState() {

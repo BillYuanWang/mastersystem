@@ -46,12 +46,22 @@ let package = Package(
                 "MasterDanceMobile",
                 "MasterDanceAdmin/Info.plist",
                 "project.yml",
-                "Shared/Resources"
+                "Shared/Resources",
+                "Tests"
             ],
             sources: [
                 "MasterDanceAdmin",
                 "Shared"
             ]
+        ),
+        .testTarget(
+            name: "MasterDanceAdminTests",
+            dependencies: [
+                "MasterDanceAdmin",
+                .product(name: "Supabase", package: "supabase-swift"),
+                .product(name: "Testing", package: "swift-testing")
+            ],
+            path: "apps/Tests/MasterDanceAdminTests"
         )
     ]
 )

@@ -6,6 +6,7 @@ import SwiftUI
 struct MobileAuthenticationRootView: View {
     let session: MobileSessionModel
     @Binding var appearanceRawValue: String
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -36,6 +37,10 @@ struct MobileAuthenticationRootView: View {
         .preferredColorScheme(preferredColorScheme)
         .onOpenURL { url in
             Task { await session.handleAuthCallback(url) }
+        }
+        .onChange(of: scenePhase) {
+            guard scenePhase == .active else { return }
+            Task { await session.enforceLoginRetention() }
         }
         .overlay(alignment: .top) {
             MobileSessionNoticeView(
@@ -90,6 +95,7 @@ private struct MobileSignInAndRegistrationView: View {
     @State private var mode = MobileAuthenticationMode.signIn
     @State private var email = ""
     @State private var password = ""
+    @State private var rememberLogin: Bool
     @State private var invitationCode = ""
     @State private var verifiedInvitation: GuardianRegistrationInvitation?
     @State private var showingRegistrationContract = false
@@ -99,6 +105,7 @@ private struct MobileSignInAndRegistrationView: View {
     init(session: MobileSessionModel) {
         self.session = session
         _email = State(initialValue: session.accountEmail ?? "")
+        _rememberLogin = State(initialValue: session.defaultRememberLogin)
     }
 
     var body: some View {
@@ -141,6 +148,21 @@ private struct MobileSignInAndRegistrationView: View {
                             text: $password,
                             contentType: .password
                         )
+
+                        Toggle(isOn: $rememberLogin) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("记住登录")
+                                    .mdFont(.compactStrong)
+                                    .foregroundStyle(theme.primaryText)
+                                Text("最长 180 天")
+                                    .mdFont(.compact)
+                                    .foregroundStyle(theme.secondaryText)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .tint(theme.accent)
+                        .accessibilityHint("关闭后，下次打开 App 需要重新登录")
+                        .padding(.horizontal, 2)
                     } else if let invitation = verifiedInvitation {
                         verifiedInvitationView(invitation, theme: theme)
                         Text("下一步阅读并签署学校合同，然后设置登录密码。")
@@ -229,7 +251,11 @@ private struct MobileSignInAndRegistrationView: View {
     private func submit() {
         Task {
             if mode == .signIn {
-                await session.signIn(email: email, password: password)
+                await session.signIn(
+                    email: email,
+                    password: password,
+                    rememberLogin: rememberLogin
+                )
             } else if verifiedInvitation != nil {
                 showingRegistrationContract = true
             } else {
@@ -549,6 +575,8 @@ struct MobileAuthSecureField: View {
     let systemImage: String
     @Binding var text: String
     let contentType: UITextContentType
+    @State private var isPasswordVisible = false
+    @FocusState private var isFocused: Bool
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -557,8 +585,31 @@ struct MobileAuthSecureField: View {
             Image(systemName: systemImage)
                 .foregroundStyle(theme.secondaryText)
                 .frame(width: 20)
-            SecureField(title, text: $text)
-                .textContentType(contentType)
+            Group {
+                if isPasswordVisible {
+                    TextField(title, text: $text)
+                } else {
+                    SecureField(title, text: $text)
+                }
+            }
+            .keyboardType(.asciiCapable)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .textContentType(contentType)
+            .focused($isFocused)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                isPasswordVisible.toggle()
+                isFocused = true
+            } label: {
+                Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(theme.secondaryText)
+            .accessibilityLabel(isPasswordVisible ? "隐藏密码" : "显示密码")
         }
         .padding(.horizontal, 12)
         .frame(height: 46)

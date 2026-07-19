@@ -8,6 +8,7 @@ struct AdminAuthenticationRootView: View {
 
     @AppStorage("appearancePreference") private var appearanceRawValue = AppearancePreference.system.rawValue
     @State private var isShowingAccount = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -43,6 +44,10 @@ struct AdminAuthenticationRootView: View {
         .preferredColorScheme(preferredColorScheme)
         .onOpenURL { url in
             Task { await session.handleAuthCallback(url) }
+        }
+        .onChange(of: scenePhase) {
+            guard scenePhase == .active else { return }
+            Task { await session.enforceLoginRetention() }
         }
         .overlay {
             CloudSyncOverlay(

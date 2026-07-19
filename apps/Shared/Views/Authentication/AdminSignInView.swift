@@ -7,8 +7,14 @@ struct AdminSignInView: View {
 
     @State private var email = ""
     @State private var password = ""
+    @State private var rememberLogin: Bool
 
     @Environment(\.colorScheme) private var colorScheme
+
+    init(session: AdminSessionModel) {
+        self.session = session
+        _rememberLogin = State(initialValue: session.defaultRememberLogin)
+    }
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
@@ -42,9 +48,17 @@ struct AdminSignInView: View {
                     Text("密码")
                         .mdFont(.compactStrong)
                         .foregroundStyle(theme.secondaryText)
-                    SecureField("密码", text: $password)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(signIn)
+                    AdminPasswordField(text: $password, onSubmit: signIn)
+                }
+
+                HStack(spacing: 12) {
+                    Toggle("记住登录", isOn: $rememberLogin)
+                        .toggleStyle(.checkbox)
+                        .mdFont(.compactStrong)
+                    Spacer()
+                    Text("最长 180 天")
+                        .mdFont(.compact)
+                        .foregroundStyle(theme.secondaryText)
                 }
 
                 if let errorMessage = session.errorMessage {
@@ -84,11 +98,60 @@ struct AdminSignInView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.background)
         .foregroundStyle(theme.primaryText)
-        .onAppear { session.clearMessages() }
     }
 
     private func signIn() {
-        Task { await session.signIn(email: email, password: password) }
+        Task {
+            await session.signIn(
+                email: email,
+                password: password,
+                rememberLogin: rememberLogin
+            )
+        }
+    }
+}
+
+private struct AdminPasswordField: View {
+    @Binding var text: String
+    let onSubmit: () -> Void
+
+    @State private var isPasswordVisible = false
+    @FocusState private var isFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        HStack(spacing: 6) {
+            Group {
+                if isPasswordVisible {
+                    TextField("密码", text: $text)
+                } else {
+                    SecureField("密码", text: $text)
+                }
+            }
+            .textFieldStyle(.plain)
+            .focused($isFocused)
+            .onSubmit(onSubmit)
+
+            Button {
+                isPasswordVisible.toggle()
+                isFocused = true
+            } label: {
+                Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(theme.secondaryText)
+            .help(isPasswordVisible ? "隐藏密码" : "显示密码")
+            .accessibilityLabel(isPasswordVisible ? "隐藏密码" : "显示密码")
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 30)
+        .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: 5))
+        .overlay {
+            RoundedRectangle(cornerRadius: 5)
+                .stroke(theme.separator, lineWidth: 1)
+        }
     }
 }
 #endif
