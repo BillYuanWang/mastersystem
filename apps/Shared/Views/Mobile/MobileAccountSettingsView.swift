@@ -64,12 +64,7 @@ struct MobileAccountSettingsView: View {
             }
 
             Section("外观") {
-                Picker("主题", selection: $appearanceRawValue) {
-                    Text("跟随系统").tag(AppearancePreference.system.rawValue)
-                    Text("浅色").tag(AppearancePreference.light.rawValue)
-                    Text("深色").tag(AppearancePreference.dark.rawValue)
-                }
-                .pickerStyle(.segmented)
+                MobileAppearanceSelector(selection: $appearanceRawValue)
             }
 
             Section {
@@ -100,6 +95,85 @@ struct MobileAccountSettingsView: View {
         case .administrator: "教务老师"
         case .guardian: "监护人"
         case .adultStudent: "成人学员"
+        }
+    }
+}
+
+private struct MobileAppearanceSelector: View {
+    @Binding var selection: String
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        HStack(spacing: 3) {
+            ForEach(AppearancePreference.allCases, id: \.self) { preference in
+                let isSelected = selection == preference.rawValue
+                Button {
+                    select(preference)
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: preference.systemImage)
+                            .foregroundStyle(isSelected ? theme.accent : theme.secondaryText)
+                            .frame(width: 16)
+                        Text(preference.title)
+                            .foregroundStyle(isSelected ? theme.primaryText : theme.secondaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+                    .mdFont(.compactStrong)
+                    .frame(maxWidth: .infinity, minHeight: 38)
+                    .background(
+                        isSelected ? theme.raisedSurface : Color.clear,
+                        in: RoundedRectangle(cornerRadius: MDMetrics.radius)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: MDMetrics.radius)
+                            .stroke(
+                                isSelected ? theme.separator : Color.clear,
+                                lineWidth: 1
+                            )
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(preference.title)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .frame(height: 44)
+        .background(
+            theme.subtleSurface,
+            in: RoundedRectangle(cornerRadius: MDMetrics.radius + 3)
+        )
+        .sensoryFeedback(.selection, trigger: selection)
+    }
+
+    private func select(_ preference: AppearancePreference) {
+        guard selection != preference.rawValue else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            selection = preference.rawValue
+        }
+    }
+}
+
+private extension AppearancePreference {
+    var title: String {
+        switch self {
+        case .system: "跟随系统"
+        case .light: "浅色"
+        case .dark: "深色"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .system: "circle.lefthalf.filled"
+        case .light: "sun.max"
+        case .dark: "moon"
         }
     }
 }
