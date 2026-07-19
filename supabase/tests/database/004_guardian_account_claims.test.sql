@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(29);
+select plan(39);
 
 select has_table('private', 'guardian_link_codes', 'guardian link codes use a private table');
 select hasnt_column('private', 'guardian_link_codes', 'link_code', 'raw guardian codes are never stored');
@@ -21,6 +21,44 @@ select ok(
 select ok(
   to_regprocedure('public.preview_guardian_registration(text)') is not null,
   'guardian registration preview RPC exists'
+);
+select has_table(
+  'private',
+  'guardian_registration_acceptances',
+  'pre-auth registration signatures stay private'
+);
+select has_table(
+  'public',
+  'contract_consent_signatures',
+  'claimed registration signatures have durable evidence'
+);
+select ok(
+  to_regprocedure(
+    'public.guardian_registration_contract_manifest(text,uuid)'
+  ) is not null,
+  'service-only registration contract manifest RPC exists'
+);
+select ok(
+  to_regprocedure(
+    'public.record_guardian_registration_acceptance(text,uuid,text,text)'
+  ) is not null,
+  'service-only registration acceptance RPC exists'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.record_guardian_registration_acceptance(text,uuid,text,text)',
+    'EXECUTE'
+  ),
+  'anonymous callers cannot write registration evidence directly'
+);
+select ok(
+  has_function_privilege(
+    'service_role',
+    'public.record_guardian_registration_acceptance(text,uuid,text,text)',
+    'EXECUTE'
+  ),
+  'only the trusted contract gateway may record registration evidence'
 );
 select ok(
   to_regprocedure(
@@ -63,6 +101,44 @@ values (
   'Guardian Claim School',
   'guardian-claim-school',
   'America/Los_Angeles'
+);
+
+insert into public.terms (
+  id,
+  organization_id,
+  name,
+  starts_on,
+  ends_on,
+  status
+)
+values (
+  '92000000-0000-0000-0000-000000000030',
+  '92000000-0000-0000-0000-000000000001',
+  'Registration Term',
+  current_date - 30,
+  current_date + 120,
+  'open'
+);
+
+insert into public.contract_documents (
+  id,
+  organization_id,
+  term_id,
+  version,
+  title,
+  storage_path,
+  status,
+  published_at
+)
+values (
+  '92000000-0000-0000-0000-000000000040',
+  '92000000-0000-0000-0000-000000000001',
+  '92000000-0000-0000-0000-000000000030',
+  'registration-v1',
+  'Registration Contract',
+  '92000000-0000-0000-0000-000000000001/registration-v1.pdf',
+  'published',
+  now()
 );
 
 insert into auth.users (
@@ -245,11 +321,42 @@ select is(
   'a valid invitation reveals only its locked registration email'
 );
 
+select is(
+  public.preview_guardian_registration(
+    current_setting('test.guardian_code')
+  )->'contract'->>'id',
+  '92000000-0000-0000-0000-000000000040',
+  'registration preview binds the current published contract'
+);
+
 select throws_ok(
   $$ select public.preview_guardian_registration('MD-NOT-A-VALID-CODE') $$,
   'P0001',
   'Invalid or expired guardian link code',
   'an invalid invitation cannot preview guardian identity'
+);
+
+set local role service_role;
+
+select lives_ok(
+  format(
+    $sql$
+      select public.record_guardian_registration_acceptance(
+        %L,
+        '92000000-0000-0000-0000-000000000040',
+        %L,
+        %L
+      )
+    $sql$,
+    current_setting('test.guardian_code'),
+    encode(
+      decode('89504e470d0a1a0a', 'hex')
+        || decode(repeat('00', 128), 'hex'),
+      'base64'
+    ),
+    repeat('a', 64)
+  ),
+  'the trusted gateway can record the reviewed contract and signature'
 );
 
 set local role authenticated;
@@ -317,6 +424,31 @@ select is(
   ),
   '92000000-0000-0000-0000-000000000011'::uuid,
   'claiming links the Auth account to the guardian record'
+);
+
+select is(
+  (
+    select count(*)
+    from public.contract_consents
+    where signer_user_id = '92000000-0000-0000-0000-000000000011'
+      and contract_document_id = '92000000-0000-0000-0000-000000000040'
+      and scope = 'term'
+  ),
+  1::bigint,
+  'claiming converts the pending acceptance into a term consent'
+);
+
+select is(
+  (
+    select count(*)
+    from public.contract_consent_signatures signature
+    join public.contract_consents consent
+      on consent.id = signature.contract_consent_id
+    where consent.signer_user_id = '92000000-0000-0000-0000-000000000011'
+      and signature.contract_sha256 = repeat('a', 64)
+  ),
+  1::bigint,
+  'claiming preserves the signed contract hash and signature evidence'
 );
 
 select is(

@@ -85,32 +85,64 @@ final class MobileSessionModel {
 
         var invitation: GuardianRegistrationInvitation?
         await runCloudAction {
-            invitation = try await GuardianAccountService(client: client)
+            invitation = try await GuardianAccountService(
+                client: client,
+                configuration: configuration
+            )
                 .previewRegistration(code: normalizedCode)
         }
         return invitation
     }
 
+    func downloadGuardianRegistrationContract(
+        invitation: GuardianRegistrationInvitation
+    ) async -> GuardianRegistrationContractDocument? {
+        var document: GuardianRegistrationContractDocument?
+        await runCloudAction {
+            document = try await GuardianAccountService(
+                client: client,
+                configuration: configuration
+            ).downloadRegistrationContract(invitation: invitation)
+        }
+        return document
+    }
+
+    @discardableResult
     func registerGuardian(
         invitation: GuardianRegistrationInvitation,
+        document: GuardianRegistrationContractDocument,
+        signaturePNG: Data,
         password: String,
         confirmation: String
-    ) async {
+    ) async -> Bool {
         let email = normalizedEmail(invitation.email)
         guard email.contains("@") else {
             errorMessage = "该邀请码没有有效邮箱，请联系教务老师。"
-            return
+            return false
         }
         guard password == confirmation else {
             errorMessage = "两次输入的密码不一致。"
-            return
+            return false
         }
         guard isAcceptablePassword(password) else {
             errorMessage = "密码至少 10 位，并且同时包含字母和数字。"
-            return
+            return false
+        }
+        guard signaturePNG.count >= 128 else {
+            errorMessage = "请先完成手写签名。"
+            return false
         }
 
+        var didRegister = false
         await runCloudAction {
+            try await GuardianAccountService(
+                client: client,
+                configuration: configuration
+            ).acceptRegistrationContract(
+                invitation: invitation,
+                document: document,
+                signaturePNG: signaturePNG
+            )
             try pendingInvitationStore.save(
                 PendingGuardianInvitation(code: invitation.code, email: email)
             )
@@ -127,7 +159,9 @@ final class MobileSessionModel {
                 repository = nil
                 phase = .emailConfirmationRequired(email)
             }
+            didRegister = true
         }
+        return didRegister
     }
 
     func claimGuardianCode(_ code: String) async {
@@ -140,7 +174,10 @@ final class MobileSessionModel {
         }
 
         await runCloudAction {
-            let row = try await GuardianAccountService(client: client)
+            let row = try await GuardianAccountService(
+                client: client,
+                configuration: configuration
+            )
                 .claimFamily(code: normalizedCode)
             try acceptProfile(row)
             pendingInvitationStore.clear()
@@ -250,7 +287,10 @@ final class MobileSessionModel {
             return
         }
 
-        let row = try await GuardianAccountService(client: client)
+        let row = try await GuardianAccountService(
+            client: client,
+            configuration: configuration
+        )
             .claimFamily(code: pendingInvitation.code)
         try acceptProfile(row)
         pendingInvitationStore.clear()
@@ -345,6 +385,15 @@ final class MobileSessionModel {
         }
         if message.localizedCaseInsensitiveContains("guardian invitation email does not match") {
             return "当前登录邮箱与家长邀请码不匹配。"
+        }
+        if message.localizedCaseInsensitiveContains("guardian registration contract is unavailable") {
+            return "学校尚未发布注册合同，请联系教务老师。"
+        }
+        if message.localizedCaseInsensitiveContains("guardian registration contract acceptance required") {
+            return "请先阅读合同并完成手写签名。"
+        }
+        if message.localizedCaseInsensitiveContains("registration contract changed") {
+            return "合同已更新，请重新阅读后签名。"
         }
         if message.localizedCaseInsensitiveContains("already linked")
             || message.localizedCaseInsensitiveContains("already attached") {

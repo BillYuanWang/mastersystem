@@ -92,9 +92,9 @@ private struct MobileSignInAndRegistrationView: View {
     @State private var mode = MobileAuthenticationMode.signIn
     @State private var email = ""
     @State private var password = ""
-    @State private var confirmation = ""
     @State private var invitationCode = ""
     @State private var verifiedInvitation: GuardianRegistrationInvitation?
+    @State private var showingRegistrationContract = false
     @State private var showingPasswordReset = false
     @Environment(\.colorScheme) private var colorScheme
 
@@ -145,19 +145,7 @@ private struct MobileSignInAndRegistrationView: View {
                         )
                     } else if let invitation = verifiedInvitation {
                         verifiedInvitationView(invitation, theme: theme)
-                        MobileAuthSecureField(
-                            title: "创建密码",
-                            systemImage: "lock",
-                            text: $password,
-                            contentType: .newPassword
-                        )
-                        MobileAuthSecureField(
-                            title: "再次输入密码",
-                            systemImage: "lock.rotation",
-                            text: $confirmation,
-                            contentType: .newPassword
-                        )
-                        Text("至少 10 位，同时包含字母和数字")
+                        Text("下一步阅读并签署学校合同，然后设置登录密码。")
                             .mdFont(.compact)
                             .foregroundStyle(theme.secondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -198,11 +186,21 @@ private struct MobileSignInAndRegistrationView: View {
             MobilePasswordResetRequestView(session: session, initialEmail: email)
                 .presentationDetents([.medium])
         }
+        .fullScreenCover(isPresented: $showingRegistrationContract) {
+            if let invitation = verifiedInvitation {
+                MobileGuardianContractRegistrationView(
+                    session: session,
+                    invitation: invitation,
+                    onCancel: { showingRegistrationContract = false },
+                    onCompleted: { showingRegistrationContract = false }
+                )
+            }
+        }
         .onChange(of: mode) {
             password = ""
-            confirmation = ""
             invitationCode = ""
             verifiedInvitation = nil
+            showingRegistrationContract = false
             session.clearMessages()
         }
     }
@@ -216,32 +214,30 @@ private struct MobileSignInAndRegistrationView: View {
             guard verifiedInvitation != nil else {
                 return !invitationCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
-            return !password.isEmpty && !confirmation.isEmpty
+            return true
         }
     }
 
     private var submitTitle: String {
         if mode == .signIn { return "登录" }
-        return verifiedInvitation == nil ? "验证邀请码" : "创建家长账号"
+        return verifiedInvitation == nil ? "验证邀请码" : "阅读合同并注册"
     }
 
     private var submitSystemImage: String {
         if mode == .signIn { return "arrow.right.circle.fill" }
-        return verifiedInvitation == nil ? "checkmark.shield.fill" : "person.badge.plus"
+        return verifiedInvitation == nil ? "checkmark.shield.fill" : "doc.text.magnifyingglass"
     }
 
     private func submit() {
         Task {
             if mode == .signIn {
                 await session.signIn(email: email, password: password)
-            } else if let invitation = verifiedInvitation {
-                await session.registerGuardian(
-                    invitation: invitation,
-                    password: password,
-                    confirmation: confirmation
-                )
+            } else if verifiedInvitation != nil {
+                showingRegistrationContract = true
             } else {
-                verifiedInvitation = await session.previewGuardianRegistration(invitationCode)
+                let invitation = await session.previewGuardianRegistration(invitationCode)
+                verifiedInvitation = invitation
+                showingRegistrationContract = invitation != nil
             }
         }
     }
@@ -259,10 +255,9 @@ private struct MobileSignInAndRegistrationView: View {
                     .foregroundStyle(theme.primaryText)
                 Spacer()
                 Button("更换") {
-                    password = ""
-                    confirmation = ""
                     invitationCode = ""
                     verifiedInvitation = nil
+                    showingRegistrationContract = false
                 }
                 .buttonStyle(.plain)
                 .mdFont(.compactStrong)
@@ -410,7 +405,7 @@ private struct MobilePasswordResetRequestView: View {
         let theme = MDTheme(scheme: colorScheme)
         NavigationStack {
             VStack(spacing: 18) {
-                Text("输入注册邮箱，我们会发送密码重设链接。")
+                Text("输入注册邮箱。点击邮件中的链接后会返回 App，再输入两次新密码。")
                     .mdFont(.body)
                     .foregroundStyle(theme.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -551,7 +546,7 @@ private struct MobileAuthTextField: View {
     }
 }
 
-private struct MobileAuthSecureField: View {
+struct MobileAuthSecureField: View {
     let title: String
     let systemImage: String
     @Binding var text: String
