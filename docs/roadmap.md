@@ -27,9 +27,9 @@
 - Connect the macOS app to Supabase while keeping preview mode for tests.
 - Validate printing, light/dark/system appearance, keyboard and pointer workflows.
 
-## Phase 5: Master Dance iPhone MVP
+## Phase 5: Master Dance iPhone MVP - implementation complete
 
-- Deliver role-aware administration, guardian, and adult-student experiences.
+- Deliver attendance-focused administration plus guardian and adult-student experiences.
 - Provide course and next-session views, leave requests, contract consent, notifications, and appearance controls.
 - Keep parent and adult accounts view-first; no self-enrollment in the MVP.
 

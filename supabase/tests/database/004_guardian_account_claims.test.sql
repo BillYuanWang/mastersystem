@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(24);
+select plan(29);
 
 select has_table('private', 'guardian_link_codes', 'guardian link codes use a private table');
 select hasnt_column('private', 'guardian_link_codes', 'link_code', 'raw guardian codes are never stored');
@@ -17,6 +17,10 @@ select ok(
 select ok(
   to_regprocedure('public.claim_guardian_link_code(text)') is not null,
   'guardian claim RPC exists'
+);
+select ok(
+  to_regprocedure('public.preview_guardian_registration(text)') is not null,
+  'guardian registration preview RPC exists'
 );
 select ok(
   to_regprocedure(
@@ -43,6 +47,14 @@ select ok(
     'EXECUTE'
   ),
   'signed-in users may call the guardian claim RPC'
+);
+select ok(
+  has_function_privilege(
+    'anon',
+    'public.preview_guardian_registration(text)',
+    'EXECUTE'
+  ),
+  'signed-out users may validate a high-entropy guardian invitation'
 );
 
 insert into public.organizations (id, name, slug, timezone)
@@ -221,6 +233,45 @@ select is(
   ),
   1::bigint,
   'regenerating revokes the prior active code'
+);
+
+set local role anon;
+
+select is(
+  public.preview_guardian_registration(
+    current_setting('test.guardian_code')
+  )->>'email',
+  'family@example.test',
+  'a valid invitation reveals only its locked registration email'
+);
+
+select throws_ok(
+  $$ select public.preview_guardian_registration('MD-NOT-A-VALID-CODE') $$,
+  'P0001',
+  'Invalid or expired guardian link code',
+  'an invalid invitation cannot preview guardian identity'
+);
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claim.sub',
+  '92000000-0000-0000-0000-000000000012',
+  true
+);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"92000000-0000-0000-0000-000000000012","role":"authenticated"}',
+  true
+);
+
+select throws_ok(
+  format(
+    'select public.claim_guardian_link_code(%L)',
+    current_setting('test.guardian_code')
+  ),
+  '23514',
+  'Guardian invitation email does not match authenticated account',
+  'an invitation cannot be attached to a different email account'
 );
 
 select set_config(

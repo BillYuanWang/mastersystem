@@ -34,6 +34,7 @@ final class AppModel {
     var focusedSessionID: ClassSessionID?
     var isLoading = false
     var hasLoaded = false
+    var pendingSyncCount = 0
     var errorMessage: String?
 
     init(repository: any MasterDanceRepository) {
@@ -62,6 +63,13 @@ final class AppModel {
                 completion?(.failure(error))
             }
         }
+    }
+
+    func performCloudAction<Value>(
+        label: String,
+        operation: @MainActor () async throws -> Value
+    ) async rethrows -> Value {
+        try await withImmediateCloudActivity(label: label, operation: operation)
     }
 
     func dismissBackgroundSyncNotice() {
@@ -125,10 +133,135 @@ final class AppModel {
             } else {
                 contractConsents = []
             }
+            if let deferred = repository as? any DeferredSyncMasterDanceRepository {
+                pendingSyncCount = await deferred.pendingMutationCount()
+            } else {
+                pendingSyncCount = 0
+            }
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func prepareLocalFirstSession() async {
+        guard let deferred = repository as? any DeferredSyncMasterDanceRepository else { return }
+        await synchronizePendingChanges()
+        guard await deferred.pendingMutationCount() == 0 else { return }
+
+        do {
+            if try await deferred.refreshFromRemoteIfClean() {
+                await reload()
+            }
+        } catch {
+            backgroundSync.notice = .failure(error.localizedDescription)
+        }
+    }
+
+    func synchronizePendingChanges() async {
+        guard let deferred = repository as? any DeferredSyncMasterDanceRepository else { return }
+        let count = await deferred.pendingMutationCount()
+        pendingSyncCount = count
+        guard count > 0 else { return }
+
+        let id = UUID()
+        pendingBackgroundOperations.append(
+            PendingBackgroundOperation(id: id, label: "同步 \(count) 项更改")
+        )
+        refreshBackgroundSyncActivity()
+        do {
+            _ = try await deferred.synchronizeIfNeeded()
+            pendingBackgroundOperations.removeAll { $0.id == id }
+            pendingSyncCount = await deferred.pendingMutationCount()
+            refreshBackgroundSyncActivity()
+            if pendingSyncCount == 0 {
+                backgroundSync.notice = nil
+            }
+        } catch {
+            pendingBackgroundOperations.removeAll { $0.id == id }
+            pendingSyncCount = await deferred.pendingMutationCount()
+            refreshBackgroundSyncActivity()
+            backgroundSync.notice = .failure(error.localizedDescription)
+        }
+    }
+
+    func reportBackgroundSyncFailure(_ error: Error) {
+        backgroundSync.notice = .failure(error.localizedDescription)
+    }
+
+    func applyLocalLeaveRequest(
+        sessionID: ClassSessionID,
+        studentID: StudentID,
+        note: String
+    ) {
+        let now = Date()
+        let normalizedNote = note.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        if let index = leaveRequests.firstIndex(where: {
+            $0.sessionID == sessionID && $0.studentID == studentID
+        }) {
+            leaveRequests[index].status = .pending
+            leaveRequests[index].submittedAt = now
+            leaveRequests[index].resolvedAt = nil
+            leaveRequests[index].note = normalizedNote
+            return
+        }
+
+        let enrollmentID = session(id: sessionID).flatMap { session in
+            enrollments.first {
+                $0.courseID == session.courseID
+                    && $0.studentID == studentID
+                    && $0.status == .active
+            }?.id
+        }
+        leaveRequests.append(
+            LeaveRequest(
+                sessionID: sessionID,
+                studentID: studentID,
+                enrollmentID: enrollmentID,
+                source: .app,
+                submittedAt: now,
+                note: normalizedNote
+            )
+        )
+    }
+
+    func applyLocalNotificationRead(id: NotificationRecordID) {
+        guard let index = notifications.firstIndex(where: { $0.id == id }) else { return }
+        notifications[index].status = .read
+    }
+
+    func applyLocalGuardianContact(
+        id: GuardianID,
+        email: String,
+        phone: String
+    ) throws {
+        let contact = try normalizedGuardianContact(email: email, phone: phone)
+        guard let index = guardians.firstIndex(where: { $0.id == id }) else { return }
+        guardians[index].email = contact.email
+        guardians[index].phone = contact.phone
+    }
+
+    func applyLocalContractConsent(
+        documentID: ContractDocumentID,
+        enrollmentID: EnrollmentID?,
+        signerKind: ConsentSignerKind,
+        signerDisplayName: String
+    ) {
+        guard let document = contractDocuments.first(where: { $0.id == documentID }) else { return }
+        guard !contractConsents.contains(where: {
+            $0.contractDocumentID == documentID && $0.enrollmentID == enrollmentID
+        }) else { return }
+        contractConsents.append(
+            ContractConsent(
+                contractDocumentID: documentID,
+                termID: document.termID,
+                enrollmentID: enrollmentID,
+                contractVersion: document.version,
+                signerKind: signerKind,
+                signerDisplayName: signerDisplayName,
+                consentedAt: Date()
+            )
+        )
     }
 
     func course(id: CourseID) -> Course? {
@@ -487,7 +620,7 @@ final class AppModel {
             email: contact.email,
             phone: contact.phone
         )
-        return try await withCloudActivity(label: "创建监护人") {
+        return try await withImmediateCloudActivity(label: "创建监护人") {
             try await repository.save(guardian: guardian)
 
             do {
@@ -532,7 +665,7 @@ final class AppModel {
     }
 
     func issueGuardianLinkCode(guardianID: GuardianID) async throws -> GuardianLinkCode {
-        try await withCloudActivity(label: "生成监护人码") {
+        try await withImmediateCloudActivity(label: "生成监护人码") {
             let code = try await repository.issueGuardianLinkCode(guardianID: guardianID)
             await reload()
             return code
@@ -601,7 +734,7 @@ final class AppModel {
     }
 
     func saveContractDocument(_ document: ContractDocument, fileData: Data?) async throws {
-        try await withCloudActivity(label: "保存合同") {
+        try await withImmediateCloudActivity(label: "保存合同") {
             _ = try await repository.save(contractDocument: document, fileData: fileData)
             await reload()
         }
@@ -715,6 +848,16 @@ final class AppModel {
     }
 
     private func withCloudActivity<Value>(
+        label: String,
+        operation: @MainActor () async throws -> Value
+    ) async rethrows -> Value {
+        if repository is any DeferredSyncMasterDanceRepository {
+            return try await operation()
+        }
+        return try await withImmediateCloudActivity(label: label, operation: operation)
+    }
+
+    private func withImmediateCloudActivity<Value>(
         label: String,
         operation: @MainActor () async throws -> Value
     ) async rethrows -> Value {

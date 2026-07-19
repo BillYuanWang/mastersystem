@@ -40,8 +40,8 @@ targets:
       properties:
         CFBundleDisplayName: MD Desk
         CFBundleIconFile: AppIcon
-        CFBundleShortVersionString: 0.1.5
-        CFBundleVersion: 18
+        CFBundleShortVersionString: 0.1.6
+        CFBundleVersion: 19
         CFBundleURLTypes:
           - CFBundleURLName: com.masterdance.desk.auth
             CFBundleURLSchemes:
@@ -72,14 +72,28 @@ targets:
         product: MasterDanceCore
       - package: Supabase
         product: Supabase
+    info:
+      path: MasterDanceMobile/Info.plist
+      properties:
+        CFBundleDisplayName: Master Dance
+        CFBundleShortVersionString: 0.1.6
+        CFBundleVersion: "2"
+        CFBundleURLTypes:
+          - CFBundleURLName: com.masterdance.mobile.auth
+            CFBundleURLSchemes:
+              - masterdance
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.masterdance.mobile
         PRODUCT_NAME: Master Dance
         INFOPLIST_KEY_CFBundleDisplayName: Master Dance
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
-        TARGETED_DEVICE_FAMILY: 1,2
+        TARGETED_DEVICE_FAMILY: 1
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
 
 schemes:

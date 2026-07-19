@@ -7,156 +7,143 @@ struct MobileWorkspaceView: View {
     let role: AppRole
     let model: AppModel
     @Binding var appearanceRawValue: String
+    let accountDisplayName: String?
+    let onSignOut: (() -> Void)?
+    let memberActions: MobileMemberActionService?
 
     var body: some View {
         if role == .administrator {
-            administratorTabs
+            MobileAdministratorTabs(
+                model: model,
+                appearanceRawValue: $appearanceRawValue,
+                accountDisplayName: accountDisplayName,
+                onSignOut: onSignOut
+            )
+        } else if let memberActions {
+            MobileMemberTabs(
+                role: role,
+                model: model,
+                actions: memberActions,
+                appearanceRawValue: $appearanceRawValue,
+                accountDisplayName: accountDisplayName,
+                onSignOut: onSignOut
+            )
         } else {
-            memberTabs
+            ContentUnavailableView(
+                "账号服务暂不可用",
+                systemImage: "wifi.exclamationmark",
+                description: Text("请退出后重新登录。")
+            )
         }
     }
+}
 
-    private var administratorTabs: some View {
+private struct MobileAdministratorTabs: View {
+    let model: AppModel
+    @Binding var appearanceRawValue: String
+    let accountDisplayName: String?
+    let onSignOut: (() -> Void)?
+
+    var body: some View {
         TabView {
             NavigationStack {
-                MobileUpcomingSessionsView(model: model)
-                    .navigationTitle("课表")
+                MobileAttendanceHomeView(model: model)
             }
-            .tabItem { Label("课表", systemImage: "calendar") }
+            .tabItem { Label("签到", systemImage: "checkmark.circle") }
 
             NavigationStack {
-                MobileStudentListView(model: model)
-                    .navigationTitle("学生")
+                MobileAccountSettingsView(
+                    role: .administrator,
+                    model: model,
+                    accountDisplayName: accountDisplayName,
+                    appearanceRawValue: $appearanceRawValue,
+                    actions: nil,
+                    onSignOut: onSignOut
+                )
             }
-            .tabItem { Label("学生", systemImage: "person.2") }
-
-            NavigationStack {
-                MobileEnrollmentListView(model: model)
-                    .navigationTitle("报名")
-            }
-            .tabItem { Label("报名", systemImage: "list.bullet.rectangle") }
-
-            NavigationStack {
-                MobileSettingsView(appearanceRawValue: $appearanceRawValue)
-                    .navigationTitle("设置")
-            }
-            .tabItem { Label("设置", systemImage: "gearshape") }
+            .tabItem { Label("我的", systemImage: "person.crop.circle") }
         }
     }
+}
 
-    private var memberTabs: some View {
+private struct MobileMemberTabs: View {
+    let role: AppRole
+    let model: AppModel
+    let actions: MobileMemberActionService
+    @Binding var appearanceRawValue: String
+    let accountDisplayName: String?
+    let onSignOut: (() -> Void)?
+
+    @State private var selectedStudentID: StudentID?
+
+    var body: some View {
         TabView {
             NavigationStack {
-                MemberOverviewView(role: role, model: model)
-                    .navigationTitle("Master Dance")
+                MobileMemberHomeView(
+                    model: model,
+                    selectedStudentID: $selectedStudentID
+                )
             }
             .tabItem { Label("首页", systemImage: "house") }
 
             NavigationStack {
-                MobileUpcomingSessionsView(model: model)
-                    .navigationTitle("我的课程")
+                MobileMemberCoursesView(
+                    model: model,
+                    selectedStudentID: $selectedStudentID
+                )
             }
             .tabItem { Label("课程", systemImage: "calendar") }
 
             NavigationStack {
-                ContentUnavailableView("请假将在第 5 阶段接入", systemImage: "calendar.badge.minus")
-                    .navigationTitle("请假")
+                MobileMemberLeaveView(
+                    model: model,
+                    actions: actions,
+                    selectedStudentID: $selectedStudentID
+                )
             }
             .tabItem { Label("请假", systemImage: "calendar.badge.minus") }
 
             NavigationStack {
-                MobileSettingsView(appearanceRawValue: $appearanceRawValue)
-                    .navigationTitle("设置")
+                MobileMemberInboxView(
+                    model: model,
+                    actions: actions,
+                    signerKind: role == .adultStudent ? .adultStudent : .guardian,
+                    signerDisplayName: accountDisplayName ?? "监护人"
+                )
             }
-            .tabItem { Label("设置", systemImage: "gearshape") }
+            .tabItem { Label("消息", systemImage: "bell") }
+            .badge(unreadNotificationCount)
+
+            NavigationStack {
+                MobileAccountSettingsView(
+                    role: role,
+                    model: model,
+                    accountDisplayName: accountDisplayName,
+                    appearanceRawValue: $appearanceRawValue,
+                    actions: actions,
+                    onSignOut: onSignOut
+                )
+            }
+            .tabItem { Label("我的", systemImage: "person.crop.circle") }
+        }
+        .task(id: model.students.map(\.id)) {
+            selectAvailableStudent()
         }
     }
-}
 
-private struct MobileUpcomingSessionsView: View {
-    let model: AppModel
-
-    var body: some View {
-        List(model.sessions.prefix(30)) { session in
-            let course = model.course(id: session.courseID)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(course?.name ?? "课程")
-                    .font(.headline)
-                Text(session.startsAt.formatted(date: .abbreviated, time: .shortened))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Text(model.effectiveRoom(for: session)?.name ?? "")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
+    private var unreadNotificationCount: Int {
+        model.notifications.filter { $0.status != .read }.count
     }
-}
 
-private struct MobileStudentListView: View {
-    let model: AppModel
-
-    var body: some View {
-        List(model.students) { student in
-            HStack {
-                Text(student.displayName)
-                Spacer()
-                Text("\(model.enrollments(for: student.id).count) 门课")
-                    .foregroundStyle(.secondary)
-            }
+    private func selectAvailableStudent() {
+        guard !model.students.isEmpty else {
+            selectedStudentID = nil
+            return
         }
-    }
-}
-
-private struct MobileEnrollmentListView: View {
-    let model: AppModel
-
-    var body: some View {
-        List(model.enrollments) { enrollment in
-            VStack(alignment: .leading, spacing: 4) {
-                Text(model.student(id: enrollment.studentID)?.displayName ?? "学生")
-                Text(model.course(id: enrollment.courseID)?.name ?? "课程")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+        if let selectedStudentID, model.student(id: selectedStudentID) != nil {
+            return
         }
-    }
-}
-
-private struct MemberOverviewView: View {
-    let role: AppRole
-    let model: AppModel
-
-    var body: some View {
-        List {
-            Section("下一节课") {
-                if let session = model.sessions.first(where: { $0.startsAt >= Date() }) {
-                    Text(model.course(id: session.courseID)?.name ?? "课程")
-                    Text(session.startsAt.formatted(date: .abbreviated, time: .shortened))
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("暂无排定课程")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Section("身份") {
-                Text(role == .guardian ? "家长" : "成人学员")
-            }
-        }
-    }
-}
-
-private struct MobileSettingsView: View {
-    @Binding var appearanceRawValue: String
-
-    var body: some View {
-        Form {
-            Picker("外观", selection: $appearanceRawValue) {
-                Text("跟随系统").tag(AppearancePreference.system.rawValue)
-                Text("浅色").tag(AppearancePreference.light.rawValue)
-                Text("深色").tag(AppearancePreference.dark.rawValue)
-            }
-        }
+        selectedStudentID = model.students.first?.id
     }
 }
 #endif

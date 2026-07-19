@@ -98,8 +98,18 @@ enum MDTextStyle {
 
     fileprivate var size: CGFloat {
         switch self {
-        case .body, .bodyStrong: 13
-        case .compact, .compactStrong, .mono, .monoStrong: 11
+        case .body, .bodyStrong:
+#if os(iOS)
+            16
+#else
+            13
+#endif
+        case .compact, .compactStrong, .mono, .monoStrong:
+#if os(iOS)
+            13
+#else
+            11
+#endif
         }
     }
 
@@ -152,9 +162,14 @@ private struct MDInterfaceFontScaleModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         let scale = CGFloat(MDInterfaceFontScale.normalized(value))
+#if os(iOS)
+        let baseSize: CGFloat = 16
+#else
+        let baseSize: CGFloat = 13
+#endif
         content
             .environment(\.mdInterfaceFontScale, scale)
-            .font(.system(size: 13 * scale))
+            .font(.system(size: baseSize * scale))
             .minimumScaleFactor(0.72)
     }
 }

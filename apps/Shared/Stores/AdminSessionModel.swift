@@ -1,4 +1,5 @@
 import Foundation
+import MasterDanceCore
 import Observation
 import Supabase
 
@@ -27,7 +28,7 @@ final class AdminSessionModel {
 
     var phase = AdminSessionPhase.restoring
     var profile: AdministratorProfile?
-    var repository: SupabaseMasterDanceRepository?
+    var repository: (any MasterDanceRepository)?
     var administrators: [AdministratorProfile] = []
     var isWorking = false
     var errorMessage: String?
@@ -245,9 +246,10 @@ final class AdminSessionModel {
 
         let accepted = Self.administratorProfile(from: row)
         profile = accepted
-        repository = SupabaseMasterDanceRepository(
+        repository = LocalFirstRepositoryFactory.make(
             client: client,
-            organizationID: accepted.organizationID
+            organizationID: accepted.organizationID,
+            userID: accepted.userID
         )
         phase = .ready
     }

@@ -1,4 +1,5 @@
 import Foundation
+import MasterDanceCore
 import Supabase
 
 struct SupabaseConfiguration: Sendable {
@@ -29,6 +30,34 @@ struct SupabaseConfiguration: Sendable {
             )
         }
         return SupabaseClient(supabaseURL: url, supabaseKey: publishableKey)
+    }
+}
+
+enum LocalFirstRepositoryFactory {
+    static var cacheDirectory: URL {
+        let baseDirectory = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? FileManager.default.temporaryDirectory
+        return baseDirectory
+            .appendingPathComponent("Master Dance", isDirectory: true)
+            .appendingPathComponent("Offline Cache", isDirectory: true)
+    }
+
+    static func make(
+        client: SupabaseClient,
+        organizationID: UUID,
+        userID: UUID
+    ) -> any MasterDanceRepository {
+        let remote = SupabaseMasterDanceRepository(
+            client: client,
+            organizationID: organizationID
+        )
+        return WriteBehindMasterDanceRepository(
+            remote: remote,
+            cacheDirectory: cacheDirectory,
+            cacheKey: "\(organizationID.uuidString)-\(userID.uuidString)"
+        )
     }
 }
 

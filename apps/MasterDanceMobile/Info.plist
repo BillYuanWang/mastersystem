@@ -5,11 +5,9 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>MD Desk</string>
+	<string>Master Dance</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -24,18 +22,20 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.masterdance.desk.auth</string>
+			<string>com.masterdance.mobile.auth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>masterdance-desk</string>
+				<string>masterdance</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<integer>19</integer>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.education</string>
-	<key>NSHighResolutionCapable</key>
-	<true/>
+	<string>2</string>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
 </dict>
 </plist>

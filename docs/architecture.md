@@ -7,16 +7,17 @@ Master Dance is a native SwiftUI product with one shared domain package:
 - macOS exposes the administration experience only.
 - iOS uses one app and selects administration, guardian, or adult-student presentation from the authenticated role.
 - `MasterDanceCore` contains platform-neutral models and asynchronous repository contracts.
-- Supabase will provide Auth, Postgres, Storage, and Edge Functions through repository adapters beginning in Phase 3.
+- Supabase provides Auth, Postgres, Storage, and Edge Functions through repository adapters.
 - AI is an optional future adapter behind `AIExtension`; Phase 1 provides no implementation.
 
 ```mermaid
 flowchart TD
     macOS["macOS Admin App"] --> shell["Shared AppShell"]
     iOS["Role-aware iOS App"] --> shell
-    shell --> contracts["MasterDanceCore Repository Contracts"]
+    shell --> localFirst["Account-scoped Local Snapshot + Write Queue"]
+    localFirst --> contracts["MasterDanceCore Repository Contracts"]
     preview["PreviewMasterDanceStore"] --> contracts
-    future["Future Supabase Adapters"] --> contracts
+    production["Supabase Repository"] --> contracts
     contracts --> domain["Domain Models and Typed IDs"]
 ```
 
@@ -28,11 +29,15 @@ Course reference data is user-managed. `CourseCategory`, `AgeGroup`, `Room`, and
 
 Contract consent records contract version, scope, signer identity, and timestamp. Financial terms remain outside this model.
 
+Guardian registration is invitation-first. A signed-out iPhone validates the high-entropy code to obtain the guardian display name and read-only email, without access to student or course data. It creates an Auth password for that email, then consumes the code only after the authenticated email matches. Pending codes survive email confirmation in the iOS Keychain; passwords are never stored by the app.
+
 ## Repository replacement
 
-Feature code depends on the `MasterDanceRepository` protocol composition. `PreviewMasterDanceStore` is an actor-backed in-memory implementation for previews and tests. A Phase 3 Supabase implementation should conform to the same focused protocols, translate transport rows at the adapter boundary, and preserve typed IDs in the domain.
+Feature code depends on the `MasterDanceRepository` protocol composition. `PreviewMasterDanceStore` is an actor-backed in-memory implementation for previews and tests. `SupabaseMasterDanceRepository` is the production implementation; it translates transport rows at the adapter boundary and preserves typed IDs in the domain.
 
 Repository query methods expose common remote filters instead of requiring callers to download all records. Write methods use complete domain values so Preview and Supabase behavior can share call sites.
+
+Production apps wrap the Supabase adapter in `WriteBehindMasterDanceRepository`. Each organization/user pair has an isolated local JSON snapshot and durable mutation queue under Application Support. Ordinary CRUD updates the snapshot immediately; queued mutations are coalesced and sent at 60-second intervals only when work exists and the app is active. iOS stops the timer in the background, and macOS stops it whenever the MD Desk window is not the key window; missed intervals are not replayed. Failed mutations remain queued for retry, and a clean launch refreshes the snapshot from Supabase without blocking cached UI. Authentication, guardian link-code issuance, and contract-file transfer remain explicit online operations because they require a server response.
 
 ## Legacy migration
 

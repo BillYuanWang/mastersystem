@@ -48,9 +48,11 @@ in, then call `bootstrap_first_administrator(display_name)` once. Every later
 administrator is invited through `admin-invite-member`; public registration can
 never create an administrator profile.
 
-Email registration is available to guardian accounts. A newly registered Auth
-user has no profile and no school-data access until
-`claim_guardian_link_code(claim_code)` consumes a valid one-time code. Adult
-learners and children can share the same guardian account and family record.
+Guardian registration begins with `preview_guardian_registration(claim_code)`,
+which validates a high-entropy invitation and returns only its registration
+identity (display name and locked email), never student or course data. After
+Auth signup, `claim_guardian_link_code(claim_code)` requires that
+same authenticated email before consuming the invitation. Adult learners and
+children can share the resulting guardian account and family record.
 
 Native callback schemes are `masterdance-desk://auth-callback` and `masterdance://auth-callback`; the macOS and iOS targets must register them when Auth is connected.

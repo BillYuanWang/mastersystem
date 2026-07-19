@@ -1,15 +1,15 @@
 # Master Dance
 
-Current local test release: `v0.1.5e`.
+Current local test release: `v0.1.6`.
 
-Native MD Desk macOS app and Supabase backend for the production Master Dance system.
+Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
 
 Master Dance formal product backend. / Master Dance 正式产品云端后端。
 
 ## What is here
 
 - `packages/MasterDanceCore`: Swift 6 domain models, recurring-session generation, preview data, and repository contracts.
-- `apps`: the production MD Desk macOS source, shared SwiftUI workflows, and the deferred iPhone shell.
+- `apps`: the production MD Desk macOS source, the Master Dance iPhone source, and shared SwiftUI workflows.
 - `supabase`: production Postgres schema, RLS, Storage, Realtime, Edge Function, seed, and pgTAP tests.
 - `docs`: architecture, product scope, visual baseline, policy log, migration design, QA evidence, and delivery roadmap.
 
@@ -34,7 +34,15 @@ path.
 
 Administrators create a guardian first, add one or more child or adult learner
 profiles inside that family, then issue a hashed, expiring, one-time guardian
-code. A future iPhone account claims that code to access only its linked family.
+invitation. On iPhone, the parent validates that invitation first, receives the
+locked guardian email, and creates only a password. The resulting account can
+access only its linked family.
+
+## Run the iPhone app
+
+Open `apps/MasterDance.xcodeproj`, select the `MasterDanceMobile` scheme and an
+iPhone simulator, then Run. The iPhone app supports administrator attendance,
+guardian and adult-student accounts; it does not target iPad in this release.
 
 ## Verify Swift
 
@@ -51,8 +59,8 @@ cd apps
 xcodegen generate --spec project.yml
 ```
 
-The macOS app is buildable and runnable without full Xcode. Full Xcode remains
-required for Apple signing, notarization, and later iPhone device builds.
+The macOS app is buildable and runnable without full Xcode. Full Xcode is
+required for iPhone simulator/device builds and Apple distribution workflows.
 
 ## Verify the backend
 

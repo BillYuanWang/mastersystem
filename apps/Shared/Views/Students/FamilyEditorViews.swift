@@ -236,7 +236,7 @@ private struct GuardianLinkCodeContent: View {
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(alignment: .leading, spacing: 16) {
-            MDSectionTitle(chinese: "监护人码", english: "LINK CODE")
+            MDSectionTitle(chinese: "家长邀请码", english: "INVITATION")
 
             HStack(spacing: 10) {
                 Text(code.code)

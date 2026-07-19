@@ -1,0 +1,466 @@
+#if os(iOS)
+import MasterDanceCore
+import SwiftUI
+
+@MainActor
+struct MobileAttendanceHomeView: View {
+    let model: AppModel
+    @State private var selectedDate = Self.initialDate
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        List {
+            Section {
+                HStack {
+                    Button {
+                        moveDay(-1)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("前一天")
+
+                    Spacer()
+
+                    DatePicker(
+                        "签到日期",
+                        selection: $selectedDate,
+                        displayedComponents: .date
+                    )
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .environment(\.locale, Locale(identifier: "zh_Hans_CN"))
+
+                    Spacer()
+
+                    Button {
+                        moveDay(1)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("后一天")
+                }
+                .foregroundStyle(theme.primaryText)
+            }
+
+            if sessionsForDay.isEmpty {
+                ContentUnavailableView(
+                    "这一天没有课程",
+                    systemImage: "calendar",
+                    description: Text("可以从上方选择其他日期。")
+                )
+                .listRowBackground(Color.clear)
+            } else {
+                Section("当天课程") {
+                    ForEach(sessionsForDay) { session in
+                        NavigationLink {
+                            MobileAttendanceSessionView(model: model, sessionID: session.id)
+                        } label: {
+                            MobileSessionRow(
+                                session: session,
+                                course: model.course(id: session.courseID),
+                                room: model.effectiveRoom(for: session),
+                                instructor: model.effectiveInstructor(for: session),
+                                trailingText: attendanceProgress(for: session)
+                            )
+                        }
+                        .disabled(session.status == .cancelled)
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("签到")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("今天") {
+                    selectedDate = Calendar.masterDance.startOfDay(for: Date())
+                }
+                .disabled(Calendar.masterDance.isDateInToday(selectedDate))
+            }
+        }
+        .refreshable { await model.reload() }
+    }
+
+    private var sessionsForDay: [ClassSession] {
+        model.sessions
+            .filter { Calendar.masterDance.isDate($0.startsAt, inSameDayAs: selectedDate) }
+            .sorted { $0.startsAt < $1.startsAt }
+    }
+
+    private func attendanceProgress(for session: ClassSession) -> String {
+        let enrolledIDs = Set(model.enrollments(forCourse: session.courseID).map(\.studentID))
+        let records = model.attendance.filter {
+            $0.sessionID == session.id && enrolledIDs.contains($0.studentID)
+        }
+        return "\(records.count)/\(enrolledIDs.count)"
+    }
+
+    private func moveDay(_ offset: Int) {
+        selectedDate = Calendar.masterDance.date(
+            byAdding: .day,
+            value: offset,
+            to: selectedDate
+        ) ?? selectedDate
+    }
+
+    private static var initialDate: Date {
+        let calendar = Calendar.masterDance
+        let today = calendar.startOfDay(for: Date())
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--md-preview-admin") {
+            switch calendar.component(.weekday, from: today) {
+            case 1:
+                return calendar.date(byAdding: .day, value: -2, to: today) ?? today
+            case 7:
+                return calendar.date(byAdding: .day, value: -1, to: today) ?? today
+            default:
+                break
+            }
+        }
+#endif
+        return today
+    }
+}
+
+@MainActor
+private struct MobileAttendanceSessionView: View {
+    let model: AppModel
+    let sessionID: ClassSessionID
+
+    @State private var guestMode: AttendanceStatus?
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        Group {
+            if let session = model.session(id: sessionID),
+               let course = model.course(id: session.courseID) {
+                List {
+                    Section {
+                        MobileSessionRow(
+                            session: session,
+                            course: course,
+                            room: model.effectiveRoom(for: session),
+                            instructor: model.effectiveInstructor(for: session),
+                            trailingText: nil
+                        )
+                    }
+
+                    Section("报名学员 · \(enrolledStudents.count)") {
+                        ForEach(enrolledStudents) { student in
+                            enrolledStudentRow(student, session: session, theme: theme)
+                        }
+                    }
+
+                    guestSection(
+                        title: "试课学员",
+                        status: .trial,
+                        records: guestRecords(status: .trial),
+                        session: session,
+                        theme: theme
+                    )
+
+                    guestSection(
+                        title: "补课学员",
+                        status: .makeup,
+                        records: guestRecords(status: .makeup),
+                        session: session,
+                        theme: theme
+                    )
+                }
+                .listStyle(.insetGrouped)
+                .navigationTitle(course.name)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Button {
+                                guestMode = .trial
+                            } label: {
+                                Label("添加试课学员", systemImage: "sparkles")
+                            }
+                            Button {
+                                guestMode = .makeup
+                            } label: {
+                                Label("添加补课学员", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                        } label: {
+                            Image(systemName: "person.badge.plus")
+                        }
+                        .accessibilityLabel("添加临时学员")
+                    }
+                }
+            } else {
+                ContentUnavailableView("课程不存在", systemImage: "calendar.badge.exclamationmark")
+            }
+        }
+        .sheet(isPresented: guestModePresentation) {
+            if let mode = guestMode, let session = model.session(id: sessionID) {
+                MobileGuestAttendancePicker(
+                    model: model,
+                    session: session,
+                    mode: mode
+                )
+            }
+        }
+    }
+
+    private var guestModePresentation: Binding<Bool> {
+        Binding(
+            get: { guestMode != nil },
+            set: { isPresented in
+                if !isPresented { guestMode = nil }
+            }
+        )
+    }
+
+    private var enrolledStudents: [Student] {
+        guard let session = model.session(id: sessionID) else { return [] }
+        let studentIDs = Set(model.enrollments(forCourse: session.courseID).map(\.studentID))
+        return model.students
+            .filter { studentIDs.contains($0.id) }
+            .sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+    }
+
+    private func enrolledStudentRow(
+        _ student: Student,
+        session: ClassSession,
+        theme: MDTheme
+    ) -> some View {
+        let record = model.attendanceRecord(sessionID: session.id, studentID: student.id)
+        return HStack(spacing: 10) {
+            Button {
+                setAttendance(record?.status == .present ? nil : .present, student: student, session: session)
+            } label: {
+                Image(systemName: record == nil ? "circle" : record!.status.mobileSystemImage)
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(record.map { $0.status.mobileColor(theme: theme) } ?? theme.secondaryText)
+                    .frame(width: 28, height: 32)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(record == nil ? "标记出勤" : record!.status.mobileTitle)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(student.displayName)
+                    .mdFont(.bodyStrong)
+                Text(model.guardian(id: student.guardianID)?.displayName ?? "")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+            }
+
+            Spacer()
+
+            Menu {
+                ForEach([AttendanceStatus.present, .excused, .absent], id: \.self) { status in
+                    Button {
+                        setAttendance(status, student: student, session: session)
+                    } label: {
+                        Label(status.mobileTitle, systemImage: status.mobileSystemImage)
+                    }
+                }
+                if record != nil {
+                    Divider()
+                    Button(role: .destructive) {
+                        setAttendance(nil, student: student, session: session)
+                    } label: {
+                        Label("清除记录", systemImage: "trash")
+                    }
+                }
+            } label: {
+                if let record {
+                    MobileStatusPill(
+                        title: record.status.mobileTitle,
+                        systemImage: record.status.mobileSystemImage,
+                        color: record.status.mobileColor(theme: theme)
+                    )
+                } else {
+                    Text("未记录")
+                        .mdFont(.compactStrong)
+                        .foregroundStyle(theme.secondaryText)
+                }
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    @ViewBuilder
+    private func guestSection(
+        title: String,
+        status: AttendanceStatus,
+        records: [Attendance],
+        session: ClassSession,
+        theme: MDTheme
+    ) -> some View {
+        Section {
+            if records.isEmpty {
+                Button {
+                    guestMode = status
+                } label: {
+                    Label("添加\(title)", systemImage: "person.badge.plus")
+                }
+            } else {
+                ForEach(records) { record in
+                    HStack {
+                        Image(systemName: status.mobileSystemImage)
+                            .foregroundStyle(status.mobileColor(theme: theme))
+                            .frame(width: 24)
+                        Text(model.student(id: record.studentID)?.displayName ?? "学员")
+                            .mdFont(.bodyStrong)
+                        Spacer()
+                        Button(role: .destructive) {
+                            removeAttendance(record)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(theme.secondaryText)
+                        .accessibilityLabel("移除")
+                    }
+                }
+                Button {
+                    guestMode = status
+                } label: {
+                    Label("继续添加", systemImage: "plus")
+                        .mdFont(.compactStrong)
+                }
+            }
+        } header: {
+            Text("\(title) · \(records.count)")
+        }
+    }
+
+    private func guestRecords(status: AttendanceStatus) -> [Attendance] {
+        model.attendance
+            .filter { $0.sessionID == sessionID && $0.status == status }
+            .sorted {
+                (model.student(id: $0.studentID)?.displayName ?? "")
+                    .localizedCompare(model.student(id: $1.studentID)?.displayName ?? "") == .orderedAscending
+            }
+    }
+
+    private func setAttendance(
+        _ status: AttendanceStatus?,
+        student: Student,
+        session: ClassSession
+    ) {
+        if let status {
+            model.performBackgroundOperation(
+                label: "记录\(status.mobileTitle)",
+                successMessage: "\(student.displayName)已标记为\(status.mobileTitle)"
+            ) {
+                try await model.recordAttendance(
+                    sessionID: session.id,
+                    studentID: student.id,
+                    status: status
+                )
+            }
+        } else if let record = model.attendanceRecord(sessionID: session.id, studentID: student.id) {
+            removeAttendance(record)
+        }
+    }
+
+    private func removeAttendance(_ record: Attendance) {
+        model.performBackgroundOperation(
+            label: "清除签到",
+            successMessage: "签到记录已清除"
+        ) {
+            try await model.deleteAttendance(id: record.id)
+        }
+    }
+}
+
+@MainActor
+private struct MobileGuestAttendancePicker: View {
+    let model: AppModel
+    let session: ClassSession
+    let mode: AttendanceStatus
+
+    @State private var searchText = ""
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        NavigationStack {
+            List(filteredCandidates) { student in
+                Button {
+                    add(student)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(student.displayName)
+                                .mdFont(.bodyStrong)
+                                .foregroundStyle(theme.primaryText)
+                            Text(model.guardian(id: student.guardianID)?.displayName ?? "")
+                                .mdFont(.compact)
+                                .foregroundStyle(theme.secondaryText)
+                        }
+                        Spacer()
+                        if existingStudentIDs.contains(student.id) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(mode.mobileColor(theme: theme))
+                        } else {
+                            Image(systemName: "plus.circle")
+                                .foregroundStyle(theme.accent)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(existingStudentIDs.contains(student.id))
+            }
+            .searchable(text: $searchText, prompt: "搜索学员或监护人")
+            .overlay {
+                if filteredCandidates.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                }
+            }
+            .navigationTitle(mode == .trial ? "添加试课学员" : "添加补课学员")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var enrolledStudentIDs: Set<StudentID> {
+        Set(model.enrollments(forCourse: session.courseID).map(\.studentID))
+    }
+
+    private var existingStudentIDs: Set<StudentID> {
+        Set(model.attendance.filter { $0.sessionID == session.id }.map(\.studentID))
+    }
+
+    private var filteredCandidates: [Student] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return model.students
+            .filter { !enrolledStudentIDs.contains($0.id) }
+            .filter { student in
+                guard !query.isEmpty else { return true }
+                let guardian = model.guardian(id: student.guardianID)
+                return student.displayName.localizedCaseInsensitiveContains(query)
+                    || guardian?.displayName.localizedCaseInsensitiveContains(query) == true
+                    || guardian?.email?.localizedCaseInsensitiveContains(query) == true
+                    || guardian?.phone?.localizedCaseInsensitiveContains(query) == true
+            }
+            .sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+    }
+
+    private func add(_ student: Student) {
+        model.performBackgroundOperation(
+            label: "添加\(mode.mobileTitle)",
+            successMessage: "\(student.displayName)已加入\(mode.mobileTitle)"
+        ) {
+            try await model.recordAttendance(
+                sessionID: session.id,
+                studentID: student.id,
+                status: mode
+            )
+        }
+    }
+}
+#endif

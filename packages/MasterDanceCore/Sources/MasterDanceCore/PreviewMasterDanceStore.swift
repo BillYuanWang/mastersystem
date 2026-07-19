@@ -1,6 +1,6 @@
 import Foundation
 
-public struct PreviewData: Sendable {
+public struct PreviewData: Codable, Sendable {
     public var terms: [Term]
     public var termHolidays: [TermHoliday]
     public var courseCategories: [CourseCategory]
@@ -62,6 +62,12 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
     private var data: PreviewData
 
     public init(data: PreviewData = PreviewData()) {
+        self.data = data
+    }
+
+    public func snapshot() -> PreviewData { data }
+
+    public func replace(with data: PreviewData) {
         self.data = data
     }
 
