@@ -15,6 +15,7 @@ struct MobileGuardianContractRegistrationView: View {
     @State private var signaturePNG: Data?
     @State private var signatureClearGeneration = 0
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
@@ -246,6 +247,16 @@ struct MobileGuardianContractRegistrationView: View {
             .tint(theme.accent)
             .disabled(!canSubmit || session.isWorking)
 
+            if let errorMessage = session.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .mdFont(.compactStrong)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(theme.danger, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             Text("点击后即表示同意上方合同，并保存签名、合同版本和签署时间。")
                 .mdFont(.compact)
                 .foregroundStyle(theme.secondaryText)
@@ -318,6 +329,7 @@ struct MobileGuardianContractRegistrationView: View {
 
     private func submitRegistration() {
         guard let document, let signaturePNG else { return }
+        session.clearMessages()
         Task {
             if await session.registerGuardian(
                 invitation: invitation,
@@ -327,6 +339,7 @@ struct MobileGuardianContractRegistrationView: View {
                 confirmation: confirmation
             ) {
                 onCompleted()
+                dismiss()
             }
         }
     }

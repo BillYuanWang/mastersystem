@@ -1,6 +1,6 @@
 # Master Dance
 
-Current local test release: `v0.1.9a`.
+Current local test release: `v0.1.9b`.
 
 Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
 
@@ -45,6 +45,8 @@ sign that new version before returning to the app.
 Open `apps/MasterDance.xcodeproj`, select the `MasterDanceMobile` scheme and an
 iPhone simulator, then Run. The iPhone app supports administrator attendance,
 guardian and adult-student accounts; it does not target iPad in this release.
+For command-line simulator builds, keep Xcode's local `Sign to Run Locally`
+signature enabled; disabling code signing also removes simulator Keychain access.
 
 ## Verify Swift
 

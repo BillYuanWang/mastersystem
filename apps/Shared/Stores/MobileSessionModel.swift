@@ -2,7 +2,6 @@
 import Foundation
 import MasterDanceCore
 import Observation
-import Security
 import Supabase
 
 enum MobileSessionPhase: Equatable {
@@ -182,22 +181,27 @@ final class MobileSessionModel {
             try pendingInvitationStore.save(
                 PendingGuardianInvitation(code: invitation.code, email: email)
             )
-            authStorage.setSessionPersistenceEnabled(false)
-            let response = try await client.auth.signUp(
-                email: email,
-                password: password,
-                redirectTo: callbackURL
-            )
-            let registeredEmail = response.user.email ?? email
-            try? await client.auth.signOut(scope: .local)
-            clearAuthenticatedState()
-            clearLoginRetention()
-            accountEmail = registeredEmail
-            phase = .signedOut
-            noticeMessage = response.session == nil
-                ? "注册已提交。请先完成邮箱确认，再使用新密码登录。"
-                : "注册成功，请使用刚刚设置的密码登录。"
-            didRegister = true
+            do {
+                let response = try await configuration.makeEphemeralAuthClient().auth.signUp(
+                    email: email,
+                    password: password,
+                    redirectTo: callbackURL
+                )
+                clearLoginRetention()
+                accountEmail = response.user.email ?? email
+                phase = .signedOut
+                noticeMessage = response.session == nil
+                    ? "注册已提交。请先完成邮箱确认，再使用新密码登录。"
+                    : "注册成功，请使用刚刚设置的密码登录。"
+                didRegister = true
+            } catch {
+                guard isExistingAuthAccountError(error) else { throw error }
+                clearLoginRetention()
+                accountEmail = email
+                phase = .signedOut
+                noticeMessage = "这个邮箱已有账号，请直接登录；忘记密码时可使用密码重设。"
+                didRegister = true
+            }
         }
         return didRegister
     }
@@ -468,6 +472,13 @@ final class MobileSessionModel {
             && password.contains(where: \.isNumber)
     }
 
+    private func isExistingAuthAccountError(_ error: Error) -> Bool {
+        let message = error.localizedDescription.lowercased()
+        return message.contains("already registered")
+            || message.contains("user already exists")
+            || message.contains("user_already_exists")
+    }
+
     private var callbackURL: URL {
         URL(string: "masterdance://auth-callback")!
     }
@@ -515,55 +526,38 @@ private struct PendingGuardianInvitation: Codable {
 }
 
 private struct PendingGuardianInvitationStore {
-    private let service = "com.masterdance.mobile.guardian-registration"
     private let account = "pending-invitation"
+    private let fallbackKey = "guardian-registration.pending-invitation"
+    private let backing: any AuthLocalStorage
+    private let defaults: UserDefaults
+
+    init(
+        backing: any AuthLocalStorage = KeychainLocalStorage(
+            service: "com.masterdance.mobile.guardian-registration"
+        ),
+        defaults: UserDefaults = .standard
+    ) {
+        self.backing = backing
+        self.defaults = defaults
+    }
 
     func load() throws -> PendingGuardianInvitation? {
-        var query = baseQuery
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data = result as? Data else {
-            throw PendingGuardianInvitationStoreError(status: status)
+        if let data = defaults.data(forKey: fallbackKey) {
+            return try JSONDecoder().decode(PendingGuardianInvitation.self, from: data)
         }
+        guard let data = try? backing.retrieve(key: account) else { return nil }
         return try JSONDecoder().decode(PendingGuardianInvitation.self, from: data)
     }
 
     func save(_ invitation: PendingGuardianInvitation) throws {
         let data = try JSONEncoder().encode(invitation)
-        SecItemDelete(baseQuery as CFDictionary)
-
-        var attributes = baseQuery
-        attributes[kSecValueData as String] = data
-        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let status = SecItemAdd(attributes as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw PendingGuardianInvitationStoreError(status: status)
-        }
+        defaults.set(data, forKey: fallbackKey)
+        try? backing.store(key: account, value: data)
     }
 
     func clear() {
-        SecItemDelete(baseQuery as CFDictionary)
-    }
-
-    private var baseQuery: [String: Any] {
-        [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
-    }
-}
-
-private struct PendingGuardianInvitationStoreError: LocalizedError {
-    let status: OSStatus
-
-    var errorDescription: String? {
-        let detail = SecCopyErrorMessageString(status, nil) as String? ?? "\(status)"
-        return "无法安全保存家长邀请码：\(detail)"
+        defaults.removeObject(forKey: fallbackKey)
+        try? backing.remove(key: account)
     }
 }
 #endif

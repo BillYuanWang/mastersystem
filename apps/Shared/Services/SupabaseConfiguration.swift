@@ -23,6 +23,19 @@ struct SupabaseConfiguration: Sendable {
         makeSessionClient(persistSession: true).client
     }
 
+    func makeEphemeralAuthClient() -> SupabaseClient {
+        SupabaseClient(
+            supabaseURL: url,
+            supabaseKey: publishableKey,
+            options: SupabaseClientOptions(
+                auth: .init(
+                    storage: VolatileAuthStorage(),
+                    autoRefreshToken: false
+                )
+            )
+        )
+    }
+
     func makeSessionClient(persistSession: Bool) -> ConfiguredSessionClient {
         let backing: any AuthLocalStorage
         if ProcessInfo.processInfo.environment["MASTER_DANCE_VOLATILE_AUTH"] == "1" {
