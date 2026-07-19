@@ -34,14 +34,14 @@ struct DataCenterWorkspaceView: View {
 
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                         .foregroundStyle(theme.danger)
                         .lineLimit(1)
                 }
 
                 TextField("搜索", text: $searchText)
                     .textFieldStyle(.roundedBorder)
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .frame(width: 150)
 
                 Menu {
@@ -288,7 +288,7 @@ struct DataCenterWorkspaceView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text(column.0)
-                            .font(MDType.compactStrong)
+                            .mdFont(.compactStrong)
                             .lineLimit(1)
                         if case let .column(selected, ascending) = referenceSort, selected == index {
                             Image(systemName: ascending ? "chevron.up" : "chevron.down")
@@ -306,7 +306,7 @@ struct DataCenterWorkspaceView: View {
             }
 
             Text("操作")
-                .font(MDType.compactStrong)
+                .mdFont(.compactStrong)
                 .foregroundStyle(theme.secondaryText)
                 .frame(width: 70)
             Spacer(minLength: 0)
@@ -374,8 +374,8 @@ struct DataCenterWorkspaceView: View {
         theme: MDTheme
     ) -> some View {
         HStack {
-            Text(title).font(MDType.bodyStrong)
-            Text("\(count)").font(MDType.mono).foregroundStyle(theme.secondaryText)
+            Text(title).mdFont(.bodyStrong)
+            Text("\(count)").mdFont(.mono).foregroundStyle(theme.secondaryText)
             Spacer()
             Button(action: action) { Image(systemName: "plus") }
                 .buttonStyle(MDIconButtonStyle())
@@ -392,7 +392,7 @@ struct DataCenterWorkspaceView: View {
                     .foregroundStyle(theme.secondaryText)
             }
             Text("操作")
-                .font(MDType.compactStrong)
+                .mdFont(.compactStrong)
                 .foregroundStyle(theme.secondaryText)
                 .frame(width: 70)
             Spacer(minLength: 0)
@@ -841,6 +841,7 @@ private func editorButtons(
     }
 }
 
+@MainActor
 private func dataCell(
     _ text: String,
     width: CGFloat,
@@ -848,7 +849,7 @@ private func dataCell(
     mono: Bool = false
 ) -> some View {
     Text(text)
-        .font(mono ? MDType.mono : (strong ? MDType.bodyStrong : MDType.body))
+        .mdFont(mono ? .mono : (strong ? .bodyStrong : .body))
         .lineLimit(1)
         .truncationMode(.tail)
         .frame(width: width, alignment: .leading)

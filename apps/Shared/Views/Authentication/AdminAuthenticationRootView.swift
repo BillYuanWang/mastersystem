@@ -74,7 +74,7 @@ private struct AdminAuthenticationLoadingView: View {
             ProgressView()
                 .controlSize(.small)
             Text("MD DESK")
-                .font(MDType.monoStrong)
+                .mdFont(.monoStrong)
                 .foregroundStyle(theme.secondaryText)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

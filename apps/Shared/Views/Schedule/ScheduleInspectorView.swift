@@ -43,14 +43,14 @@ struct ScheduleInspectorView: View {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(course.name)
-                                    .font(MDType.bodyStrong)
+                                    .mdFont(.bodyStrong)
                                 Text((model.courseType(id: course.courseTypeID)?.name ?? "课程种类").uppercased())
-                                    .font(MDType.monoStrong)
+                                    .mdFont(.monoStrong)
                                     .foregroundStyle(theme.secondaryText)
                             }
                             Spacer()
                             Text(course.format == .privateLesson ? "私" : "组")
-                                .font(MDType.compactStrong)
+                                .mdFont(.compactStrong)
                                 .frame(width: 25, height: 25)
                                 .overlay(Circle().stroke(theme.primaryText.opacity(0.72), lineWidth: 1))
                         }
@@ -69,7 +69,7 @@ struct ScheduleInspectorView: View {
                             systemImage: "mappin.and.ellipse"
                         )
                     }
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .padding(16)
 
                     Divider()
@@ -77,32 +77,32 @@ struct ScheduleInspectorView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Text("报名学生")
-                                .font(MDType.bodyStrong)
+                                .mdFont(.bodyStrong)
                             Spacer()
                             Text("\(roster.count)")
-                                .font(MDType.monoStrong)
+                                .mdFont(.monoStrong)
                                 .foregroundStyle(theme.secondaryText)
                         }
 
                         if roster.isEmpty {
                             Text("暂无报名学生")
-                                .font(MDType.compact)
+                                .mdFont(.compact)
                                 .foregroundStyle(theme.secondaryText)
                         } else {
                             ForEach(roster.prefix(7)) { enrollment in
                                 HStack(spacing: 8) {
                                     MDStatusDot(color: statusColor(for: enrollment, session: session, theme: theme))
                                     Text(model.student(id: enrollment.studentID)?.displayName ?? "学生")
-                                        .font(MDType.compact)
+                                        .mdFont(.compact)
                                     Spacer()
                                     Text(statusLabel(for: enrollment, session: session))
-                                        .font(MDType.compact)
+                                        .mdFont(.compact)
                                         .foregroundStyle(theme.secondaryText)
                                 }
                             }
                             if roster.count > 7 {
                                 Text("查看全部 \(roster.count)")
-                                    .font(MDType.compactStrong)
+                                    .mdFont(.compactStrong)
                                     .foregroundStyle(theme.accent)
                                     .frame(maxWidth: .infinity, alignment: .trailing)
                             }
@@ -118,7 +118,7 @@ struct ScheduleInspectorView: View {
                         inspectorRow("状态", sessionStatus(session.status), theme: theme)
 
                         Text("课次由起止日期自动生成；休息周可在课程设置中单独移除。")
-                            .font(MDType.compact)
+                            .mdFont(.compact)
                             .foregroundStyle(theme.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -129,10 +129,10 @@ struct ScheduleInspectorView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Text("本次签到")
-                                .font(MDType.bodyStrong)
+                                .mdFont(.bodyStrong)
                             Spacer()
                             Text("\(presentCount)/\(roster.count)")
-                                .font(MDType.monoStrong)
+                                .mdFont(.monoStrong)
                         }
                         ProgressView(value: Double(presentCount), total: Double(max(1, roster.count)))
                             .tint(theme.accent)
@@ -142,7 +142,7 @@ struct ScheduleInspectorView: View {
                             Label("请假 \(leaveCount)", systemImage: "circle.fill")
                                 .foregroundStyle(theme.warning)
                         }
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                         if trialCount > 0 || makeupCount > 0 {
                             HStack(spacing: 12) {
                                 Label("试课 \(trialCount)", systemImage: "sparkles")
@@ -150,7 +150,7 @@ struct ScheduleInspectorView: View {
                                 Label("补课 \(makeupCount)", systemImage: "arrow.clockwise")
                                     .foregroundStyle(theme.success)
                             }
-                            .font(MDType.compact)
+                            .mdFont(.compact)
                         }
                     }
                     .padding(16)
@@ -162,7 +162,7 @@ struct ScheduleInspectorView: View {
             VStack(spacing: 0) {
                 Button(action: openCourse) {
                     Label("打开课程", systemImage: "books.vertical")
-                        .font(MDType.body)
+                        .mdFont(.body)
                         .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
                 }
                 .buttonStyle(.plain)
@@ -175,7 +175,7 @@ struct ScheduleInspectorView: View {
                     startAttendance(session.id)
                 } label: {
                     Label("开始签到", systemImage: "checkmark.circle")
-                        .font(MDType.body)
+                        .mdFont(.body)
                         .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
                 }
                 .buttonStyle(.plain)
@@ -188,11 +188,11 @@ struct ScheduleInspectorView: View {
     private func inspectorRow(_ label: String, _ value: String, theme: MDTheme) -> some View {
         HStack {
             Text(label)
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .foregroundStyle(theme.secondaryText)
             Spacer()
             Text(value)
-                .font(MDType.compactStrong)
+                .mdFont(.compactStrong)
         }
     }
 

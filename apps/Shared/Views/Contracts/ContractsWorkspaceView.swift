@@ -34,14 +34,14 @@ struct ContractsWorkspaceView: View {
 
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                         .foregroundStyle(theme.danger)
                         .lineLimit(1)
                 }
 
                 TextField("搜索", text: $searchText)
                     .textFieldStyle(.roundedBorder)
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .frame(width: 160)
 
                 if section == .documents {
@@ -186,7 +186,7 @@ struct ContractsWorkspaceView: View {
             }
             if section == .documents {
                 Text("操作")
-                    .font(MDType.compactStrong)
+                    .mdFont(.compactStrong)
                     .foregroundStyle(theme.secondaryText)
                     .frame(width: 70)
             }
@@ -286,14 +286,14 @@ private struct ContractDocumentEditorView: View {
                 Text("PDF 文件")
                 Spacer()
                 Text(fileName ?? (original?.storagePath.isEmpty == false ? "已上传" : "未选择"))
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Button("选择文件") { showingFileImporter = true }
             }
             if let errorMessage {
                 Text(errorMessage)
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(.red)
             }
             HStack {
@@ -358,6 +358,7 @@ private struct ContractDocumentEditorView: View {
     }
 }
 
+@MainActor
 private func contractCell(
     _ text: String,
     width: CGFloat,
@@ -365,7 +366,7 @@ private func contractCell(
     mono: Bool = false
 ) -> some View {
     Text(text)
-        .font(mono ? MDType.mono : (strong ? MDType.bodyStrong : MDType.body))
+        .mdFont(mono ? .mono : (strong ? .bodyStrong : .body))
         .lineLimit(1)
         .truncationMode(.tail)
         .frame(width: width, alignment: .leading)

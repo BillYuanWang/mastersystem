@@ -69,7 +69,7 @@ struct AttendanceWorkspaceView: View {
                 .labelsHidden()
             TextField("搜索学员或家庭", text: $searchText)
                 .textFieldStyle(.roundedBorder)
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .frame(width: 190)
         }
         .padding(.horizontal, 14)
@@ -80,10 +80,10 @@ struct AttendanceWorkspaceView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("当日课程")
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                 Spacer()
                 Text("\(sessionsForDate.count)")
-                    .font(MDType.mono)
+                    .mdFont(.mono)
                     .foregroundStyle(theme.secondaryText)
             }
             .padding(.horizontal, 12)
@@ -98,14 +98,14 @@ struct AttendanceWorkspaceView: View {
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(model.course(id: session.courseID)?.name ?? "课程")
-                                    .font(MDType.bodyStrong)
+                                    .mdFont(.bodyStrong)
                                     .lineLimit(1)
                                 HStack {
                                     Text(session.startsAt.formatted(date: .omitted, time: .shortened))
                                     Text(model.effectiveRoom(for: session)?.name ?? "")
                                         .lineLimit(1)
                                 }
-                                .font(MDType.compact)
+                                .mdFont(.compact)
                                 .foregroundStyle(theme.secondaryText)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -187,9 +187,9 @@ struct AttendanceWorkspaceView: View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(course.name)
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                 Text(session.startsAt.formatted(date: .long, time: .shortened))
-                    .font(MDType.mono)
+                    .mdFont(.mono)
                     .foregroundStyle(theme.secondaryText)
             }
             Spacer()
@@ -200,7 +200,7 @@ struct AttendanceWorkspaceView: View {
             Label("补课 \(makeupCount)", systemImage: "arrow.clockwise")
                 .foregroundStyle(theme.success)
         }
-        .font(MDType.compactStrong)
+        .mdFont(.compactStrong)
         .padding(.horizontal, 16)
         .frame(height: 58)
     }
@@ -257,16 +257,16 @@ struct AttendanceWorkspaceView: View {
                 Image(systemName: kind.systemImage)
                     .foregroundStyle(kind.color(theme: theme))
                 Text(kind.sectionTitle)
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                 Text("\(records.count)")
-                    .font(MDType.mono)
+                    .mdFont(.mono)
                     .foregroundStyle(theme.secondaryText)
                 Spacer()
                 Button {
                     addingGuestKind = kind
                 } label: {
                     Label(kind.addTitle, systemImage: "plus")
-                        .font(MDType.compactStrong)
+                        .mdFont(.compactStrong)
                 }
                 .buttonStyle(.borderless)
                 .help(kind.addTitle)
@@ -282,7 +282,7 @@ struct AttendanceWorkspaceView: View {
                 attendanceHeader("记录时间", width: AttendanceColumns.time)
                 Spacer()
                 Text("操作")
-                    .font(MDType.compactStrong)
+                    .mdFont(.compactStrong)
                     .foregroundStyle(theme.secondaryText)
                     .frame(width: AttendanceColumns.action)
             }
@@ -317,7 +317,7 @@ struct AttendanceWorkspaceView: View {
                 Image(systemName: kind.systemImage)
                 Text(kind.shortTitle)
             }
-            .font(MDType.compactStrong)
+            .mdFont(.compactStrong)
             .foregroundStyle(kind.color(theme: theme))
             .padding(.leading, 10)
             .frame(width: AttendanceColumns.guestStatus, alignment: .leading)
@@ -358,9 +358,9 @@ struct AttendanceWorkspaceView: View {
             Image(systemName: systemImage)
                 .foregroundStyle(tint)
             Text(title)
-                .font(MDType.bodyStrong)
+                .mdFont(.bodyStrong)
             Text("\(count)")
-                .font(MDType.mono)
+                .mdFont(.mono)
                 .foregroundStyle(theme.secondaryText)
             Spacer()
         }
@@ -371,7 +371,7 @@ struct AttendanceWorkspaceView: View {
 
     private func attendanceEmptyRow(_ title: String, theme: MDTheme) -> some View {
         Text(title)
-            .font(MDType.compact)
+            .mdFont(.compact)
             .foregroundStyle(theme.secondaryText)
             .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
             .padding(.horizontal, 12)
@@ -544,7 +544,7 @@ private struct AttendanceRow: View {
             }
         } label: {
             Label(attendanceStatusLabel(status), systemImage: current == status ? "checkmark.circle.fill" : "circle")
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .foregroundStyle(current == status ? color : .secondary)
         }
         .buttonStyle(.plain)
@@ -572,9 +572,9 @@ private struct AttendanceGuestPicker: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(kind.color(theme: theme))
                 Text(kind.addTitle)
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                 Text("\(filteredCandidates.count)")
-                    .font(MDType.mono)
+                    .mdFont(.mono)
                     .foregroundStyle(theme.secondaryText)
                 Spacer()
                 Button {
@@ -608,16 +608,16 @@ private struct AttendanceGuestPicker: View {
                         ForEach(groups) { group in
                             HStack(spacing: 7) {
                                 Text(group.guardianName)
-                                    .font(MDType.compactStrong)
+                                    .mdFont(.compactStrong)
                                 if !group.contact.isEmpty {
                                     Text(group.contact)
-                                        .font(MDType.compact)
+                                        .mdFont(.compact)
                                         .foregroundStyle(theme.secondaryText)
                                         .lineLimit(1)
                                 }
                                 Spacer()
                                 Text("\(group.students.count)")
-                                    .font(MDType.mono)
+                                    .mdFont(.mono)
                                     .foregroundStyle(theme.secondaryText)
                             }
                             .padding(.horizontal, 14)
@@ -636,15 +636,15 @@ private struct AttendanceGuestPicker: View {
                                             .frame(width: 22)
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(student.displayName)
-                                                .font(MDType.bodyStrong)
+                                                .mdFont(.bodyStrong)
                                                 .foregroundStyle(theme.primaryText)
                                             Text(student.kind == .adult ? "成人学员" : "少儿学员")
-                                                .font(MDType.compact)
+                                                .mdFont(.compact)
                                                 .foregroundStyle(theme.secondaryText)
                                         }
                                         Spacer()
                                         Text("已报 \(model.enrollments(for: student.id).count) 门课")
-                                            .font(MDType.compact)
+                                            .mdFont(.compact)
                                             .foregroundStyle(theme.secondaryText)
                                         Image(systemName: "plus.circle")
                                             .foregroundStyle(kind.color(theme: theme))
@@ -763,14 +763,16 @@ private func attendanceStatusLabel(_ status: AttendanceStatus) -> String {
     }
 }
 
+@MainActor
 private func attendanceHeader(_ text: String, width: CGFloat) -> some View {
     Text(text)
-        .font(MDType.compactStrong)
+        .mdFont(.compactStrong)
         .foregroundStyle(.secondary)
         .padding(.leading, 10)
         .frame(width: width, alignment: .leading)
 }
 
+@MainActor
 private func attendanceCell(
     _ text: String,
     width: CGFloat,
@@ -779,7 +781,7 @@ private func attendanceCell(
     secondary: Bool = false
 ) -> some View {
     Text(text)
-        .font(mono ? MDType.mono : (strong ? MDType.bodyStrong : MDType.body))
+        .mdFont(mono ? .mono : (strong ? .bodyStrong : .body))
         .foregroundStyle(secondary ? Color.secondary : Color.primary)
         .lineLimit(1)
         .truncationMode(.tail)

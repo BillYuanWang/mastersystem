@@ -60,7 +60,7 @@ struct AppShell: View {
         .overlay(alignment: .top) {
             if let errorMessage = model.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(.red.opacity(0.9), in: RoundedRectangle(cornerRadius: MDMetrics.radius))

@@ -42,9 +42,9 @@ struct GuardianInspectorView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(selectedStudent.displayName)
-                                    .font(MDType.bodyStrong)
+                                    .mdFont(.bodyStrong)
                                 Text(selectedStudent.kind == .adult ? "成人学员" : "少儿学员")
-                                    .font(MDType.mono)
+                                    .mdFont(.mono)
                                     .foregroundStyle(theme.secondaryText)
                             }
                             Spacer()
@@ -140,7 +140,7 @@ struct GuardianInspectorView: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Text(guardian.displayName)
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                 Spacer()
                 Button {
                     showingGuardianEditor = true
@@ -160,19 +160,19 @@ struct GuardianInspectorView: View {
 
             if let email = guardian.email, !email.isEmpty {
                 Label(email, systemImage: "envelope")
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                     .textSelection(.enabled)
             }
             if let phone = guardian.phone, !phone.isEmpty {
                 Label(phone, systemImage: "phone")
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                     .textSelection(.enabled)
             }
             if guardian.email == nil, guardian.phone == nil {
                 Text("未填写联系方式")
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
             }
         }
@@ -183,31 +183,31 @@ struct GuardianInspectorView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("学员帐号")
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                 Spacer()
                 HStack(spacing: 6) {
                     MDStatusDot(color: guardian.isAccountLinked ? theme.success : theme.warning)
                     Text(guardian.isAccountLinked ? "已连接" : "待认领")
-                        .font(MDType.compactStrong)
+                        .mdFont(.compactStrong)
                 }
             }
 
             if guardian.isAccountLinked {
                 Text("监护人帐号已连接此家庭。")
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
             } else {
                 if let hint = guardian.activeLinkCodeHint {
                     HStack {
                         Text("现有码")
-                            .font(MDType.compact)
+                            .mdFont(.compact)
                             .foregroundStyle(theme.secondaryText)
                         Text("•••• \(hint)")
-                            .font(MDType.monoStrong)
+                            .mdFont(.monoStrong)
                         Spacer()
                         if let expiresAt = guardian.activeLinkCodeExpiresAt {
                             Text(expiresAt.formatted(date: .numeric, time: .omitted))
-                                .font(MDType.mono)
+                                .mdFont(.mono)
                                 .foregroundStyle(theme.secondaryText)
                         }
                     }
@@ -227,7 +227,7 @@ struct GuardianInspectorView: View {
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.danger)
             }
         }
@@ -237,9 +237,9 @@ struct GuardianInspectorView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("学员档案")
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                 Text("\(learners.count)")
-                    .font(MDType.monoStrong)
+                    .mdFont(.monoStrong)
                     .foregroundStyle(theme.secondaryText)
                 Spacer()
                 Button {
@@ -253,7 +253,7 @@ struct GuardianInspectorView: View {
 
             if learners.isEmpty {
                 Text("尚无学员档案")
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                     .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
             }
@@ -266,11 +266,11 @@ struct GuardianInspectorView: View {
                         Image(systemName: learner.kind == .adult ? "person" : "figure.child")
                             .frame(width: 16)
                         Text(learner.displayName)
-                            .font(MDType.bodyStrong)
+                            .mdFont(.bodyStrong)
                             .lineLimit(1)
                         Spacer()
                         Text(learner.kind == .adult ? "成人" : "少儿")
-                            .font(MDType.compact)
+                            .mdFont(.compact)
                             .foregroundStyle(theme.secondaryText)
                         Image(systemName: "chevron.right")
                             .font(.system(size: 9, weight: .semibold))
@@ -329,9 +329,9 @@ struct UnassignedStudentInspectorView: View {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(student.displayName)
-                        .font(MDType.bodyStrong)
+                        .mdFont(.bodyStrong)
                     Text(student.kind == .adult ? "成人学员 · 待归档" : "少儿学员 · 待归档")
-                        .font(MDType.mono)
+                        .mdFont(.mono)
                         .foregroundStyle(theme.warning)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -341,7 +341,7 @@ struct UnassignedStudentInspectorView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("归入家庭")
-                        .font(MDType.bodyStrong)
+                        .mdFont(.bodyStrong)
                     Picker("监护人", selection: $selectedGuardianID) {
                         Text("选择监护人").tag(Optional<GuardianID>.none)
                         ForEach(model.guardians) { guardian in
@@ -361,7 +361,7 @@ struct UnassignedStudentInspectorView: View {
 
                     if let errorMessage {
                         Text(errorMessage)
-                            .font(MDType.compact)
+                            .mdFont(.compact)
                             .foregroundStyle(theme.danger)
                     }
                 }

@@ -40,7 +40,7 @@ struct EnrollmentsWorkspaceView: View {
         HStack(spacing: 12) {
             MDSectionTitle(chinese: "总报名", english: "ENROLLMENT")
             Text("\(filteredEnrollments.count)")
-                .font(MDType.mono)
+                .mdFont(.mono)
                 .foregroundStyle(theme.secondaryText)
             Spacer()
             Picker("学期", selection: $selectedTermID) {
@@ -53,7 +53,7 @@ struct EnrollmentsWorkspaceView: View {
             .frame(width: 150)
             TextField("搜索学员、家庭或课程", text: $searchText)
                 .textFieldStyle(.roundedBorder)
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .frame(width: 230)
         }
         .padding(.horizontal, 14)
@@ -94,7 +94,7 @@ struct EnrollmentsWorkspaceView: View {
             enrollmentHeader("报名日期", width: EnrollmentColumns.date)
             Spacer(minLength: 0)
             Text("操作")
-                .font(MDType.compactStrong)
+                .mdFont(.compactStrong)
                 .foregroundStyle(theme.secondaryText)
                 .frame(width: EnrollmentColumns.action)
         }
@@ -181,11 +181,11 @@ struct EnrollmentsWorkspaceView: View {
                 .frame(width: 17)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                     .foregroundStyle(theme.primaryText)
                     .lineLimit(1)
                 Text(subtitle)
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                     .lineLimit(1)
             }
@@ -260,7 +260,7 @@ struct EnrollmentsWorkspaceView: View {
                     .foregroundStyle(theme.danger)
             }
         }
-        .font(MDType.compact)
+        .mdFont(.compact)
         .padding(.leading, 10)
         .frame(width: EnrollmentColumns.status, alignment: .leading)
     }
@@ -446,7 +446,7 @@ private struct StudentEnrollmentPicker: View {
                     .textFieldStyle(.roundedBorder)
                     .focused($searchFocused)
                 Text("\(filteredStudents.count)")
-                    .font(MDType.mono)
+                    .mdFont(.mono)
                     .foregroundStyle(theme.secondaryText)
             }
             .padding(12)
@@ -536,16 +536,16 @@ private struct StudentEnrollmentPicker: View {
     private func studentGroupHeader(_ group: StudentPickerGroup, theme: MDTheme) -> some View {
         HStack(spacing: 7) {
             Text(group.title)
-                .font(MDType.compactStrong)
+                .mdFont(.compactStrong)
             if !group.contact.isEmpty {
                 Text(group.contact)
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                     .lineLimit(1)
             }
             Spacer()
             Text("\(group.students.count)")
-                .font(MDType.mono)
+                .mdFont(.mono)
                 .foregroundStyle(theme.secondaryText)
         }
         .padding(.horizontal, 12)
@@ -564,15 +564,15 @@ private struct StudentEnrollmentPicker: View {
                     .frame(width: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(student.displayName)
-                        .font(MDType.bodyStrong)
+                        .mdFont(.bodyStrong)
                         .foregroundStyle(theme.primaryText)
                     Text((student.kind == .adult ? "成人" : "少儿") + " · " + guardianName)
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                         .foregroundStyle(theme.secondaryText)
                 }
                 Spacer()
                 Text("\(model.enrollments(for: student.id).count) 门课")
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                 if selectedID == student.id {
                     Image(systemName: "checkmark")
@@ -631,9 +631,9 @@ private struct CourseEnrollmentPicker: View {
                     LazyVStack(spacing: 0) {
                         ForEach(groups) { group in
                             HStack {
-                                Text(group.title).font(MDType.compactStrong)
+                                Text(group.title).mdFont(.compactStrong)
                                 Text("\(group.courses.count)")
-                                    .font(MDType.mono)
+                                    .mdFont(.mono)
                                     .foregroundStyle(theme.secondaryText)
                                 Spacer()
                             }
@@ -716,10 +716,10 @@ private struct CourseEnrollmentPicker: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.map(timeRange) ?? "未排课")
-                        .font(MDType.monoStrong)
+                        .mdFont(.monoStrong)
                         .foregroundStyle(theme.primaryText)
                     Text(model.term(id: course.termID)?.name ?? "")
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                         .foregroundStyle(theme.secondaryText)
                         .lineLimit(1)
                 }
@@ -727,11 +727,11 @@ private struct CourseEnrollmentPicker: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(course.name)
-                        .font(MDType.bodyStrong)
+                        .mdFont(.bodyStrong)
                         .foregroundStyle(theme.primaryText)
                         .lineLimit(1)
                     Text(courseMeta(course))
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                         .foregroundStyle(theme.secondaryText)
                         .lineLimit(1)
                 }
@@ -739,16 +739,16 @@ private struct CourseEnrollmentPicker: View {
 
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(model.instructor(id: course.defaultInstructorID)?.displayName ?? "未定老师")
-                        .font(MDType.compactStrong)
+                        .mdFont(.compactStrong)
                         .foregroundStyle(theme.primaryText)
                     Text(model.room(id: course.defaultRoomID)?.name ?? "未定教室")
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                         .foregroundStyle(theme.secondaryText)
                 }
                 .frame(width: 105, alignment: .trailing)
 
                 Text(course.format == .privateLesson ? "私" : "组")
-                    .font(MDType.compactStrong)
+                    .mdFont(.compactStrong)
                     .foregroundStyle(theme.secondaryText)
                     .frame(width: 22, height: 22)
                     .overlay(Circle().stroke(theme.secondaryText, lineWidth: 1))
@@ -854,14 +854,16 @@ private func weekdayTitle(_ weekday: Int) -> String {
     }
 }
 
+@MainActor
 private func enrollmentHeader(_ text: String, width: CGFloat) -> some View {
     Text(text)
-        .font(MDType.compactStrong)
+        .mdFont(.compactStrong)
         .foregroundStyle(.secondary)
         .padding(.leading, 10)
         .frame(width: width, alignment: .leading)
 }
 
+@MainActor
 private func enrollmentCell(
     _ text: String,
     width: CGFloat,
@@ -869,7 +871,7 @@ private func enrollmentCell(
     mono: Bool = false
 ) -> some View {
     Text(text)
-        .font(mono ? MDType.mono : (strong ? MDType.bodyStrong : MDType.body))
+        .mdFont(mono ? .mono : (strong ? .bodyStrong : .body))
         .lineLimit(1)
         .truncationMode(.tail)
         .padding(.leading, 10)

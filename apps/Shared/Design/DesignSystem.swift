@@ -33,13 +33,120 @@ struct MDTheme {
     }
 }
 
-enum MDType {
-    static let body = Font.system(size: 13)
-    static let bodyStrong = Font.system(size: 13, weight: .semibold)
-    static let compact = Font.system(size: 11)
-    static let compactStrong = Font.system(size: 11, weight: .semibold)
-    static let mono = Font.system(size: 11, design: .monospaced)
-    static let monoStrong = Font.system(size: 11, weight: .semibold, design: .monospaced)
+enum MDInterfaceFontScale {
+    static let storageKey = "md.interfaceFontScale"
+    static let defaultValue = 1.0
+    static let minimum = 0.8
+    static let maximum = 1.3
+    static let step = 0.1
+
+    static func normalized(_ value: Double) -> Double {
+        let clamped = min(maximum, max(minimum, value))
+        return (clamped / step).rounded() * step
+    }
+
+    static func larger(than value: Double) -> Double {
+        normalized(value + step)
+    }
+
+    static func smaller(than value: Double) -> Double {
+        normalized(value - step)
+    }
+}
+
+enum MDTextStyle {
+    case body
+    case bodyStrong
+    case compact
+    case compactStrong
+    case mono
+    case monoStrong
+
+    fileprivate var size: CGFloat {
+        switch self {
+        case .body, .bodyStrong: 13
+        case .compact, .compactStrong, .mono, .monoStrong: 11
+        }
+    }
+
+    fileprivate var weight: Font.Weight {
+        switch self {
+        case .bodyStrong, .compactStrong, .monoStrong: .semibold
+        case .body, .compact, .mono: .regular
+        }
+    }
+
+    fileprivate var design: Font.Design {
+        switch self {
+        case .mono, .monoStrong: .monospaced
+        case .body, .bodyStrong, .compact, .compactStrong: .default
+        }
+    }
+}
+
+private struct MDInterfaceFontScaleKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1
+}
+
+extension EnvironmentValues {
+    var mdInterfaceFontScale: CGFloat {
+        get { self[MDInterfaceFontScaleKey.self] }
+        set { self[MDInterfaceFontScaleKey.self] = newValue }
+    }
+}
+
+private struct MDScaledFontModifier: ViewModifier {
+    @Environment(\.mdInterfaceFontScale) private var interfaceScale
+
+    let size: CGFloat
+    let weight: Font.Weight
+    let design: Font.Design
+
+    func body(content: Content) -> some View {
+        content.font(
+            .system(
+                size: max(1, size * interfaceScale),
+                weight: weight,
+                design: design
+            )
+        )
+    }
+}
+
+private struct MDInterfaceFontScaleModifier: ViewModifier {
+    let value: Double
+
+    func body(content: Content) -> some View {
+        let scale = CGFloat(MDInterfaceFontScale.normalized(value))
+        content
+            .environment(\.mdInterfaceFontScale, scale)
+            .font(.system(size: 13 * scale))
+            .minimumScaleFactor(0.72)
+    }
+}
+
+extension View {
+    func mdFont(_ style: MDTextStyle) -> some View {
+        modifier(
+            MDScaledFontModifier(
+                size: style.size,
+                weight: style.weight,
+                design: style.design
+            )
+        )
+    }
+
+    func mdFont(
+        size: CGFloat,
+        weight: Font.Weight = .regular,
+        design: Font.Design = .default
+    ) -> some View {
+        modifier(MDScaledFontModifier(size: size, weight: weight, design: design))
+    }
+
+    func mdInterfaceFontScale(_ value: Double) -> some View {
+        modifier(MDInterfaceFontScaleModifier(value: value))
+    }
 }
 
 enum MDMetrics {
@@ -52,13 +159,15 @@ enum MDMetrics {
 
 struct MDIconButtonStyle: ButtonStyle {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.mdInterfaceFontScale) private var interfaceScale
 
     func makeBody(configuration: Configuration) -> some View {
         let theme = MDTheme(scheme: colorScheme)
+        let dimension = MDMetrics.controlHeight + max(0, interfaceScale - 1) * 8
         configuration.label
-            .font(.system(size: 13, weight: .medium))
+            .mdFont(size: 13, weight: .medium)
             .foregroundStyle(theme.primaryText)
-            .frame(width: MDMetrics.controlHeight, height: MDMetrics.controlHeight)
+            .frame(width: dimension, height: dimension)
             .background(
                 theme.subtleSurface.opacity(configuration.isPressed ? 1 : 0),
                 in: RoundedRectangle(cornerRadius: MDMetrics.radius)
@@ -76,7 +185,7 @@ struct MDSectionTitle: View {
 
     var body: some View {
         Text(chinese)
-            .font(MDType.bodyStrong)
+            .mdFont(.bodyStrong)
     }
 }
 

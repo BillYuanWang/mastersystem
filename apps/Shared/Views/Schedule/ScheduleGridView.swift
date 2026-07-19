@@ -50,7 +50,7 @@ struct ScheduleGridView: View {
         let laneWidth = max(1, (width - timeColumnWidth) / CGFloat(5 * max(1, rooms.count)))
         return HStack(spacing: 0) {
             Text("时间")
-                .font(MDType.mono)
+                .mdFont(.mono)
                 .foregroundStyle(theme.secondaryText)
                 .frame(width: timeColumnWidth, height: headerHeight)
 
@@ -64,14 +64,14 @@ struct ScheduleGridView: View {
                                 .foregroundStyle(theme.accent)
                         }
                     }
-                    .font(MDType.monoStrong)
+                    .mdFont(.monoStrong)
                     .foregroundStyle(calendar.isDateInToday(day) ? theme.accent : theme.secondaryText)
                     .frame(height: 30)
 
                     HStack(spacing: 0) {
                         ForEach(rooms) { room in
                             Text(room.name)
-                                .font(MDType.compact)
+                                .mdFont(.compact)
                                 .foregroundStyle(theme.secondaryText)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.72)
@@ -112,7 +112,7 @@ struct ScheduleGridView: View {
 
                 if index.isMultiple(of: 2) || index == 22 {
                     Text(timeLabel(minute))
-                        .font(MDType.mono)
+                        .mdFont(.mono)
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
                         .foregroundStyle(theme.secondaryText)
@@ -232,14 +232,14 @@ private struct CourseBlockView: View {
             ZStack(alignment: .topTrailing) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(course?.name ?? "课程")
-                        .font(.system(size: fontSize, weight: .semibold))
+                        .mdFont(size: fontSize, weight: .semibold)
                         .padding(.trailing, 19)
                     Text((courseType?.name ?? "课程种类").uppercased())
-                        .font(.system(size: fontSize - 1, weight: .medium, design: .monospaced))
+                        .mdFont(size: fontSize - 1, weight: .medium, design: .monospaced)
                     Text(model.effectiveInstructor(for: session)?.displayName ?? "老师")
-                        .font(.system(size: fontSize - 1))
+                        .mdFont(size: fontSize - 1)
                     Text(sessionTime)
-                        .font(.system(size: fontSize - 1, weight: .medium, design: .monospaced))
+                        .mdFont(size: fontSize - 1, weight: .medium, design: .monospaced)
                 }
                 .foregroundStyle(theme.primaryText)
                 .lineLimit(1)
@@ -249,7 +249,7 @@ private struct CourseBlockView: View {
                 .padding(.vertical, 5)
 
                 Text(course?.format == .privateLesson ? "私" : "组")
-                    .font(.system(size: 8, weight: .semibold))
+                    .mdFont(size: 8, weight: .semibold)
                     .foregroundStyle(theme.primaryText)
                     .frame(width: 16, height: 16)
                     .overlay(Circle().stroke(theme.primaryText.opacity(0.72), lineWidth: 1))

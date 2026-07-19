@@ -16,16 +16,16 @@ struct StudentCourseManagerView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("已选课程")
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                 Spacer()
                 Text("\(activeEnrollments.count)")
-                    .font(MDType.monoStrong)
+                    .mdFont(.monoStrong)
                     .foregroundStyle(theme.secondaryText)
             }
 
             if activeEnrollments.isEmpty {
                 Text("尚未报名课程")
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             } else {
@@ -37,7 +37,7 @@ struct StudentCourseManagerView: View {
             Divider()
 
             Text("添加现有课程")
-                .font(MDType.bodyStrong)
+                .mdFont(.bodyStrong)
 
             Picker("课程", selection: $selectedCourseID) {
                 Text("选择课程").tag(Optional<CourseID>.none)
@@ -87,7 +87,7 @@ struct StudentCourseManagerView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(course?.name ?? "课程")
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                     .lineLimit(1)
                 if let firstSession {
                     Text(
@@ -95,7 +95,7 @@ struct StudentCourseManagerView: View {
                             + " · "
                             + firstSession.startsAt.formatted(date: .omitted, time: .shortened)
                     )
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                 }
             }

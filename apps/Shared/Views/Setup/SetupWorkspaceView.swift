@@ -24,14 +24,14 @@ struct SetupWorkspaceView: View {
 
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                         .foregroundStyle(theme.danger)
                         .lineLimit(1)
                 }
 
                 TextField("搜索", text: $searchText)
                     .textFieldStyle(.roundedBorder)
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .frame(width: 170)
 
                 Button {
@@ -145,11 +145,11 @@ private struct CourseSheetView: View {
             dataCell("\(courseSessions.count)", width: 60, monospaced: true)
             HStack(spacing: 6) {
                 Text(course.format == .privateLesson ? "私" : "组")
-                    .font(MDType.compactStrong)
+                    .mdFont(.compactStrong)
                     .frame(width: 21, height: 21)
                     .overlay(Circle().stroke(theme.secondaryText, lineWidth: 1))
                 Text(model.courseType(id: course.courseTypeID)?.name ?? "—")
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .lineLimit(1)
             }
             .frame(width: 110, alignment: .leading)
@@ -281,10 +281,10 @@ private struct ReferenceDataView: View {
         VStack(spacing: 0) {
             HStack {
                 Label(kind.title, systemImage: kind.systemImage)
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                 Spacer()
                 Text("\(values.count)")
-                    .font(MDType.mono)
+                    .mdFont(.mono)
                     .foregroundStyle(theme.secondaryText)
                 Button(action: showAdd) {
                     Image(systemName: "plus")
@@ -301,7 +301,7 @@ private struct ReferenceDataView: View {
                     ForEach(values, id: \.self) { value in
                         HStack {
                             Text(value)
-                                .font(MDType.body)
+                                .mdFont(.body)
                             Spacer()
                             MDStatusDot(color: theme.success)
                         }
@@ -336,7 +336,7 @@ private struct TermEditorView: View {
             DatePicker("结束日期", selection: $endsOn, displayedComponents: .date)
             if let errorMessage {
                 Text(errorMessage)
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(.red)
             }
             HStack {
@@ -385,11 +385,11 @@ private struct ReferenceEditorView: View {
             }
             TextField("名称", text: $name)
             Text("这里没有系统预设；年龄段、教室和老师都由你维护。")
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .foregroundStyle(.secondary)
             if let errorMessage {
                 Text(errorMessage)
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(.red)
             }
             HStack {
@@ -418,14 +418,16 @@ private struct ReferenceEditorView: View {
     }
 }
 
+@MainActor
 private func headerCell(_ text: String, width: CGFloat) -> some View {
     Text(text)
-        .font(MDType.compactStrong)
+        .mdFont(.compactStrong)
         .foregroundStyle(.secondary)
         .frame(width: width, alignment: .leading)
         .padding(.leading, 10)
 }
 
+@MainActor
 private func dataCell(
     _ text: String,
     width: CGFloat,
@@ -433,7 +435,7 @@ private func dataCell(
     monospaced: Bool = false
 ) -> some View {
     Text(text)
-        .font(monospaced ? MDType.mono : (strong ? MDType.bodyStrong : MDType.body))
+        .mdFont(monospaced ? .mono : (strong ? .bodyStrong : .body))
         .lineLimit(1)
         .truncationMode(.tail)
         .frame(width: width, alignment: .leading)

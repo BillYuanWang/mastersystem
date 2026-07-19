@@ -32,7 +32,7 @@ struct AdministratorAccountSheet: View {
             HStack(alignment: .top, spacing: 0) {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("当前教务")
-                        .font(MDType.bodyStrong)
+                        .mdFont(.bodyStrong)
 
                     ScrollView {
                         LazyVStack(spacing: 0) {
@@ -42,10 +42,10 @@ struct AdministratorAccountSheet: View {
                                         .fill(administrator.isActive ? theme.success : theme.secondaryText)
                                         .frame(width: 7, height: 7)
                                     Text(administrator.displayName)
-                                        .font(MDType.bodyStrong)
+                                        .mdFont(.bodyStrong)
                                     if administrator.userID == session.profile?.userID {
                                         Text("当前")
-                                            .font(MDType.compact)
+                                            .mdFont(.compact)
                                             .foregroundStyle(theme.accent)
                                     }
                                     Spacer()
@@ -64,11 +64,11 @@ struct AdministratorAccountSheet: View {
 
                 VStack(alignment: .leading, spacing: 14) {
                     Text("邀请新教务")
-                        .font(MDType.bodyStrong)
+                        .mdFont(.bodyStrong)
 
                     VStack(alignment: .leading, spacing: 7) {
                         Text("姓名")
-                            .font(MDType.compactStrong)
+                            .mdFont(.compactStrong)
                             .foregroundStyle(theme.secondaryText)
                         TextField("教务姓名", text: $displayName)
                             .textFieldStyle(.roundedBorder)
@@ -76,7 +76,7 @@ struct AdministratorAccountSheet: View {
 
                     VStack(alignment: .leading, spacing: 7) {
                         Text("邮箱")
-                            .font(MDType.compactStrong)
+                            .mdFont(.compactStrong)
                             .foregroundStyle(theme.secondaryText)
                         TextField("name@example.com", text: $email)
                             .textFieldStyle(.roundedBorder)
@@ -85,14 +85,14 @@ struct AdministratorAccountSheet: View {
 
                     if let noticeMessage = session.noticeMessage {
                         Label(noticeMessage, systemImage: "checkmark.circle.fill")
-                            .font(MDType.compact)
+                            .mdFont(.compact)
                             .foregroundStyle(theme.success)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     if let errorMessage = session.errorMessage {
                         Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                            .font(MDType.compact)
+                            .mdFont(.compact)
                             .foregroundStyle(theme.danger)
                             .fixedSize(horizontal: false, vertical: true)
                     }

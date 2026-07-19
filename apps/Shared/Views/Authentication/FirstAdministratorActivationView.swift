@@ -15,12 +15,12 @@ struct FirstAdministratorActivationView: View {
 
             VStack(alignment: .leading, spacing: 18) {
                 Label("首次启用", systemImage: "building.2.crop.circle")
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                     .foregroundStyle(theme.accent)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("首位教务姓名")
-                        .font(MDType.compactStrong)
+                        .mdFont(.compactStrong)
                         .foregroundStyle(theme.secondaryText)
                     TextField("姓名", text: $displayName)
                         .textFieldStyle(.roundedBorder)
@@ -29,7 +29,7 @@ struct FirstAdministratorActivationView: View {
 
                 if let errorMessage = session.errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                         .foregroundStyle(theme.danger)
                         .fixedSize(horizontal: false, vertical: true)
                 }

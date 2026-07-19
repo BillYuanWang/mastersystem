@@ -22,16 +22,16 @@ struct AdminSignInView: View {
                         .clipShape(Circle())
                     VStack(alignment: .leading, spacing: 3) {
                         Text("MD DESK")
-                            .font(MDType.monoStrong)
+                            .mdFont(.monoStrong)
                             .foregroundStyle(theme.accent)
                         Text("教务登录")
-                            .font(MDType.bodyStrong)
+                            .mdFont(.bodyStrong)
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("邮箱")
-                        .font(MDType.compactStrong)
+                        .mdFont(.compactStrong)
                         .foregroundStyle(theme.secondaryText)
                     TextField("name@example.com", text: $email)
                         .textFieldStyle(.roundedBorder)
@@ -40,7 +40,7 @@ struct AdminSignInView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("密码")
-                        .font(MDType.compactStrong)
+                        .mdFont(.compactStrong)
                         .foregroundStyle(theme.secondaryText)
                     SecureField("密码", text: $password)
                         .textFieldStyle(.roundedBorder)
@@ -49,7 +49,7 @@ struct AdminSignInView: View {
 
                 if let errorMessage = session.errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                         .foregroundStyle(theme.danger)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -81,7 +81,7 @@ struct AdminSignInView: View {
             Spacer()
 
             Text("MASTER DANCE · 教务专用")
-                .font(MDType.mono)
+                .mdFont(.mono)
                 .foregroundStyle(theme.secondaryText)
                 .padding(.bottom, 18)
         }

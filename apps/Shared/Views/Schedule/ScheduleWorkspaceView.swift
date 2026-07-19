@@ -121,7 +121,7 @@ struct ScheduleWorkspaceView: View {
                     Image(systemName: "calendar")
                         .font(.system(size: 11, weight: .medium))
                     Text(weekLabel)
-                        .font(MDType.monoStrong)
+                        .mdFont(.monoStrong)
                         .lineLimit(1)
                 }
                 .foregroundStyle(theme.primaryText)
@@ -151,7 +151,7 @@ struct ScheduleWorkspaceView: View {
 
             TextField("搜索", text: $searchText)
                 .textFieldStyle(.roundedBorder)
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .frame(width: 100)
 
             Button {
@@ -163,13 +163,13 @@ struct ScheduleWorkspaceView: View {
             .help("打印课程表")
 
             Image(systemName: "minus")
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .foregroundStyle(.secondary)
             Slider(value: $zoom, in: 0.82...1.38)
                 .frame(width: 64)
                 .help("调整时间轴比例")
             Image(systemName: "plus")
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .foregroundStyle(.secondary)
 
             Rectangle()
@@ -177,14 +177,14 @@ struct ScheduleWorkspaceView: View {
                 .frame(width: 1, height: 18)
 
             Image(systemName: "textformat.size.smaller")
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .foregroundStyle(.secondary)
             Slider(value: $fontScale, in: 0.72...1.35)
                 .frame(width: 64)
                 .help("调整课程块字体大小")
                 .accessibilityLabel("课程块字体大小")
             Image(systemName: "textformat.size.larger")
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 14)
@@ -195,10 +195,10 @@ struct ScheduleWorkspaceView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Text("选择周")
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                 Spacer()
                 Text(weekLabel)
-                    .font(MDType.mono)
+                    .mdFont(.mono)
                     .foregroundStyle(theme.secondaryText)
                 Button {
                     selectWeek(containing: Date())
@@ -235,13 +235,13 @@ struct ScheduleWorkspaceView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(theme.accent)
                 Text(roomSelectionLabel)
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                     .foregroundStyle(theme.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
                 Spacer(minLength: 4)
                 Text(roomSelectionCount)
-                    .font(MDType.mono)
+                    .mdFont(.mono)
                     .foregroundStyle(theme.secondaryText)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .bold))
@@ -267,10 +267,10 @@ struct ScheduleWorkspaceView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("显示教室")
-                    .font(MDType.bodyStrong)
+                    .mdFont(.bodyStrong)
                 Spacer()
                 Text(roomSelectionCount)
-                    .font(MDType.mono)
+                    .mdFont(.mono)
                     .foregroundStyle(theme.secondaryText)
             }
             .padding(.horizontal, 12)
@@ -308,7 +308,7 @@ struct ScheduleWorkspaceView: View {
                     .foregroundStyle(isSelected ? theme.accent : theme.secondaryText)
                     .frame(width: 18)
                 Text(room.name)
-                    .font(MDType.body)
+                    .mdFont(.body)
                     .foregroundStyle(theme.primaryText)
                     .lineLimit(1)
                 Spacer()
@@ -447,6 +447,7 @@ private struct SchedulePrintPreview: View {
     let fontScale: Double
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.mdInterfaceFontScale) private var interfaceFontScale
 
     var body: some View {
         VStack(spacing: 0) {
@@ -463,6 +464,7 @@ private struct SchedulePrintPreview: View {
                             sessions: sessions,
                             fontScale: fontScale
                         )
+                        .mdInterfaceFontScale(Double(interfaceFontScale))
                     )
                 }
                 .keyboardShortcut(.defaultAction)
@@ -495,10 +497,10 @@ private struct SchedulePrintDocument: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("MASTER DANCE")
-                    .font(MDType.monoStrong)
+                    .mdFont(.monoStrong)
                 Spacer()
                 Text(weekStart.formatted(date: .long, time: .omitted))
-                    .font(MDType.mono)
+                    .mdFont(.mono)
             }
             ScheduleGridView(
                 model: model,

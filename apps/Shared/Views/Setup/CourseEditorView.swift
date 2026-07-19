@@ -30,7 +30,7 @@ struct CourseEditorView: View {
                 )
                 Spacer()
                 Text("\(activeOccurrenceCount) 次课")
-                    .font(MDType.monoStrong)
+                    .mdFont(.monoStrong)
                     .foregroundStyle(theme.accent)
             }
             .padding(16)
@@ -132,7 +132,7 @@ struct CourseEditorView: View {
                                         DatePicker("", selection: startTimeBinding, displayedComponents: .hourAndMinute)
                                             .labelsHidden()
                                         Text("至")
-                                            .font(MDType.compact)
+                                            .mdFont(.compact)
                                             .foregroundStyle(theme.secondaryText)
                                         DatePicker("", selection: endTimeBinding, displayedComponents: .hourAndMinute)
                                             .labelsHidden()
@@ -156,14 +156,14 @@ struct CourseEditorView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("实际课次")
-                                .font(MDType.bodyStrong)
+                                .mdFont(.bodyStrong)
                             Text("点击日期右上角的叉可移除休息周")
-                                .font(MDType.compact)
+                                .mdFont(.compact)
                                 .foregroundStyle(theme.secondaryText)
                         }
                         Spacer()
                         Text("\(activeOccurrenceCount)/\(occurrenceDates.count)")
-                            .font(MDType.monoStrong)
+                            .mdFont(.monoStrong)
                     }
 
                     ScrollView {
@@ -294,7 +294,7 @@ struct CourseEditorView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(MDType.bodyStrong)
+                .mdFont(.bodyStrong)
             content()
         }
         .padding(.bottom, 4)
@@ -302,7 +302,7 @@ struct CourseEditorView: View {
 
     private func fieldLabel(_ text: String) -> some View {
         Text(text)
-            .font(MDType.compact)
+            .mdFont(.compact)
             .foregroundStyle(.secondary)
             .frame(width: 72, alignment: .leading)
     }
@@ -322,9 +322,9 @@ struct CourseEditorView: View {
             HStack(spacing: 6) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(date.formatted(.dateTime.month(.abbreviated).day()))
-                        .font(MDType.monoStrong)
+                        .mdFont(.monoStrong)
                     Text(date.formatted(.dateTime.weekday(.wide)))
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                 }
                 Spacer(minLength: 2)
                 Image(systemName: isHoliday ? "calendar.badge.exclamationmark" : (isExcluded ? "arrow.uturn.backward" : "xmark"))

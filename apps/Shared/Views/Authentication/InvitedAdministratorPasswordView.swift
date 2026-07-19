@@ -13,7 +13,7 @@ struct InvitedAdministratorPasswordView: View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(alignment: .leading, spacing: 18) {
             Label("设置登录密码", systemImage: "key.fill")
-                .font(MDType.bodyStrong)
+                .mdFont(.bodyStrong)
                 .foregroundStyle(theme.accent)
 
             SecureField("新密码", text: $password)
@@ -23,12 +23,12 @@ struct InvitedAdministratorPasswordView: View {
                 .onSubmit(save)
 
             Text("至少 10 位，同时包含字母和数字")
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .foregroundStyle(theme.secondaryText)
 
             if let errorMessage = session.errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.danger)
                     .fixedSize(horizontal: false, vertical: true)
             }

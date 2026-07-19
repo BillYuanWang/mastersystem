@@ -14,14 +14,14 @@ struct CourseAttendanceHoverCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(preview.courseName)
-                        .font(MDType.bodyStrong)
+                        .mdFont(.bodyStrong)
                     Text(preview.sessionTime)
-                        .font(MDType.mono)
+                        .mdFont(.mono)
                         .foregroundStyle(theme.secondaryText)
                 }
                 Spacer()
                 Text("\(preview.totalCount) 人")
-                    .font(MDType.monoStrong)
+                    .mdFont(.monoStrong)
                     .foregroundStyle(theme.secondaryText)
             }
 
@@ -68,15 +68,15 @@ struct CourseAttendanceHoverCard: View {
                 Image(systemName: systemImage)
                 Text(title)
                 Text("\(people.count)")
-                    .font(MDType.mono)
+                    .mdFont(.mono)
                     .foregroundStyle(theme.secondaryText)
             }
-            .font(MDType.compactStrong)
+            .mdFont(.compactStrong)
             .foregroundStyle(color)
 
             if people.isEmpty {
                 Text("无")
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
             } else {
                 LazyVGrid(
@@ -91,11 +91,11 @@ struct CourseAttendanceHoverCard: View {
                                 .minimumScaleFactor(0.72)
                             if let marker = person.marker {
                                 Text(marker)
-                                    .font(.system(size: 8, weight: .bold))
+                                    .mdFont(size: 8, weight: .bold)
                                     .foregroundStyle(color)
                             }
                         }
-                        .font(MDType.compactStrong)
+                        .mdFont(.compactStrong)
                         .foregroundStyle(theme.primaryText)
                         .padding(.horizontal, 6)
                         .frame(maxWidth: .infinity, minHeight: 24)

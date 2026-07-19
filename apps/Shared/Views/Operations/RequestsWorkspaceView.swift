@@ -91,7 +91,7 @@ struct RequestsWorkspaceView: View {
             }
         } else {
             Text("—")
-                .font(MDType.body)
+                .mdFont(.body)
         }
     }
 
@@ -201,6 +201,7 @@ private enum RequestSection: String, CaseIterable, Identifiable {
     }
 }
 
+@MainActor
 private func requestCell(
     _ text: String,
     width: CGFloat,
@@ -208,7 +209,7 @@ private func requestCell(
     mono: Bool = false
 ) -> some View {
     Text(text)
-        .font(mono ? MDType.mono : (strong ? MDType.bodyStrong : MDType.body))
+        .mdFont(mono ? .mono : (strong ? .bodyStrong : .body))
         .lineLimit(1)
         .truncationMode(.tail)
         .frame(width: width, alignment: .leading)

@@ -38,17 +38,17 @@ struct GuardianEditorView: View {
                 }
                 if !trimmedEmail.isEmpty, !emailIsValid {
                     Text("邮箱格式不正确。")
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                         .foregroundStyle(.red)
                 }
                 LabeledContent("电话（必填）") {
                     TextField("+1 (000) 000-0000", text: $phone)
-                        .font(MDType.mono)
+                        .mdFont(.mono)
                         .frame(minWidth: 360)
                 }
                 if !trimmedPhone.isEmpty, !phoneIsValid {
                     Text("请输入 10 位美国电话号码。")
-                        .font(MDType.compact)
+                        .mdFont(.compact)
                         .foregroundStyle(.red)
                 }
             }
@@ -240,7 +240,7 @@ private struct GuardianLinkCodeContent: View {
 
             HStack(spacing: 10) {
                 Text(code.code)
-                    .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                    .mdFont(size: 18, weight: .semibold, design: .monospaced)
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
                     .textSelection(.enabled)
@@ -260,11 +260,11 @@ private struct GuardianLinkCodeContent: View {
                 "有效至 \(code.expiresAt.formatted(date: .abbreviated, time: .shortened))",
                 systemImage: "clock"
             )
-            .font(MDType.compact)
+            .mdFont(.compact)
             .foregroundStyle(theme.secondaryText)
 
             Label("此完整号码仅显示一次", systemImage: "lock")
-                .font(MDType.compactStrong)
+                .mdFont(.compactStrong)
                 .foregroundStyle(theme.warning)
 
             HStack {

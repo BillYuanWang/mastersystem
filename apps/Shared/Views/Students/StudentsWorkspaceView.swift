@@ -45,12 +45,12 @@ struct StudentsWorkspaceView: View {
         HStack(spacing: 12) {
             MDSectionTitle(chinese: "家庭与学员")
             Text("\(model.guardians.count) 户 · \(model.students.count) 人")
-                .font(MDType.mono)
+                .mdFont(.mono)
                 .foregroundStyle(theme.secondaryText)
             Spacer()
             TextField("搜索监护人、学员或课程", text: $searchText)
                 .textFieldStyle(.roundedBorder)
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .frame(width: 220)
             Button {
                 showingGuardianEditor = true
@@ -80,10 +80,10 @@ struct StudentsWorkspaceView: View {
                             Image(systemName: "tray")
                             Text("待归档学员")
                             Text("\(filteredUnassignedStudents.count)")
-                                .font(MDType.monoStrong)
+                                .mdFont(.monoStrong)
                             Spacer()
                         }
-                        .font(MDType.compactStrong)
+                        .mdFont(.compactStrong)
                         .foregroundStyle(theme.secondaryText)
                         .padding(.horizontal, 10)
                         .frame(minWidth: 820, minHeight: 34, alignment: .leading)
@@ -273,7 +273,7 @@ struct StudentsWorkspaceView: View {
                 .fill(guardian.isAccountLinked ? theme.success : theme.warning)
                 .frame(width: 6, height: 6)
             Text(guardian.isAccountLinked ? "已连接" : "待认领")
-                .font(MDType.compact)
+                .mdFont(.compact)
                 .lineLimit(1)
         }
         .frame(width: 105, alignment: .leading)
@@ -281,14 +281,16 @@ struct StudentsWorkspaceView: View {
     }
 }
 
+@MainActor
 private func familyHeader(_ text: String, width: CGFloat) -> some View {
     Text(text)
-        .font(MDType.compactStrong)
+        .mdFont(.compactStrong)
         .foregroundStyle(.secondary)
         .frame(width: width, alignment: .leading)
         .padding(.leading, 10)
 }
 
+@MainActor
 private func familyCell(
     _ text: String,
     width: CGFloat,
@@ -296,7 +298,7 @@ private func familyCell(
     mono: Bool = false
 ) -> some View {
     Text(text.isEmpty ? "—" : text)
-        .font(mono ? MDType.mono : (strong ? MDType.bodyStrong : MDType.body))
+        .mdFont(mono ? .mono : (strong ? .bodyStrong : .body))
         .lineLimit(1)
         .truncationMode(.tail)
         .frame(width: width, alignment: .leading)

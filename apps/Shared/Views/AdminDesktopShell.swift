@@ -98,10 +98,10 @@ private struct BackgroundSyncIndicator: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(MDType.compactStrong)
+                    .mdFont(.compactStrong)
                     .foregroundStyle(theme.primaryText)
                 Text(detail)
-                    .font(MDType.compact)
+                    .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                     .lineLimit(2)
             }
@@ -111,7 +111,7 @@ private struct BackgroundSyncIndicator: View {
             if hasGuardianLinkCode {
                 Button(guardianLinkCodeCount > 1 ? "查看 \(guardianLinkCodeCount)" : "查看", action: showGuardianLinkCode)
                     .buttonStyle(.borderless)
-                    .font(MDType.compactStrong)
+                    .mdFont(.compactStrong)
             }
 
             if presentation.notice != nil {
@@ -366,7 +366,7 @@ private struct RailHoverLabel: View {
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         Text(title)
-            .font(MDType.bodyStrong)
+            .mdFont(.bodyStrong)
             .foregroundStyle(theme.primaryText)
         .fixedSize()
         .padding(.horizontal, 10)
