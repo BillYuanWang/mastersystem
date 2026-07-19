@@ -104,13 +104,14 @@ struct ScheduleGridView: View {
             ForEach(0...22, id: \.self) { index in
                 let minute = timelineStart + index * 30
                 let y = CGFloat(minute - timelineStart) / CGFloat(timelineEnd - timelineStart) * height
+                let isWholeHour = minute.isMultiple(of: 60)
 
                 Rectangle()
-                    .fill(index.isMultiple(of: 2) ? theme.separator : theme.faintSeparator)
-                    .frame(width: width, height: index.isMultiple(of: 2) ? 0.7 : 0.45)
+                    .fill(isWholeHour ? theme.separator : theme.faintSeparator.opacity(0.72))
+                    .frame(width: width, height: isWholeHour ? 1 : 0.45)
                     .offset(y: y)
 
-                if index.isMultiple(of: 2) || index == 22 {
+                if isWholeHour || index == 0 || index == 22 {
                     Text(timeLabel(minute))
                         .mdFont(.mono)
                         .lineLimit(1)
@@ -221,38 +222,70 @@ private struct CourseBlockView: View {
         let theme = MDTheme(scheme: colorScheme)
         let course = model.course(id: session.courseID)
         let courseType = course.flatMap { model.courseType(id: $0.courseTypeID) }
-        let courseTypeIndex = courseType.flatMap { selectedType in
-            model.courseTypes.firstIndex(where: { $0.id == selectedType.id })
-        } ?? 0
-        let color = theme.courseColor(index: courseTypeIndex)
+        let instructor = model.effectiveInstructor(for: session)
+        let instructorIndex = instructor.flatMap { selectedInstructor in
+            model.instructors.firstIndex(where: { $0.id == selectedInstructor.id })
+        } ?? 11
+        let backgroundColor = theme.scheduleBlockBackground(index: instructorIndex)
+        let borderColor = theme.scheduleBlockBorder(index: instructorIndex)
+        let textColor = theme.scheduleBlockText
         let fontSize = max(6, min(14, blockFontSize * CGFloat(fontScale)))
+        let titleFontSize = min(15, fontSize + 1)
+        let detailFontSize = max(6, fontSize - 1)
         let preview = CourseAttendancePreview(model: model, session: session)
 
         Button(action: select) {
             ZStack(alignment: .topTrailing) {
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: height < 58 ? 0 : 1) {
                     Text(course?.name ?? "课程")
-                        .mdFont(size: fontSize, weight: .semibold)
+                        .mdFont(size: titleFontSize, weight: .semibold)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.58)
                         .padding(.trailing, 19)
+
                     Text((courseType?.name ?? "课程种类").uppercased())
-                        .mdFont(size: fontSize - 1, weight: .medium, design: .monospaced)
-                    Text(model.effectiveInstructor(for: session)?.displayName ?? "老师")
-                        .mdFont(size: fontSize - 1)
-                    Text(sessionTime)
-                        .mdFont(size: fontSize - 1, weight: .medium, design: .monospaced)
+                        .mdFont(size: detailFontSize, weight: .semibold, design: .monospaced)
+                        .foregroundStyle(textColor.opacity(0.78))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.58)
+
+                    Spacer(minLength: height < 58 ? 0 : 2)
+
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(instructor?.displayName ?? "老师")
+                                .mdFont(size: detailFontSize, weight: .medium)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.58)
+                                .layoutPriority(1)
+                            Spacer(minLength: 2)
+                            Text(sessionTime)
+                                .mdFont(size: detailFontSize, weight: .semibold, design: .monospaced)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.58)
+                        }
+
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(instructor?.displayName ?? "老师")
+                                .mdFont(size: detailFontSize, weight: .medium)
+                            Text(sessionTime)
+                                .mdFont(size: detailFontSize, weight: .semibold, design: .monospaced)
+                        }
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.58)
+                    }
+                    .foregroundStyle(textColor.opacity(0.9))
                 }
-                .foregroundStyle(theme.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.58)
+                .foregroundStyle(textColor)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 5)
 
                 Text(course?.format == .privateLesson ? "私" : "组")
                     .mdFont(size: 8, weight: .semibold)
-                    .foregroundStyle(theme.primaryText)
+                    .foregroundStyle(textColor)
                     .frame(width: 16, height: 16)
-                    .overlay(Circle().stroke(theme.primaryText.opacity(0.72), lineWidth: 1))
+                    .overlay(Circle().stroke(textColor.opacity(0.78), lineWidth: 1))
                     .padding(4)
 
                 if hasConflict {
@@ -265,15 +298,15 @@ private struct CourseBlockView: View {
             }
             .frame(width: width, height: height)
             .background(
-                color.opacity(colorScheme == .dark ? 0.58 : 0.18),
+                backgroundColor,
                 in: RoundedRectangle(cornerRadius: 5)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 5)
-                    .stroke(isSelected ? theme.accent : color.opacity(0.9), lineWidth: isSelected ? 2 : 1)
+                    .stroke(isSelected ? theme.accent : borderColor, lineWidth: isSelected ? 2 : 1)
             )
             .shadow(
-                color: isShowingAttendancePreview ? color.opacity(colorScheme == .dark ? 0.42 : 0.24) : .clear,
+                color: isShowingAttendancePreview ? borderColor.opacity(colorScheme == .dark ? 0.42 : 0.24) : .clear,
                 radius: 5,
                 y: 2
             )
