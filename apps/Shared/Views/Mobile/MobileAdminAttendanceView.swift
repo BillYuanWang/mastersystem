@@ -6,13 +6,15 @@ import SwiftUI
 struct MobileAttendanceHomeView: View {
     let model: AppModel
     @State private var selectedDate = Self.initialDate
+    @State private var wheelDate = Self.initialDate
+    @State private var isShowingDateWheel = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         List {
             Section {
-                HStack {
+                HStack(spacing: 12) {
                     Button {
                         moveDay(-1)
                     } label: {
@@ -21,18 +23,33 @@ struct MobileAttendanceHomeView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("前一天")
 
-                    Spacer()
+                    Spacer(minLength: 4)
 
-                    DatePicker(
-                        "签到日期",
-                        selection: $selectedDate,
-                        displayedComponents: .date
-                    )
-                    .labelsHidden()
-                    .datePickerStyle(.compact)
-                    .environment(\.locale, Locale(identifier: "zh_Hans_CN"))
+                    HStack(spacing: 6) {
+                        DatePicker(
+                            "签到日期",
+                            selection: $selectedDate,
+                            displayedComponents: .date
+                        )
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
+                        .environment(\.locale, Locale(identifier: "zh_Hans_CN"))
 
-                    Spacer()
+                        Button {
+                            wheelDate = Calendar.masterDance.startOfDay(for: selectedDate)
+                            isShowingDateWheel = true
+                        } label: {
+                            Image(systemName: "arrow.up.arrow.down")
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(width: 30, height: 30)
+                                .background(theme.accent.opacity(0.12), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(theme.accent)
+                        .accessibilityLabel("滚轮选择日期")
+                    }
+
+                    Spacer(minLength: 4)
 
                     Button {
                         moveDay(1)
@@ -82,6 +99,16 @@ struct MobileAttendanceHomeView: View {
             }
         }
         .refreshable { await model.reload() }
+        .sheet(isPresented: $isShowingDateWheel) {
+            MobileAttendanceDateWheel(
+                draftDate: $wheelDate,
+                anchorDate: selectedDate
+            ) {
+                selectedDate = Calendar.masterDance.startOfDay(for: wheelDate)
+            }
+            .presentationDetents([.height(370)])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private var sessionsForDay: [ClassSession] {
@@ -122,6 +149,74 @@ struct MobileAttendanceHomeView: View {
         }
 #endif
         return today
+    }
+}
+
+@MainActor
+private struct MobileAttendanceDateWheel: View {
+    @Binding var draftDate: Date
+    let onCommit: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    private let dates: [Date]
+
+    init(
+        draftDate: Binding<Date>,
+        anchorDate: Date,
+        onCommit: @escaping () -> Void
+    ) {
+        _draftDate = draftDate
+        self.onCommit = onCommit
+        let calendar = Calendar.masterDance
+        let anchor = calendar.startOfDay(for: anchorDate)
+        dates = (-366...366).compactMap {
+            calendar.date(byAdding: .day, value: $0, to: anchor)
+        }
+    }
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        NavigationStack {
+            Picker("签到日期", selection: $draftDate) {
+                ForEach(dates, id: \.self) { date in
+                    Text(dateLabel(date))
+                        .mdFont(.bodyStrong)
+                        .tag(date)
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(maxWidth: .infinity)
+            .frame(height: 230)
+            .clipped()
+            .navigationTitle("滚轮选日期")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") {
+                        onCommit()
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .tint(theme.accent)
+            .background(theme.background)
+        }
+    }
+
+    private func dateLabel(_ date: Date) -> String {
+        let calendar = Calendar.masterDance
+        let formatted = date.mdChineseFormatted(
+            .dateTime.year().month().day().weekday(.wide)
+        )
+        if calendar.isDateInToday(date) { return "今天 · \(formatted)" }
+        if calendar.isDateInTomorrow(date) { return "明天 · \(formatted)" }
+        if calendar.isDateInYesterday(date) { return "昨天 · \(formatted)" }
+        return formatted
     }
 }
 
