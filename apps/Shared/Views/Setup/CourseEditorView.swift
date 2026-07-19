@@ -103,6 +103,12 @@ struct CourseEditorView: View {
                                         .toggleStyle(.switch)
                                 }
                             }
+
+                            if draft.termID != nil, !courseTermIsReady {
+                                Label("请先在数据中心为这个学期添加假期", systemImage: "calendar.badge.exclamationmark")
+                                    .mdFont(.compact)
+                                    .foregroundStyle(theme.danger)
+                            }
                         }
 
                         editorSection("每周排课", theme: theme) {
@@ -251,7 +257,14 @@ struct CourseEditorView: View {
             && draft.roomID != nil
             && draft.instructorID != nil
             && draft.courseTypeID != nil
+            && courseTermIsReady
             && activeOccurrenceCount > 0
+    }
+
+    private var courseTermIsReady: Bool {
+        guard let termID = draft.termID else { return false }
+        if let original, original.termID == termID { return true }
+        return model.termHolidays.contains { $0.termID == termID }
     }
 
     private var weekdayOptions: [(Int, String)] {
@@ -384,12 +397,15 @@ struct CourseEditorView: View {
                 draft.endsOn = term.endsOn
             }
         } else {
-            draft.termID = model.terms.first?.id
+            let initialTerm = model.terms.first { term in
+                model.termHolidays.contains { $0.termID == term.id }
+            } ?? model.terms.first
+            draft.termID = initialTerm?.id
             draft.ageGroupID = model.ageGroups.first?.id
             draft.roomID = model.rooms.first?.id
             draft.instructorID = model.instructors.first?.id
             draft.courseTypeID = model.courseTypes.first?.id
-            if let term = model.terms.first {
+            if let term = initialTerm {
                 draft.startsOn = term.startsOn
                 draft.endsOn = term.endsOn
             }

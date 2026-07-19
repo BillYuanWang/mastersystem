@@ -107,7 +107,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 
     public func deleteTermHoliday(id: TermHolidayID) async throws {
         try await ensureSnapshot()
-        await local.deleteTermHoliday(id: id)
+        try await local.deleteTermHoliday(id: id)
         try await enqueue(.deleteTermHoliday(id))
     }
 
@@ -203,7 +203,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 
     public func save(course: Course) async throws {
         try await ensureSnapshot()
-        await local.save(course: course)
+        try await local.save(course: course)
         try await enqueue(.saveCourse(course))
     }
 

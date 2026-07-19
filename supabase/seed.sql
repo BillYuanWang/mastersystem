@@ -32,6 +32,24 @@ values (
 )
 on conflict (id) do nothing;
 
+insert into public.term_holidays (
+  id,
+  organization_id,
+  term_id,
+  name,
+  starts_on,
+  ends_on
+)
+values (
+  '15000000-0000-0000-0000-000000000001',
+  '00000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000001',
+  '感恩节周',
+  '2026-11-23',
+  '2026-11-29'
+)
+on conflict (id) do nothing;
+
 insert into public.course_categories (id, organization_id, name)
 values
   ('20000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', '芭蕾'),

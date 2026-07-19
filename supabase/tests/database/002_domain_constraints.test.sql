@@ -29,6 +29,21 @@ values (
   'open'
 );
 
+insert into public.term_holidays (
+  organization_id,
+  term_id,
+  name,
+  starts_on,
+  ends_on
+)
+values (
+  '90000000-0000-0000-0000-000000000001',
+  '90000000-0000-0000-0000-000000000002',
+  'Test Break',
+  '2026-11-23',
+  '2026-11-29'
+);
+
 select lives_ok(
   $$
     insert into public.course_categories (id, organization_id, name)

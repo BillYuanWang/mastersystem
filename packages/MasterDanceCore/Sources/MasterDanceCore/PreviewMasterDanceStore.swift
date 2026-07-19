@@ -84,10 +84,14 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         upsert(term, in: &data.terms)
     }
     public func deleteTerm(id: TermID) throws {
-        guard !data.courses.contains(where: { $0.termID == id })
-                && !data.termHolidays.contains(where: { $0.termID == id })
-                && !data.contractDocuments.contains(where: { $0.termID == id }) else {
-            throw PreviewRepositoryError.recordInUse("这个学期已有课程、假期或合同，不能删除。")
+        if data.courses.contains(where: { $0.termID == id }) {
+            throw PreviewRepositoryError.recordInUse("这个学期已有课程，不能删除；请先删除或停用课程。")
+        }
+        if data.termHolidays.contains(where: { $0.termID == id }) {
+            throw PreviewRepositoryError.recordInUse("这个学期已有假期，不能删除；请先删除假期。")
+        }
+        if data.contractDocuments.contains(where: { $0.termID == id }) {
+            throw PreviewRepositoryError.recordInUse("这个学期已有合同，不能删除；请先处理合同。")
         }
         remove(id: id, from: &data.terms)
     }
@@ -108,7 +112,14 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         }
         upsert(termHoliday, in: &data.termHolidays)
     }
-    public func deleteTermHoliday(id: TermHolidayID) { remove(id: id, from: &data.termHolidays) }
+    public func deleteTermHoliday(id: TermHolidayID) throws {
+        guard let holiday = data.termHolidays.first(where: { $0.id == id }) else { return }
+        try requireUnused(
+            !data.courses.contains { $0.termID == holiday.termID },
+            "这个假期所属学期已有课程，不能删除；请先处理课程。"
+        )
+        remove(id: id, from: &data.termHolidays)
+    }
 
     public func listCourseCategories() -> [CourseCategory] { data.courseCategories }
     public func listCourseTypes() -> [CourseType] { data.courseTypes }
@@ -154,11 +165,25 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         data.courses.filter { termID == nil || $0.termID == termID }
     }
 
-    public func save(course: Course) { upsert(course, in: &data.courses) }
+    public func save(course: Course) throws {
+        let existingCourse = data.courses.first(where: { $0.id == course.id })
+        if existingCourse == nil || existingCourse?.termID != course.termID {
+            guard data.terms.contains(where: { $0.id == course.termID }) else {
+                throw PreviewRepositoryError.termNotFound
+            }
+            guard data.termHolidays.contains(where: { $0.termID == course.termID }) else {
+                throw PreviewRepositoryError.termRequiresHoliday
+            }
+        }
+        upsert(course, in: &data.courses)
+    }
     public func deleteCourse(id: CourseID) throws {
-        let inUse = data.sessions.contains { $0.courseID == id }
-            || data.enrollments.contains { $0.courseID == id }
-        try requireUnused(!inUse, "这门课程已有课次或报名，不能删除；可以将它停用。")
+        let sessionIDs = Set(data.sessions.filter { $0.courseID == id }.map(\.id))
+        let inUse = data.enrollments.contains { $0.courseID == id }
+            || data.attendance.contains { sessionIDs.contains($0.sessionID) }
+            || data.leaveRequests.contains { sessionIDs.contains($0.sessionID) }
+        try requireUnused(!inUse, "这门课程已有报名、签到或请假记录，不能删除；可以将它停用。")
+        data.sessions.removeAll { $0.courseID == id }
         remove(id: id, from: &data.courses)
     }
 
@@ -385,6 +410,7 @@ public enum PreviewRepositoryError: LocalizedError, Sendable, Equatable {
     case guardianAlreadyLinked
     case recordInUse(String)
     case termNotFound
+    case termRequiresHoliday
     case invalidTermRange
     case holidayOutsideTerm
 
@@ -400,6 +426,8 @@ public enum PreviewRepositoryError: LocalizedError, Sendable, Equatable {
             message
         case .termNotFound:
             "找不到这个学期。"
+        case .termRequiresHoliday:
+            "请先为这个学期创建至少一个假期，再创建课程。"
         case .invalidTermRange:
             "结束日期不能早于开始日期。"
         case .holidayOutsideTerm:

@@ -468,6 +468,7 @@ final class AppModel {
         guard let type = courseType(id: course.courseTypeID) else {
             throw AppModelError.missingCourseFields
         }
+        try validateCourseTermReady(termID: course.termID, existingCourseID: course.id)
         var updated = course
         updated.format = type.isPrivate ? .privateLesson : .group
         try await withCloudActivity(label: "保存课程") {
@@ -496,6 +497,7 @@ final class AppModel {
         else {
             throw AppModelError.missingCourseFields
         }
+        try validateCourseTermReady(termID: termID)
         try await withCloudActivity(label: "创建课程") {
             let categoryID = try await hiddenCourseCategoryID()
 
@@ -534,6 +536,7 @@ final class AppModel {
         else {
             throw AppModelError.missingCourseFields
         }
+        try validateCourseTermReady(termID: termID, existingCourseID: original.id)
 
         if original.termID != termID, enrollments.contains(where: { $0.courseID == original.id }) {
             throw AppModelError.courseTermHasEnrollments
@@ -602,6 +605,23 @@ final class AppModel {
         try await repository.save(courseCategory: fallback)
         courseCategories.append(fallback)
         return fallback.id
+    }
+
+    private func validateCourseTermReady(
+        termID: TermID,
+        existingCourseID: CourseID? = nil
+    ) throws {
+        guard term(id: termID) != nil else {
+            throw AppModelError.missingCourseFields
+        }
+        if let existingCourseID,
+           let existingCourse = courses.first(where: { $0.id == existingCourseID }),
+           existingCourse.termID == termID {
+            return
+        }
+        guard termHolidays.contains(where: { $0.termID == termID }) else {
+            throw AppModelError.courseTermRequiresHoliday
+        }
     }
 
     func createGuardian(

@@ -152,6 +152,28 @@ values (
   'child'
 );
 
+select lives_ok(
+  $$
+    insert into public.term_holidays (
+      id,
+      organization_id,
+      term_id,
+      name,
+      starts_on,
+      ends_on
+    )
+    values (
+      '93000000-0000-0000-0000-000000000014',
+      '93000000-0000-0000-0000-000000000001',
+      '93000000-0000-0000-0000-000000000003',
+      'Thanksgiving',
+      '2026-11-23',
+      '2026-11-29'
+    )
+  $$,
+  '学期内可以新增假期'
+);
+
 insert into public.courses (
   id,
   organization_id,
@@ -175,28 +197,6 @@ values (
   '93000000-0000-0000-0000-000000000009',
   '93000000-0000-0000-0000-000000000005',
   'group'
-);
-
-select lives_ok(
-  $$
-    insert into public.term_holidays (
-      id,
-      organization_id,
-      term_id,
-      name,
-      starts_on,
-      ends_on
-    )
-    values (
-      '93000000-0000-0000-0000-000000000014',
-      '93000000-0000-0000-0000-000000000001',
-      '93000000-0000-0000-0000-000000000003',
-      'Thanksgiving',
-      '2026-11-23',
-      '2026-11-29'
-    )
-  $$,
-  '学期内可以新增假期'
 );
 
 select throws_ok(

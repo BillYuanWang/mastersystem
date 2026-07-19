@@ -40,8 +40,8 @@ targets:
       properties:
         CFBundleDisplayName: MD Desk
         CFBundleIconFile: AppIcon
-        CFBundleShortVersionString: 0.1.7
-        CFBundleVersion: 21
+        CFBundleShortVersionString: 0.1.8
+        CFBundleVersion: 22
         CFBundleURLTypes:
           - CFBundleURLName: com.masterdance.desk.auth
             CFBundleURLSchemes:
@@ -54,6 +54,7 @@ targets:
         PRODUCT_NAME: MD Desk
         INFOPLIST_KEY_CFBundleDisplayName: MD Desk
         INFOPLIST_KEY_CFBundleIconFile: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: YES
 
@@ -76,8 +77,8 @@ targets:
       path: MasterDanceMobile/Info.plist
       properties:
         CFBundleDisplayName: Master Dance
-        CFBundleShortVersionString: 0.1.7
-        CFBundleVersion: "4"
+        CFBundleShortVersionString: 0.1.8
+        CFBundleVersion: "5"
         CFBundleURLTypes:
           - CFBundleURLName: com.masterdance.mobile.auth
             CFBundleURLSchemes:

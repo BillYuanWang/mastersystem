@@ -123,6 +123,7 @@ struct CloudActivityPresentation: Equatable {
 
 enum AppModelError: LocalizedError {
     case missingCourseFields
+    case courseTermRequiresHoliday
     case missingEnrollmentFields
     case holidayOutsideTerm
     case invalidTermRange
@@ -139,6 +140,7 @@ enum AppModelError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingCourseFields: "请完成课程名称、学期、课程种类、年龄段、教室和老师。"
+        case .courseTermRequiresHoliday: "请先为这个学期创建至少一个假期，再创建课程。"
         case .missingEnrollmentFields: "请选择学生和课程。"
         case .invalidTermRange: "结束日期必须晚于开始日期。"
         case .holidayOutsideTerm: "假期日期必须位于所选学期内。"

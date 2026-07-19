@@ -252,7 +252,15 @@ struct PreviewMasterDanceStoreTests {
             roomOverrideID: alternateRoom.id
         )
         let store = PreviewMasterDanceStore()
+        let holiday = TermHoliday(
+            termID: term.id,
+            name: "Break",
+            startsOn: Date(),
+            endsOn: Date()
+        )
 
+        try await store.save(term: term)
+        try await store.save(termHoliday: holiday)
         try await store.save(courseCategory: category)
         try await store.save(courseType: courseType)
         try await store.save(ageGroup: ageGroup)
@@ -373,6 +381,127 @@ struct PreviewMasterDanceStoreTests {
             try await store.save(termHoliday: invalidHoliday)
         }
         #expect(try await store.listTermHolidays(termID: term.id) == [validHoliday])
+    }
+
+    @Test("A course needs a configured holiday before entering a term")
+    func requiresHolidayBeforeCreatingOrMovingCourse() async throws {
+        let term = Term(name: "Fall", startsOn: .distantPast, endsOn: .distantFuture, status: .draft)
+        let secondTerm = Term(name: "Spring", startsOn: .distantPast, endsOn: .distantFuture, status: .draft)
+        let course = Course(
+            termID: term.id,
+            name: "Technique",
+            categoryID: CourseCategoryID(),
+            ageGroupID: AgeGroupID(),
+            defaultRoomID: RoomID(),
+            defaultInstructorID: InstructorID(),
+            courseTypeID: CourseTypeID(),
+            format: .group
+        )
+        let store = PreviewMasterDanceStore(data: PreviewData(terms: [term, secondTerm]))
+
+        await #expect(throws: PreviewRepositoryError.termRequiresHoliday) {
+            try await store.save(course: course)
+        }
+
+        try await store.save(
+            termHoliday: TermHoliday(
+                termID: term.id,
+                name: "Break",
+                startsOn: Date(),
+                endsOn: Date()
+            )
+        )
+        try await store.save(course: course)
+
+        var movedCourse = course
+        movedCourse.termID = secondTerm.id
+        await #expect(throws: PreviewRepositoryError.termRequiresHoliday) {
+            try await store.save(course: movedCourse)
+        }
+        #expect(try await store.listCourses(termID: term.id) == [course])
+    }
+
+    @Test("Dependencies are removable in reverse order")
+    func removesDependencyChainInReverseOrder() async throws {
+        let term = Term(name: "Fall", startsOn: .distantPast, endsOn: .distantFuture, status: .draft)
+        let holiday = TermHoliday(
+            termID: term.id,
+            name: "Break",
+            startsOn: Date(),
+            endsOn: Date()
+        )
+        let course = Course(
+            termID: term.id,
+            name: "Technique",
+            categoryID: CourseCategoryID(),
+            ageGroupID: AgeGroupID(),
+            defaultRoomID: RoomID(),
+            defaultInstructorID: InstructorID(),
+            courseTypeID: CourseTypeID(),
+            format: .group
+        )
+        let session = ClassSession(
+            courseID: course.id,
+            startsAt: Date(),
+            endsAt: Date().addingTimeInterval(3_600)
+        )
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(
+                terms: [term],
+                termHolidays: [holiday],
+                courses: [course],
+                sessions: [session]
+            )
+        )
+
+        await #expect(throws: PreviewRepositoryError.recordInUse("这个学期已有课程，不能删除；请先删除或停用课程。")) {
+            try await store.deleteTerm(id: term.id)
+        }
+        await #expect(throws: PreviewRepositoryError.recordInUse("这个假期所属学期已有课程，不能删除；请先处理课程。")) {
+            try await store.deleteTermHoliday(id: holiday.id)
+        }
+
+        try await store.deleteCourse(id: course.id)
+        #expect(try await store.listSessions(courseID: course.id).isEmpty)
+        try await store.deleteTermHoliday(id: holiday.id)
+        try await store.deleteTerm(id: term.id)
+        #expect(try await store.listTerms().isEmpty)
+    }
+
+    @Test("Attendance protects its course until the record is cleared")
+    func protectsCourseWithAttendance() async throws {
+        let course = Course(
+            termID: TermID(),
+            name: "Trial Class",
+            categoryID: CourseCategoryID(),
+            ageGroupID: AgeGroupID(),
+            defaultRoomID: RoomID(),
+            defaultInstructorID: InstructorID(),
+            courseTypeID: CourseTypeID(),
+            format: .group
+        )
+        let session = ClassSession(
+            courseID: course.id,
+            startsAt: Date(),
+            endsAt: Date().addingTimeInterval(3_600)
+        )
+        let attendance = Attendance(
+            sessionID: session.id,
+            studentID: StudentID(),
+            status: .trial,
+            recordedAt: Date()
+        )
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(courses: [course], sessions: [session], attendance: [attendance])
+        )
+
+        await #expect(throws: PreviewRepositoryError.recordInUse("这门课程已有报名、签到或请假记录，不能删除；可以将它停用。")) {
+            try await store.deleteCourse(id: course.id)
+        }
+
+        try await store.deleteAttendance(id: attendance.id)
+        try await store.deleteCourse(id: course.id)
+        #expect(try await store.listCourses(termID: nil).isEmpty)
     }
 
     @Test("Unlinked class sessions can be replaced")
