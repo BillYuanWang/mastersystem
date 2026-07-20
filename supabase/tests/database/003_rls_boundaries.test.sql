@@ -2,7 +2,28 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(8);
+select plan(13);
+
+select ok(
+  to_regprocedure('public.current_sync_revision()') is not null,
+  'member sync revision RPC exists'
+);
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.current_sync_revision()',
+    'EXECUTE'
+  ),
+  'authenticated members may read their organization sync revision'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
+    'public.current_sync_revision()',
+    'EXECUTE'
+  ),
+  'anonymous callers cannot read a sync revision'
+);
 
 insert into public.organizations (id, name, slug, timezone)
 values
@@ -151,6 +172,24 @@ values
     'child'
   );
 
+create temporary table expected_sync_revisions (
+  organization_id uuid primary key,
+  change_sequence bigint not null
+) on commit drop;
+
+insert into expected_sync_revisions (organization_id, change_sequence)
+select
+  organization.id,
+  coalesce(max(audit.id), 0)::bigint
+from (
+  values
+    ('91000000-0000-0000-0000-000000000001'::uuid),
+    ('91000000-0000-0000-0000-000000000002'::uuid)
+) as organization(id)
+left join public.audit_events audit
+  on audit.organization_id = organization.id
+group by organization.id;
+
 set local role authenticated;
 select set_config(
   'request.jwt.claim.sub',
@@ -167,6 +206,16 @@ select is(
   (select count(*) from public.students),
   1::bigint,
   'a guardian sees only linked students'
+);
+
+select is(
+  (select change_sequence from public.current_sync_revision()),
+  (
+    select change_sequence
+    from expected_sync_revisions
+    where organization_id = '91000000-0000-0000-0000-000000000001'
+  ),
+  'a guardian receives the first school sync revision'
 );
 
 select throws_ok(
@@ -219,6 +268,16 @@ select is(
   (select array_agg(display_name order by display_name) from public.students),
   array['Linked Child B']::text[],
   'a second family cannot see the first family'
+);
+
+select is(
+  (select change_sequence from public.current_sync_revision()),
+  (
+    select change_sequence
+    from expected_sync_revisions
+    where organization_id = '91000000-0000-0000-0000-000000000002'
+  ),
+  'a second guardian receives only the second school sync revision'
 );
 
 select set_config(

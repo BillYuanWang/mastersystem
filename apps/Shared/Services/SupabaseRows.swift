@@ -1,8 +1,12 @@
 import Foundation
 import MasterDanceCore
 
-struct AuditEventSequenceRow: Decodable, Sendable {
-    let id: Int64
+struct SyncRevisionRow: Decodable, Sendable {
+    let changeSequence: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case changeSequence = "change_sequence"
+    }
 }
 
 struct ProfileRow: Codable, Sendable {
