@@ -2,11 +2,6 @@
 import MasterDanceCore
 import SwiftUI
 
-enum StudentWorkspaceSelection: Hashable {
-    case guardian(GuardianID)
-    case unassigned(StudentID)
-}
-
 private enum GuardianAccountFilter: String, CaseIterable, Identifiable {
     case all
     case linked
@@ -28,7 +23,7 @@ struct StudentsWorkspaceView: View {
     let model: AppModel
 
     @State private var searchText = ""
-    @State private var selection: StudentWorkspaceSelection?
+    @State private var selectedGuardianID: GuardianID?
     @State private var showingGuardianEditor = false
     @State private var accountFilter: GuardianAccountFilter = .all
 
@@ -116,198 +111,67 @@ struct StudentsWorkspaceView: View {
     }
 
     private func familyTable(theme: MDTheme) -> some View {
-        VStack(spacing: 0) {
-            tableHeader(theme: theme)
-
-            ScrollView([.horizontal, .vertical]) {
-                LazyVStack(spacing: 0) {
-                    switch accountFilter {
-                    case .all:
-                        guardianSection(
-                            title: "已连接家庭",
-                            guardians: linkedGuardians,
-                            isLinked: true,
-                            theme: theme
-                        )
-                        guardianSection(
-                            title: "待认领家庭",
-                            guardians: pendingGuardians,
-                            isLinked: false,
-                            theme: theme
-                        )
-                    case .linked:
-                        guardianSection(
-                            title: "已连接家庭",
-                            guardians: linkedGuardians,
-                            isLinked: true,
-                            theme: theme
-                        )
-                    case .pending:
-                        guardianSection(
-                            title: "待认领家庭",
-                            guardians: pendingGuardians,
-                            isLinked: false,
-                            theme: theme
-                        )
-                    }
-
-                    if !filteredUnassignedStudents.isEmpty {
-                        HStack(spacing: 7) {
-                            Image(systemName: "tray")
-                            Text("待归档学员")
-                            Text("\(filteredUnassignedStudents.count)")
-                                .mdFont(.monoStrong)
-                            Spacer()
-                        }
-                        .mdFont(.compactStrong)
-                        .foregroundStyle(theme.secondaryText)
-                        .padding(.horizontal, 10)
-                        .frame(minWidth: 820, minHeight: 34, alignment: .leading)
-                        .background(theme.subtleSurface)
-
-                        ForEach(filteredUnassignedStudents) { student in
-                            unassignedRow(student, theme: theme)
-                            Divider()
-                        }
-                    }
-
-                    if filteredGuardians.isEmpty && filteredUnassignedStudents.isEmpty {
-                        HStack {
-                            Spacer()
-                            ContentUnavailableView(
-                                normalizedSearch.isEmpty ? "暂无家庭" : "没有搜索结果",
-                                systemImage: "person.2",
-                                description: Text(
-                                    normalizedSearch.isEmpty
-                                        ? "当前筛选下没有家庭记录。"
-                                        : "请尝试其他姓名、联系方式或课程。"
-                                )
-                            )
-                            Spacer()
-                        }
-                        .frame(minWidth: 820, minHeight: 220)
-                    }
-                }
-                .frame(minWidth: 820, alignment: .topLeading)
+        Table(filteredGuardians, selection: $selectedGuardianID) {
+            TableColumn("监护人") { guardian in
+                Text(guardian.displayName)
+                    .mdFont(.bodyStrong)
+                    .lineLimit(1)
             }
+            .width(min: 120, ideal: 155, max: 220)
+
+            TableColumn("联系方式") { guardian in
+                Text(displayValue(contactSummary(for: guardian)))
+                    .mdFont(.body)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .width(min: 180, ideal: 235, max: 320)
+
+            TableColumn("学员档案") { guardian in
+                Text(learnerSummary(for: guardian))
+                    .mdFont(.body)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .width(min: 170, ideal: 245, max: 360)
+
+            TableColumn("帐号") { guardian in
+                accountStatusCell(guardian, theme: theme)
+            }
+            .width(min: 82, ideal: 96, max: 110)
+
+            TableColumn("报名") { guardian in
+                Text("\(enrollmentCount(for: guardian))")
+                    .mdFont(.mono)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .width(min: 48, ideal: 56, max: 70)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .foregroundStyle(theme.primaryText)
-    }
-
-    private func tableHeader(theme: MDTheme) -> some View {
-        HStack(spacing: 0) {
-            familyHeader("监护人", width: 150)
-            familyHeader("联系方式", width: 210)
-            familyHeader("学员档案", width: 280)
-            familyHeader("帐号", width: 105)
-            familyHeader("报名", width: 65)
-            Spacer(minLength: 0)
-        }
-        .frame(minWidth: 820, minHeight: 34)
-        .background(theme.subtleSurface)
-    }
-
-    private func guardianRow(_ guardian: Guardian, theme: MDTheme) -> some View {
-        Button {
-            selection = .guardian(guardian.id)
-        } label: {
-            HStack(spacing: 0) {
-                familyCell(guardian.displayName, width: 150, strong: true)
-                familyCell(contactSummary(for: guardian), width: 210)
-                familyCell(learnerSummary(for: guardian), width: 280)
-                accountCell(guardian, theme: theme)
-                familyCell("\(enrollmentCount(for: guardian))", width: 65, mono: true)
-                Spacer(minLength: 0)
-            }
-            .frame(minWidth: 820, minHeight: 42)
-            .contentShape(Rectangle())
-            .background(
-                selection == .guardian(guardian.id) ? theme.accent.opacity(0.11) : .clear
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
-    private func guardianSection(
-        title: String,
-        guardians: [Guardian],
-        isLinked: Bool,
-        theme: MDTheme
-    ) -> some View {
-        if !guardians.isEmpty {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(isLinked ? theme.success : theme.warning)
-                    .frame(width: 7, height: 7)
-                Text(title)
-                Text("\(guardians.count)")
-                    .mdFont(.monoStrong)
-                Spacer()
-            }
-            .mdFont(.compactStrong)
-            .foregroundStyle(theme.secondaryText)
-            .padding(.horizontal, 10)
-            .frame(minWidth: 820, minHeight: 34, alignment: .leading)
-            .background(theme.subtleSurface)
-
-            ForEach(guardians) { guardian in
-                guardianRow(guardian, theme: theme)
-                Divider()
-            }
-        }
-    }
-
-    private func unassignedRow(_ student: Student, theme: MDTheme) -> some View {
-        Button {
-            selection = .unassigned(student.id)
-        } label: {
-            HStack(spacing: 0) {
-                familyCell("—", width: 150)
-                familyCell("尚未关联", width: 210)
-                familyCell(
-                    student.displayName + (student.kind == .adult ? " · 成人" : " · 少儿"),
-                    width: 280,
-                    strong: true
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            if filteredGuardians.isEmpty {
+                ContentUnavailableView(
+                    normalizedSearch.isEmpty ? "暂无家庭" : "没有搜索结果",
+                    systemImage: "person.2",
+                    description: Text(
+                        normalizedSearch.isEmpty
+                            ? "当前筛选下没有家庭记录。"
+                            : "请尝试其他姓名、联系方式或课程。"
+                    )
                 )
-                familyCell("待归档", width: 105)
-                familyCell("\(model.enrollments(for: student.id).count)", width: 65, mono: true)
-                Spacer(minLength: 0)
+                .allowsHitTesting(false)
             }
-            .frame(minWidth: 820, minHeight: 42)
-            .contentShape(Rectangle())
-            .background(
-                selection == .unassigned(student.id) ? theme.accent.opacity(0.11) : .clear
-            )
         }
-        .buttonStyle(.plain)
     }
 
     @ViewBuilder
     private var inspector: some View {
-        switch selection {
-        case .guardian(let guardianID):
-            if let guardian = model.guardian(id: guardianID) {
-                GuardianInspectorView(model: model, guardian: guardian)
-                    .id(guardian.id)
-            } else {
-                emptyInspector
-            }
-        case .unassigned(let studentID):
-            if let student = model.student(id: studentID) {
-                UnassignedStudentInspectorView(
-                    model: model,
-                    student: student,
-                    onLinked: { guardianID in
-                        selection = .guardian(guardianID)
-                    }
-                )
-                .id(student.id)
-            } else {
-                emptyInspector
-            }
-        case nil:
+        if let selectedGuardianID,
+           let guardian = model.guardian(id: selectedGuardianID) {
+            GuardianInspectorView(model: model, guardian: guardian)
+                .id(guardian.id)
+        } else {
             emptyInspector
         }
     }
@@ -325,9 +189,9 @@ struct StudentsWorkspaceView: View {
         case .all:
             searchedGuardians
         case .linked:
-            linkedGuardians
+            searchedGuardians.filter(\.isAccountLinked)
         case .pending:
-            pendingGuardians
+            searchedGuardians.filter { !$0.isAccountLinked }
         }
     }
 
@@ -346,45 +210,16 @@ struct StudentsWorkspaceView: View {
         }
     }
 
-    private var linkedGuardians: [Guardian] {
-        searchedGuardians.filter(\.isAccountLinked)
-    }
-
-    private var pendingGuardians: [Guardian] {
-        searchedGuardians.filter { !$0.isAccountLinked }
-    }
-
-    private var filteredUnassignedStudents: [Student] {
-        guard accountFilter != .linked else { return [] }
-        let query = normalizedSearch
-        guard !query.isEmpty else { return model.unassignedStudents }
-        return model.unassignedStudents.filter { student in
-            student.displayName.localizedCaseInsensitiveContains(query)
-                || courseSummary(for: student).localizedCaseInsensitiveContains(query)
-        }
-    }
-
     private var normalizedSearch: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func chooseInitialSelection() {
-        switch selection {
-        case .guardian(let id) where filteredGuardians.contains(where: { $0.id == id }):
+        if let selectedGuardianID,
+           filteredGuardians.contains(where: { $0.id == selectedGuardianID }) {
             return
-        case .unassigned(let id) where filteredUnassignedStudents.contains(where: { $0.id == id }):
-            return
-        default:
-            break
         }
-
-        if let guardian = filteredGuardians.first {
-            selection = .guardian(guardian.id)
-        } else if let student = filteredUnassignedStudents.first {
-            selection = .unassigned(student.id)
-        } else {
-            selection = nil
-        }
+        selectedGuardianID = filteredGuardians.first?.id
     }
 
     private func contactSummary(for guardian: Guardian) -> String {
@@ -410,17 +245,15 @@ struct StudentsWorkspaceView: View {
             .joined(separator: "，")
     }
 
-    private func accountCell(_ guardian: Guardian, theme: MDTheme) -> some View {
-        HStack(spacing: 5) {
+    private func accountStatusCell(_ guardian: Guardian, theme: MDTheme) -> some View {
+        HStack(spacing: 6) {
             Circle()
                 .fill(guardian.isAccountLinked ? theme.success : theme.warning)
-                .frame(width: 6, height: 6)
+                .frame(width: 7, height: 7)
             Text(guardian.isAccountLinked ? "已连接" : "待认领")
                 .mdFont(.compact)
                 .lineLimit(1)
         }
-        .frame(width: 105, alignment: .leading)
-        .padding(.leading, 10)
     }
 
     private func filterTitle(for filter: GuardianAccountFilter) -> String {
@@ -435,29 +268,9 @@ struct StudentsWorkspaceView: View {
         }
         return "\(filter.title) \(count)"
     }
-}
 
-@MainActor
-private func familyHeader(_ text: String, width: CGFloat) -> some View {
-    Text(text)
-        .mdFont(.compactStrong)
-        .foregroundStyle(.secondary)
-        .frame(width: width, alignment: .leading)
-        .padding(.leading, 10)
-}
-
-@MainActor
-private func familyCell(
-    _ text: String,
-    width: CGFloat,
-    strong: Bool = false,
-    mono: Bool = false
-) -> some View {
-    Text(text.isEmpty ? "—" : text)
-        .mdFont(mono ? .mono : (strong ? .bodyStrong : .body))
-        .lineLimit(1)
-        .truncationMode(.tail)
-        .frame(width: width, alignment: .leading)
-        .padding(.leading, 10)
+    private func displayValue(_ value: String) -> String {
+        value.isEmpty ? "—" : value
+    }
 }
 #endif
