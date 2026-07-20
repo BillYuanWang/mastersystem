@@ -32,7 +32,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<integer>32</integer>
+	<integer>33</integer>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.education</string>
 	<key>NSHighResolutionCapable</key>

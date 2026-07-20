@@ -4,24 +4,29 @@ public protocol DeferredSyncMasterDanceRepository: MasterDanceRepository {
     func pendingMutationCount() async -> Int
     @discardableResult func synchronizeIfNeeded() async throws -> Int
     @discardableResult func refreshFromRemoteIfClean() async throws -> Bool
+    @discardableResult func refreshFromRemoteIfChanged() async throws -> Bool
 }
 
 public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository {
     private let remote: any MasterDanceRepository
     private let local: PreviewMasterDanceStore
     private let cacheURL: URL
+    private let latestRemoteChangeSequence: (@Sendable () async throws -> Int64?)?
     private var pendingMutations: [QueuedMutation]
     private var hasSnapshot: Bool
     private var hasLoadedCache = false
     private var isSynchronizing = false
     private var lastRemoteRefreshAt: Date?
+    private var lastRemoteChangeSequence: Int64?
 
     public init(
         remote: any MasterDanceRepository,
         cacheDirectory: URL,
-        cacheKey: String
+        cacheKey: String,
+        latestRemoteChangeSequence: (@Sendable () async throws -> Int64?)? = nil
     ) {
         self.remote = remote
+        self.latestRemoteChangeSequence = latestRemoteChangeSequence
         let safeCacheKey = cacheKey.map {
             $0.isLetter || $0.isNumber ? String($0) : "-"
         }.joined()
@@ -64,11 +69,34 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
             return false
         }
 
+        let changeSequence = try await currentRemoteChangeSequence()
         let snapshot = try await fetchRemoteSnapshot()
         guard pendingMutations.isEmpty, !isSynchronizing else { return false }
         await local.replace(with: snapshot)
         hasSnapshot = true
         lastRemoteRefreshAt = Date()
+        lastRemoteChangeSequence = changeSequence
+        try await persist()
+        return true
+    }
+
+    @discardableResult
+    public func refreshFromRemoteIfChanged() async throws -> Bool {
+        await loadCacheIfNeeded()
+        guard pendingMutations.isEmpty, !isSynchronizing else { return false }
+        guard latestRemoteChangeSequence != nil else {
+            return try await refreshFromRemoteIfClean()
+        }
+
+        let changeSequence = try await currentRemoteChangeSequence()
+        guard changeSequence != lastRemoteChangeSequence else { return false }
+
+        let snapshot = try await fetchRemoteSnapshot()
+        guard pendingMutations.isEmpty, !isSynchronizing else { return false }
+        await local.replace(with: snapshot)
+        hasSnapshot = true
+        lastRemoteRefreshAt = Date()
+        lastRemoteChangeSequence = changeSequence
         try await persist()
         return true
     }
@@ -417,10 +445,12 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
     private func ensureSnapshot() async throws {
         await loadCacheIfNeeded()
         guard !hasSnapshot else { return }
+        let changeSequence = try await currentRemoteChangeSequence()
         let snapshot = try await fetchRemoteSnapshot()
         await local.replace(with: snapshot)
         hasSnapshot = true
         lastRemoteRefreshAt = Date()
+        lastRemoteChangeSequence = changeSequence
         try await persist()
     }
 
@@ -436,7 +466,13 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 
         await local.replace(with: envelope.snapshot)
         pendingMutations = envelope.pendingMutations
+        lastRemoteChangeSequence = envelope.lastRemoteChangeSequence
         hasSnapshot = true
+    }
+
+    private func currentRemoteChangeSequence() async throws -> Int64? {
+        guard let latestRemoteChangeSequence else { return nil }
+        return try await latestRemoteChangeSequence()
     }
 
     private func fetchRemoteSnapshot() async throws -> PreviewData {
@@ -506,7 +542,8 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
         let snapshot = await local.snapshot()
         let envelope = CacheEnvelope(
             snapshot: snapshot,
-            pendingMutations: pendingMutations
+            pendingMutations: pendingMutations,
+            lastRemoteChangeSequence: lastRemoteChangeSequence
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -529,11 +566,17 @@ private struct CacheEnvelope: Codable {
     let version: Int
     let snapshot: PreviewData
     let pendingMutations: [QueuedMutation]
+    let lastRemoteChangeSequence: Int64?
 
-    init(snapshot: PreviewData, pendingMutations: [QueuedMutation]) {
+    init(
+        snapshot: PreviewData,
+        pendingMutations: [QueuedMutation],
+        lastRemoteChangeSequence: Int64?
+    ) {
         version = Self.currentVersion
         self.snapshot = snapshot
         self.pendingMutations = pendingMutations
+        self.lastRemoteChangeSequence = lastRemoteChangeSequence
     }
 }
 

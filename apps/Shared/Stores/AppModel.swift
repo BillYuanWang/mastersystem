@@ -158,6 +158,37 @@ final class AppModel {
         }
     }
 
+    func synchronizeRemoteChanges() async {
+        guard let deferred = repository as? any DeferredSyncMasterDanceRepository else { return }
+        await synchronizePendingChanges()
+        guard await deferred.pendingMutationCount() == 0 else { return }
+
+        do {
+            if try await deferred.refreshFromRemoteIfChanged() {
+                await reload()
+            }
+        } catch {
+            backgroundSync.notice = .failure(error.localizedDescription)
+        }
+    }
+
+    func refreshFromCloud() async {
+        guard let deferred = repository as? any DeferredSyncMasterDanceRepository else {
+            await reload()
+            return
+        }
+        await synchronizePendingChanges()
+        guard await deferred.pendingMutationCount() == 0 else { return }
+
+        do {
+            if try await deferred.refreshFromRemoteIfClean() {
+                await reload()
+            }
+        } catch {
+            backgroundSync.notice = .failure(error.localizedDescription)
+        }
+    }
+
     func synchronizePendingChanges() async {
         guard let deferred = repository as? any DeferredSyncMasterDanceRepository else { return }
         let count = await deferred.pendingMutationCount()

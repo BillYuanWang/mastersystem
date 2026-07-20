@@ -100,8 +100,58 @@ struct WriteBehindMasterDanceRepositoryTests {
         #expect(await remote.listAttendance(sessionID: nil, studentID: nil).isEmpty)
     }
 
+    @Test("Remote changes refresh the local snapshot only after the sequence advances")
+    func remoteChangeSequenceControlsRefresh() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let guardianID = GuardianID()
+        let initialGuardian = Guardian(id: guardianID, displayName: "测试监护人")
+        let remote = PreviewMasterDanceStore(
+            data: PreviewData(guardians: [initialGuardian])
+        )
+        let sequence = RemoteChangeSequence(1)
+        let repository = WriteBehindMasterDanceRepository(
+            remote: remote,
+            cacheDirectory: directory,
+            cacheKey: "remote-change-sequence",
+            latestRemoteChangeSequence: {
+                await sequence.current()
+            }
+        )
+
+        #expect(try await repository.listGuardians(studentID: nil) == [initialGuardian])
+
+        var linkedGuardian = initialGuardian
+        linkedGuardian.profileUserID = UUID()
+        await remote.save(guardian: linkedGuardian)
+
+        #expect(try await repository.refreshFromRemoteIfChanged() == false)
+        #expect(try await repository.listGuardians(studentID: nil) == [initialGuardian])
+
+        await sequence.advance()
+        #expect(try await repository.refreshFromRemoteIfChanged())
+        #expect(try await repository.listGuardians(studentID: nil) == [linkedGuardian])
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("master-dance-write-behind-\(UUID().uuidString)", isDirectory: true)
+    }
+}
+
+private actor RemoteChangeSequence {
+    private var value: Int64
+
+    init(_ value: Int64) {
+        self.value = value
+    }
+
+    func current() -> Int64 {
+        value
+    }
+
+    func advance() {
+        value += 1
     }
 }

@@ -7,6 +7,22 @@ enum StudentWorkspaceSelection: Hashable {
     case unassigned(StudentID)
 }
 
+private enum GuardianAccountFilter: String, CaseIterable, Identifiable {
+    case all
+    case linked
+    case pending
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "全部"
+        case .linked: "已连接"
+        case .pending: "待认领"
+        }
+    }
+}
+
 @MainActor
 struct StudentsWorkspaceView: View {
     let model: AppModel
@@ -14,6 +30,7 @@ struct StudentsWorkspaceView: View {
     @State private var searchText = ""
     @State private var selection: StudentWorkspaceSelection?
     @State private var showingGuardianEditor = false
+    @State private var accountFilter: GuardianAccountFilter = .all
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -36,6 +53,15 @@ struct StudentsWorkspaceView: View {
         .task(id: model.guardians.count + model.students.count) {
             chooseInitialSelection()
         }
+        .onChange(of: accountFilter) { _, _ in
+            chooseInitialSelection()
+        }
+        .onChange(of: searchText) { _, _ in
+            chooseInitialSelection()
+        }
+        .onChange(of: model.guardians.map { $0.profileUserID }) { _, _ in
+            chooseInitialSelection()
+        }
         .sheet(isPresented: $showingGuardianEditor) {
             GuardianEditorView(model: model)
         }
@@ -48,10 +74,35 @@ struct StudentsWorkspaceView: View {
                 .mdFont(.mono)
                 .foregroundStyle(theme.secondaryText)
             Spacer()
+            Picker("帐号状态", selection: $accountFilter) {
+                ForEach(GuardianAccountFilter.allCases) { filter in
+                    Text(filterTitle(for: filter)).tag(filter)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .mdFont(.compact)
+            .frame(width: 250)
             TextField("搜索监护人、学员或课程", text: $searchText)
                 .textFieldStyle(.roundedBorder)
                 .mdFont(.compact)
                 .frame(width: 220)
+            Button {
+                Task { await model.refreshFromCloud() }
+            } label: {
+                Group {
+                    if model.isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .frame(width: 16, height: 16)
+            }
+            .buttonStyle(MDIconButtonStyle())
+            .disabled(model.isLoading)
+            .help("立即刷新云端资料")
             Button {
                 showingGuardianEditor = true
             } label: {
@@ -70,9 +121,34 @@ struct StudentsWorkspaceView: View {
 
             ScrollView([.horizontal, .vertical]) {
                 LazyVStack(spacing: 0) {
-                    ForEach(filteredGuardians) { guardian in
-                        guardianRow(guardian, theme: theme)
-                        Divider()
+                    switch accountFilter {
+                    case .all:
+                        guardianSection(
+                            title: "已连接家庭",
+                            guardians: linkedGuardians,
+                            isLinked: true,
+                            theme: theme
+                        )
+                        guardianSection(
+                            title: "待认领家庭",
+                            guardians: pendingGuardians,
+                            isLinked: false,
+                            theme: theme
+                        )
+                    case .linked:
+                        guardianSection(
+                            title: "已连接家庭",
+                            guardians: linkedGuardians,
+                            isLinked: true,
+                            theme: theme
+                        )
+                    case .pending:
+                        guardianSection(
+                            title: "待认领家庭",
+                            guardians: pendingGuardians,
+                            isLinked: false,
+                            theme: theme
+                        )
                     }
 
                     if !filteredUnassignedStudents.isEmpty {
@@ -93,6 +169,23 @@ struct StudentsWorkspaceView: View {
                             unassignedRow(student, theme: theme)
                             Divider()
                         }
+                    }
+
+                    if filteredGuardians.isEmpty && filteredUnassignedStudents.isEmpty {
+                        HStack {
+                            Spacer()
+                            ContentUnavailableView(
+                                normalizedSearch.isEmpty ? "暂无家庭" : "没有搜索结果",
+                                systemImage: "person.2",
+                                description: Text(
+                                    normalizedSearch.isEmpty
+                                        ? "当前筛选下没有家庭记录。"
+                                        : "请尝试其他姓名、联系方式或课程。"
+                                )
+                            )
+                            Spacer()
+                        }
+                        .frame(minWidth: 820, minHeight: 220)
                     }
                 }
                 .frame(minWidth: 820, alignment: .topLeading)
@@ -134,6 +227,36 @@ struct StudentsWorkspaceView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func guardianSection(
+        title: String,
+        guardians: [Guardian],
+        isLinked: Bool,
+        theme: MDTheme
+    ) -> some View {
+        if !guardians.isEmpty {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(isLinked ? theme.success : theme.warning)
+                    .frame(width: 7, height: 7)
+                Text(title)
+                Text("\(guardians.count)")
+                    .mdFont(.monoStrong)
+                Spacer()
+            }
+            .mdFont(.compactStrong)
+            .foregroundStyle(theme.secondaryText)
+            .padding(.horizontal, 10)
+            .frame(minWidth: 820, minHeight: 34, alignment: .leading)
+            .background(theme.subtleSurface)
+
+            ForEach(guardians) { guardian in
+                guardianRow(guardian, theme: theme)
+                Divider()
+            }
+        }
     }
 
     private func unassignedRow(_ student: Student, theme: MDTheme) -> some View {
@@ -198,6 +321,17 @@ struct StudentsWorkspaceView: View {
     }
 
     private var filteredGuardians: [Guardian] {
+        switch accountFilter {
+        case .all:
+            searchedGuardians
+        case .linked:
+            linkedGuardians
+        case .pending:
+            pendingGuardians
+        }
+    }
+
+    private var searchedGuardians: [Guardian] {
         let query = normalizedSearch
         guard !query.isEmpty else { return model.guardians }
         return model.guardians.filter { guardian in
@@ -212,7 +346,16 @@ struct StudentsWorkspaceView: View {
         }
     }
 
+    private var linkedGuardians: [Guardian] {
+        searchedGuardians.filter(\.isAccountLinked)
+    }
+
+    private var pendingGuardians: [Guardian] {
+        searchedGuardians.filter { !$0.isAccountLinked }
+    }
+
     private var filteredUnassignedStudents: [Student] {
+        guard accountFilter != .linked else { return [] }
         let query = normalizedSearch
         guard !query.isEmpty else { return model.unassignedStudents }
         return model.unassignedStudents.filter { student in
@@ -227,9 +370,9 @@ struct StudentsWorkspaceView: View {
 
     private func chooseInitialSelection() {
         switch selection {
-        case .guardian(let id) where model.guardian(id: id) != nil:
+        case .guardian(let id) where filteredGuardians.contains(where: { $0.id == id }):
             return
-        case .unassigned(let id) where model.unassignedStudents.contains(where: { $0.id == id }):
+        case .unassigned(let id) where filteredUnassignedStudents.contains(where: { $0.id == id }):
             return
         default:
             break
@@ -278,6 +421,19 @@ struct StudentsWorkspaceView: View {
         }
         .frame(width: 105, alignment: .leading)
         .padding(.leading, 10)
+    }
+
+    private func filterTitle(for filter: GuardianAccountFilter) -> String {
+        let count: Int
+        switch filter {
+        case .all:
+            count = model.guardians.count
+        case .linked:
+            count = model.guardians.filter(\.isAccountLinked).count
+        case .pending:
+            count = model.guardians.filter { !$0.isAccountLinked }.count
+        }
+        return "\(filter.title) \(count)"
     }
 }
 

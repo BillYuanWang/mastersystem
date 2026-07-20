@@ -11,6 +11,18 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         self.organizationID = organizationID
     }
 
+    func latestRemoteChangeSequence() async throws -> Int64? {
+        let rows: [AuditEventSequenceRow] = try await client
+            .from("audit_events")
+            .select("id")
+            .eq("organization_id", value: organizationID)
+            .order("id", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first?.id
+    }
+
     func listTerms() async throws -> [Term] {
         let rows: [TermRow] = try await client
             .from("terms")

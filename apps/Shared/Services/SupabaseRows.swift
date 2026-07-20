@@ -1,6 +1,10 @@
 import Foundation
 import MasterDanceCore
 
+struct AuditEventSequenceRow: Decodable, Sendable {
+    let id: Int64
+}
+
 struct ProfileRow: Codable, Sendable {
     let userID: UUID
     let organizationID: UUID

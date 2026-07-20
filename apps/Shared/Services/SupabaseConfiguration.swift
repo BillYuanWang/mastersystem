@@ -86,7 +86,10 @@ enum LocalFirstRepositoryFactory {
         return WriteBehindMasterDanceRepository(
             remote: remote,
             cacheDirectory: cacheDirectory,
-            cacheKey: "\(organizationID.uuidString)-\(userID.uuidString)"
+            cacheKey: "\(organizationID.uuidString)-\(userID.uuidString)",
+            latestRemoteChangeSequence: {
+                try await remote.latestRemoteChangeSequence()
+            }
         )
     }
 }

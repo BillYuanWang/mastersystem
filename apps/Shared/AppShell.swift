@@ -79,7 +79,7 @@ struct AppShell: View {
                 }
                 guard shouldPollForSynchronization else { return }
                 await synchronizeMemberActions()
-                await model.synchronizePendingChanges()
+                await model.synchronizeRemoteChanges()
             }
         }
         .overlay(alignment: .top) {
