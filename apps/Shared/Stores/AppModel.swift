@@ -658,7 +658,8 @@ final class AppModel {
     func createGuardian(
         displayName: String,
         email: String,
-        phone: String
+        phone: String,
+        address: String
     ) async throws -> GuardianLinkCode {
         let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
@@ -669,7 +670,8 @@ final class AppModel {
         let guardian = Guardian(
             displayName: trimmedName,
             email: contact.email,
-            phone: contact.phone
+            phone: contact.phone,
+            address: address.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         )
         return try await withImmediateCloudActivity(label: "创建监护人") {
             try await repository.save(guardian: guardian)
@@ -688,6 +690,7 @@ final class AppModel {
     func createStudent(
         displayName: String,
         legalName: String,
+        birthDate: Date?,
         kind: StudentKind,
         guardianID: GuardianID
     ) async throws {
@@ -700,6 +703,7 @@ final class AppModel {
             guardianID: guardianID,
             displayName: trimmedName,
             legalName: trimmedLegalName.isEmpty ? nil : trimmedLegalName,
+            birthDate: birthDate.map(Calendar.current.startOfDay(for:)),
             kind: kind
         )
         try await withCloudActivity(label: "创建学员") {
@@ -734,6 +738,9 @@ final class AppModel {
         updated.displayName = name
         updated.email = contact.email
         updated.phone = contact.phone
+        updated.address = guardian.address?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
         try await withCloudActivity(label: "保存监护人") {
             try await repository.save(guardian: updated)
             await reload()
@@ -771,6 +778,7 @@ final class AppModel {
         guard !name.isEmpty else { throw AppModelError.missingStudentName }
         var updated = student
         updated.displayName = name
+        updated.birthDate = student.birthDate.map(Calendar.current.startOfDay(for:))
         try await withCloudActivity(label: "保存学员") {
             try await repository.save(student: updated)
             await reload()

@@ -378,6 +378,7 @@ struct StudentRow: Codable, Sendable {
     let guardianID: UUID
     let displayName: String
     let legalName: String?
+    let birthDate: String?
     let kind: String
     let isActive: Bool
 
@@ -387,6 +388,7 @@ struct StudentRow: Codable, Sendable {
         case guardianID = "guardian_id"
         case displayName = "display_name"
         case legalName = "legal_name"
+        case birthDate = "birth_date"
         case kind
         case isActive = "is_active"
     }
@@ -397,6 +399,7 @@ struct StudentRow: Codable, Sendable {
         guardianID = student.guardianID.rawValue
         displayName = student.displayName
         legalName = student.legalName
+        birthDate = student.birthDate.map(SupabaseDateCodec.dayString(from:))
         kind = student.kind.rawValue
         isActive = student.isActive
     }
@@ -410,6 +413,7 @@ struct StudentRow: Codable, Sendable {
             guardianID: GuardianID(serverID: guardianID),
             displayName: displayName,
             legalName: legalName,
+            birthDate: try birthDate.map(SupabaseDateCodec.date(from:)),
             kind: kind,
             isActive: isActive
         )
@@ -423,6 +427,7 @@ struct GuardianRow: Codable, Sendable {
     let profileUserID: UUID?
     let email: String?
     let phone: String?
+    let address: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -431,6 +436,7 @@ struct GuardianRow: Codable, Sendable {
         case profileUserID = "profile_user_id"
         case email
         case phone
+        case address
     }
 
     init(_ guardian: Guardian, organizationID: UUID) {
@@ -440,6 +446,7 @@ struct GuardianRow: Codable, Sendable {
         profileUserID = guardian.profileUserID
         email = guardian.email
         phone = guardian.phone
+        address = guardian.address
     }
 }
 
@@ -482,12 +489,14 @@ struct CreateStudentForGuardianParameters: Encodable, Sendable {
     let displayName: String
     let legalName: String?
     let kind: String
+    let birthDate: String?
 
     enum CodingKeys: String, CodingKey {
         case guardianID = "target_guardian_id"
         case displayName = "target_display_name"
         case legalName = "target_legal_name"
         case kind = "target_kind"
+        case birthDate = "target_birth_date"
     }
 }
 

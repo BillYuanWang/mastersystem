@@ -11,6 +11,7 @@ struct GuardianEditorView: View {
     @State private var displayName: String
     @State private var email: String
     @State private var phone: String
+    @State private var address: String
 
     @Environment(\.dismiss) private var dismiss
 
@@ -21,6 +22,7 @@ struct GuardianEditorView: View {
         _email = State(initialValue: guardian?.email ?? "")
         let storedPhone = guardian?.phone ?? ""
         _phone = State(initialValue: GuardianContact.formattedUSPhone(storedPhone) ?? storedPhone)
+        _address = State(initialValue: guardian?.address ?? "")
     }
 
     var body: some View {
@@ -51,6 +53,11 @@ struct GuardianEditorView: View {
                         .mdFont(.compact)
                         .foregroundStyle(.red)
                 }
+                LabeledContent("家庭住址（选填）") {
+                    TextField("街道、城市、州、邮编", text: $address, axis: .vertical)
+                        .lineLimit(1...3)
+                        .frame(minWidth: 360)
+                }
             }
             .formStyle(.grouped)
 
@@ -71,6 +78,7 @@ struct GuardianEditorView: View {
             guardian.displayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
             guardian.email = email
             guardian.phone = phone
+            guardian.address = address
             model.performBackgroundOperation(
                 label: "更新监护人",
                 successMessage: "监护人资料已更新"
@@ -81,6 +89,7 @@ struct GuardianEditorView: View {
             let nameSnapshot = displayName
             let emailSnapshot = email
             let phoneSnapshot = phone
+            let addressSnapshot = address
             model.performBackgroundOperation(
                 label: "创建监护人",
                 successMessage: "监护人已创建"
@@ -88,7 +97,8 @@ struct GuardianEditorView: View {
                 let code = try await model.createGuardian(
                     displayName: nameSnapshot,
                     email: emailSnapshot,
-                    phone: phoneSnapshot
+                    phone: phoneSnapshot,
+                    address: addressSnapshot
                 )
                 model.retainGuardianLinkCode(code)
             }
@@ -127,6 +137,8 @@ struct LearnerEditorView: View {
     @State private var guardianID: GuardianID
     @State private var displayName: String
     @State private var legalName: String
+    @State private var recordsBirthDate: Bool
+    @State private var birthDate: Date
     @State private var kind: StudentKind
     @State private var isActive: Bool
 
@@ -138,6 +150,8 @@ struct LearnerEditorView: View {
         _guardianID = State(initialValue: student?.guardianID ?? guardianID)
         _displayName = State(initialValue: student?.displayName ?? "")
         _legalName = State(initialValue: student?.legalName ?? "")
+        _recordsBirthDate = State(initialValue: student?.birthDate != nil)
+        _birthDate = State(initialValue: student?.birthDate ?? Date())
         _kind = State(initialValue: student?.kind ?? .child)
         _isActive = State(initialValue: student?.isActive ?? true)
     }
@@ -146,19 +160,55 @@ struct LearnerEditorView: View {
         VStack(alignment: .leading, spacing: 16) {
             MDSectionTitle(chinese: original == nil ? "添加学员档案" : "编辑学员档案")
 
-            TextField("常用姓名", text: $displayName)
-            TextField("法定姓名（选填）", text: $legalName)
-            Picker("所属监护人", selection: $guardianID) {
-                ForEach(model.guardians) { guardian in
-                    Text(guardian.displayName).tag(guardian.id)
+            Form {
+                LabeledContent("常用姓名（必填）") {
+                    TextField("学员常用姓名", text: $displayName)
+                        .frame(minWidth: 340)
+                }
+                LabeledContent("法定姓名（选填）") {
+                    TextField("证件姓名", text: $legalName)
+                        .frame(minWidth: 340)
+                }
+                LabeledContent("生日（选填）") {
+                    HStack(spacing: 12) {
+                        Toggle("记录生日", isOn: $recordsBirthDate)
+                            .toggleStyle(.checkbox)
+                        if recordsBirthDate {
+                            DatePicker(
+                                "生日",
+                                selection: $birthDate,
+                                in: ...Date.now,
+                                displayedComponents: .date
+                            )
+                            .labelsHidden()
+                        }
+                    }
+                    .frame(minWidth: 340, alignment: .leading)
+                }
+                LabeledContent("所属监护人") {
+                    Picker("所属监护人", selection: $guardianID) {
+                        ForEach(model.guardians) { guardian in
+                            Text(guardian.displayName).tag(guardian.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(minWidth: 340)
+                }
+                LabeledContent("学员类型") {
+                    Picker("类型", selection: $kind) {
+                        Text("少儿").tag(StudentKind.child)
+                        Text("成人本人").tag(StudentKind.adult)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(minWidth: 340)
+                }
+                LabeledContent("档案状态") {
+                    Toggle("启用档案", isOn: $isActive)
+                        .frame(minWidth: 340, alignment: .leading)
                 }
             }
-            Picker("类型", selection: $kind) {
-                Text("少儿").tag(StudentKind.child)
-                Text("成人本人").tag(StudentKind.adult)
-            }
-            .pickerStyle(.segmented)
-            Toggle("启用档案", isOn: $isActive)
+            .formStyle(.grouped)
 
             HStack {
                 Spacer()
@@ -169,7 +219,7 @@ struct LearnerEditorView: View {
             }
         }
         .padding(20)
-        .frame(width: 430)
+        .frame(width: 640)
     }
 
     private func save() {
@@ -179,6 +229,7 @@ struct LearnerEditorView: View {
             student.legalName = legalName
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .nilIfEmpty
+            student.birthDate = recordsBirthDate ? birthDate : nil
             student.kind = kind
             student.isActive = isActive
             model.performBackgroundOperation(
@@ -190,6 +241,7 @@ struct LearnerEditorView: View {
         } else {
             let nameSnapshot = displayName
             let legalNameSnapshot = legalName
+            let birthDateSnapshot = recordsBirthDate ? birthDate : nil
             let kindSnapshot = kind
             let guardianIDSnapshot = guardianID
             model.performBackgroundOperation(
@@ -199,6 +251,7 @@ struct LearnerEditorView: View {
                 try await model.createStudent(
                     displayName: nameSnapshot,
                     legalName: legalNameSnapshot,
+                    birthDate: birthDateSnapshot,
                     kind: kindSnapshot,
                     guardianID: guardianIDSnapshot
                 )

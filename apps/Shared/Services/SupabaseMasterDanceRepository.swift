@@ -301,6 +301,7 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
                 displayName: row.displayName,
                 email: row.email,
                 phone: row.phone,
+                address: row.address,
                 profileUserID: status?.linkedUserID ?? row.profileUserID,
                 studentIDs: studentIDsByGuardian[row.id] ?? [],
                 activeLinkCodeHint: status?.activeCodeHint,
@@ -332,7 +333,8 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
                     guardianID: guardianID.rawValue,
                     displayName: student.displayName,
                     legalName: student.legalName,
-                    kind: student.kind.rawValue
+                    kind: student.kind.rawValue,
+                    birthDate: student.birthDate.map(SupabaseDateCodec.dayString(from:))
                 )
             )
             .execute()

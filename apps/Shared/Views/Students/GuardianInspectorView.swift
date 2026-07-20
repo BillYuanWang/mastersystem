@@ -43,7 +43,7 @@ struct GuardianInspectorView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(selectedStudent.displayName)
                                     .mdFont(.bodyStrong)
-                                Text(selectedStudent.kind == .adult ? "成人学员" : "少儿学员")
+                                Text(studentDetailSummary(selectedStudent))
                                     .mdFont(.mono)
                                     .foregroundStyle(theme.secondaryText)
                             }
@@ -170,6 +170,13 @@ struct GuardianInspectorView: View {
                     .foregroundStyle(theme.secondaryText)
                     .textSelection(.enabled)
             }
+            if let address = guardian.address, !address.isEmpty {
+                Label(address, systemImage: "house")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
             if guardian.email == nil, guardian.phone == nil {
                 Text("未填写联系方式")
                     .mdFont(.compact)
@@ -294,6 +301,14 @@ struct GuardianInspectorView: View {
             return
         }
         selectedStudentID = learners.first?.id
+    }
+
+    private func studentDetailSummary(_ student: Student) -> String {
+        var details = [student.kind == .adult ? "成人学员" : "少儿学员"]
+        if let birthDate = student.birthDate {
+            details.append("生日 \(birthDate.formatted(date: .numeric, time: .omitted))")
+        }
+        return details.joined(separator: " · ")
     }
 
     private func issueLinkCode() {

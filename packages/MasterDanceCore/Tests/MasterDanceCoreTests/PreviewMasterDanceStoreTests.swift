@@ -176,6 +176,32 @@ struct PreviewMasterDanceStoreTests {
         #expect(savedGuardian.studentIDs == [child.id, adult.id])
     }
 
+    @Test("Optional family address and learner birthday persist")
+    func familyProfileDetailsPersist() async throws {
+        let birthDate = Date(timeIntervalSince1970: 1_087_862_400)
+        let guardian = Guardian(
+            displayName: "Family",
+            address: "123 Main Street, Irvine, CA 92618"
+        )
+        let child = Student(
+            guardianID: guardian.id,
+            displayName: "Child",
+            birthDate: birthDate,
+            kind: .child
+        )
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(students: [child], guardians: [guardian])
+        )
+
+        let savedGuardian = try #require(
+            try await store.listGuardians(studentID: nil).first
+        )
+        let savedStudent = try #require(try await store.listStudents().first)
+
+        #expect(savedGuardian.address == "123 Main Street, Irvine, CA 92618")
+        #expect(savedStudent.birthDate == birthDate)
+    }
+
     @Test("Guardian link codes are one-time display values")
     func guardianLinkCode() async throws {
         let guardian = Guardian(displayName: "Family")

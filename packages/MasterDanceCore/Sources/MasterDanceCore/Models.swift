@@ -210,6 +210,7 @@ public struct Student: Identifiable, Codable, Equatable, Sendable {
     public var guardianID: GuardianID
     public var displayName: String
     public var legalName: String?
+    public var birthDate: Date?
     public var kind: StudentKind
     public var isActive: Bool
 
@@ -218,6 +219,7 @@ public struct Student: Identifiable, Codable, Equatable, Sendable {
         guardianID: GuardianID,
         displayName: String,
         legalName: String? = nil,
+        birthDate: Date? = nil,
         kind: StudentKind,
         isActive: Bool = true
     ) {
@@ -225,6 +227,7 @@ public struct Student: Identifiable, Codable, Equatable, Sendable {
         self.guardianID = guardianID
         self.displayName = displayName
         self.legalName = legalName
+        self.birthDate = birthDate
         self.kind = kind
         self.isActive = isActive
     }
@@ -235,6 +238,7 @@ public struct Guardian: Identifiable, Codable, Equatable, Sendable {
     public var displayName: String
     public var email: String?
     public var phone: String?
+    public var address: String?
     public var profileUserID: UUID?
     public var studentIDs: Set<StudentID>
     public var activeLinkCodeHint: String?
@@ -245,6 +249,7 @@ public struct Guardian: Identifiable, Codable, Equatable, Sendable {
         displayName: String,
         email: String? = nil,
         phone: String? = nil,
+        address: String? = nil,
         profileUserID: UUID? = nil,
         studentIDs: Set<StudentID> = [],
         activeLinkCodeHint: String? = nil,
@@ -254,6 +259,7 @@ public struct Guardian: Identifiable, Codable, Equatable, Sendable {
         self.displayName = displayName
         self.email = email
         self.phone = phone
+        self.address = address
         self.profileUserID = profileUserID
         self.studentIDs = studentIDs
         self.activeLinkCodeHint = activeLinkCodeHint
