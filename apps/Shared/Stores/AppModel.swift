@@ -9,6 +9,7 @@ final class AppModel {
     @ObservationIgnored private let referenceOrderStore = ReferenceOrderStore()
     @ObservationIgnored private var pendingBackgroundOperations: [PendingBackgroundOperation] = []
     @ObservationIgnored private var pendingCloudOperations: [PendingCloudOperation] = []
+    @ObservationIgnored private var newsMediaCache: [String: Data] = [:]
     @ObservationIgnored private var syncNoticeGeneration = UUID()
 
     var terms: [Term] = []
@@ -27,6 +28,8 @@ final class AppModel {
     var leaveRequests: [LeaveRequest] = []
     var contractDocuments: [ContractDocument] = []
     var contractConsents: [ContractConsent] = []
+    var newsArticles: [NewsArticle] = []
+    var newsArticleImages: [NewsArticleImage] = []
     var notifications: [NotificationRecord] = []
     var backgroundSync = BackgroundSyncPresentation()
     var cloudActivity = CloudActivityPresentation()
@@ -133,6 +136,12 @@ final class AppModel {
             } else {
                 contractConsents = []
             }
+            newsArticles = try await repository.listNewsArticles().sorted {
+                ($0.publishedAt ?? $0.updatedAt) > ($1.publishedAt ?? $1.updatedAt)
+            }
+            newsArticleImages = try await repository.listNewsArticleImages(articleID: nil)
+            let validPaths = Set(newsArticleImages.map(\.storagePath))
+            newsMediaCache = newsMediaCache.filter { validPaths.contains($0.key) }
             if let deferred = repository as? any DeferredSyncMasterDanceRepository {
                 pendingSyncCount = await deferred.pendingMutationCount()
             } else {
@@ -830,6 +839,90 @@ final class AppModel {
     func deleteContractDocument(_ document: ContractDocument) async throws {
         try await withCloudActivity(label: "删除合同") {
             try await repository.deleteContractDocument(id: document.id, storagePath: document.storagePath)
+            await reload()
+        }
+    }
+
+    func newsImages(for articleID: NewsArticleID) -> [NewsArticleImage] {
+        newsArticleImages
+            .filter { $0.articleID == articleID }
+            .sorted {
+                if $0.kind != $1.kind { return $0.kind == .cover }
+                return $0.sortOrder < $1.sortOrder
+            }
+    }
+
+    func newsCover(for articleID: NewsArticleID) -> NewsArticleImage? {
+        newsArticleImages.first { $0.articleID == articleID && $0.kind == .cover }
+    }
+
+    func newsMediaData(storagePath: String) async -> Data? {
+        if let cached = newsMediaCache[storagePath] { return cached }
+        do {
+            let data = try await repository.newsMediaData(storagePath: storagePath)
+            newsMediaCache[storagePath] = data
+            return data
+        } catch {
+            return nil
+        }
+    }
+
+    func saveNewsArticle(
+        _ article: NewsArticle,
+        images: [NewsImageUpload],
+        deletedImages: [NewsArticleImage]
+    ) async throws {
+        let title = article.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = article.bodyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let author = article.authorName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { throw AppModelError.missingNewsTitle }
+        guard !body.isEmpty else { throw AppModelError.missingNewsBody }
+        guard !author.isEmpty else { throw AppModelError.missingNewsAuthor }
+        if article.status == .published,
+           !images.contains(where: { $0.image.kind == .cover }) {
+            throw AppModelError.missingNewsCover
+        }
+
+        var finalArticle = article
+        finalArticle.title = title
+        finalArticle.summary = article.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        finalArticle.bodyText = body
+        finalArticle.authorName = author
+
+        try await withImmediateCloudActivity(label: "保存新闻") {
+            var staging = finalArticle
+            staging.status = .draft
+            staging.publishedAt = nil
+            _ = try await repository.save(newsArticle: staging)
+
+            for image in deletedImages {
+                try await repository.deleteNewsArticleImage(
+                    id: image.id,
+                    storagePath: image.storagePath
+                )
+                newsMediaCache.removeValue(forKey: image.storagePath)
+            }
+
+            for upload in images {
+                let saved = try await repository.save(
+                    newsArticleImage: upload.image,
+                    fileData: upload.fileData
+                )
+                if let data = upload.fileData {
+                    newsMediaCache[saved.storagePath] = data
+                }
+            }
+
+            _ = try await repository.save(newsArticle: finalArticle)
+            await reload()
+        }
+    }
+
+    func deleteNewsArticle(_ article: NewsArticle) async throws {
+        try await withImmediateCloudActivity(label: "删除新闻") {
+            let paths = newsImages(for: article.id).map(\.storagePath)
+            try await repository.deleteNewsArticle(id: article.id)
+            paths.forEach { newsMediaCache.removeValue(forKey: $0) }
             await reload()
         }
     }

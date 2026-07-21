@@ -437,6 +437,60 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
         try await enqueue(.saveContractConsent(contractConsent))
     }
 
+    public func listNewsArticles() async throws -> [NewsArticle] {
+        try await ensureSnapshot()
+        return await local.listNewsArticles()
+    }
+
+    public func listNewsArticleImages(articleID: NewsArticleID?) async throws -> [NewsArticleImage] {
+        try await ensureSnapshot()
+        return await local.listNewsArticleImages(articleID: articleID)
+    }
+
+    public func save(newsArticle: NewsArticle) async throws -> NewsArticle {
+        try await ensureSnapshot()
+        _ = try await synchronizeIfNeeded()
+        let saved = try await remote.save(newsArticle: newsArticle)
+        _ = await local.save(newsArticle: saved)
+        try await persist()
+        return saved
+    }
+
+    public func save(
+        newsArticleImage: NewsArticleImage,
+        fileData: Data?
+    ) async throws -> NewsArticleImage {
+        try await ensureSnapshot()
+        _ = try await synchronizeIfNeeded()
+        let saved = try await remote.save(newsArticleImage: newsArticleImage, fileData: fileData)
+        _ = try await local.save(newsArticleImage: saved, fileData: fileData)
+        try await persist()
+        return saved
+    }
+
+    public func deleteNewsArticle(id: NewsArticleID) async throws {
+        try await ensureSnapshot()
+        _ = try await synchronizeIfNeeded()
+        try await remote.deleteNewsArticle(id: id)
+        await local.deleteNewsArticle(id: id)
+        try await persist()
+    }
+
+    public func deleteNewsArticleImage(
+        id: NewsArticleImageID,
+        storagePath: String
+    ) async throws {
+        try await ensureSnapshot()
+        _ = try await synchronizeIfNeeded()
+        try await remote.deleteNewsArticleImage(id: id, storagePath: storagePath)
+        await local.deleteNewsArticleImage(id: id, storagePath: storagePath)
+        try await persist()
+    }
+
+    public func newsMediaData(storagePath: String) async throws -> Data {
+        try await remote.newsMediaData(storagePath: storagePath)
+    }
+
     public func listNotifications(recipientReference: String?) async throws -> [NotificationRecord] {
         try await ensureSnapshot()
         return await local.listNotifications(recipientReference: recipientReference)
@@ -508,6 +562,8 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
                 enrollmentID: nil
             )
         }
+        let newsArticles = try await remote.listNewsArticles()
+        let newsArticleImages = try await remote.listNewsArticleImages(articleID: nil)
         let notifications = try await remote.listNotifications(recipientReference: nil)
 
         return PreviewData(
@@ -527,6 +583,8 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
             leaveRequests: leaveRequests,
             contractDocuments: contractDocuments,
             contractConsents: contractConsents,
+            newsArticles: newsArticles,
+            newsArticleImages: newsArticleImages,
             notifications: notifications
         )
     }
@@ -567,7 +625,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 }
 
 private struct CacheEnvelope: Codable {
-    static let currentVersion = 1
+    static let currentVersion = 2
 
     let version: Int
     let snapshot: PreviewData

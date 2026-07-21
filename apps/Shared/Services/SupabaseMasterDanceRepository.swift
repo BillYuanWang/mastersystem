@@ -627,6 +627,135 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         throw SupabaseRepositoryError.server("合同同意必须通过已发布合同的受控签署流程记录。")
     }
 
+    func listNewsArticles() async throws -> [NewsArticle] {
+        let rows: [NewsArticleRow] = try await client
+            .from("news_articles")
+            .select()
+            .order("published_at", ascending: false, nullsFirst: false)
+            .order("updated_at", ascending: false)
+            .execute()
+            .value
+        return try rows.map { try $0.domain() }
+    }
+
+    func listNewsArticleImages(articleID: NewsArticleID?) async throws -> [NewsArticleImage] {
+        let rows: [NewsArticleImageRow]
+        if let articleID {
+            rows = try await client
+                .from("news_article_images")
+                .select()
+                .eq("article_id", value: articleID.rawValue)
+                .order("sort_order")
+                .execute()
+                .value
+        } else {
+            rows = try await client
+                .from("news_article_images")
+                .select()
+                .order("sort_order")
+                .execute()
+                .value
+        }
+        return try rows.map { try $0.domain() }
+    }
+
+    func save(newsArticle: NewsArticle) async throws -> NewsArticle {
+        var saved = newsArticle
+        saved.title = saved.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        saved.summary = saved.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        saved.bodyText = saved.bodyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        saved.authorName = saved.authorName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !saved.title.isEmpty else {
+            throw SupabaseRepositoryError.server("请输入新闻标题。")
+        }
+        guard !saved.bodyText.isEmpty else {
+            throw SupabaseRepositoryError.server("请输入新闻正文。")
+        }
+        guard !saved.authorName.isEmpty else {
+            throw SupabaseRepositoryError.server("请输入作者。")
+        }
+
+        let now = Date()
+        saved.updatedAt = now
+        if saved.status == .published, saved.publishedAt == nil {
+            saved.publishedAt = now
+        } else if saved.status == .draft {
+            saved.publishedAt = nil
+        }
+
+        let stored: NewsArticleRow = try await client
+            .from("news_articles")
+            .upsert(NewsArticleRow(saved, organizationID: organizationID))
+            .select()
+            .single()
+            .execute()
+            .value
+        return try stored.domain()
+    }
+
+    func save(
+        newsArticleImage: NewsArticleImage,
+        fileData: Data?
+    ) async throws -> NewsArticleImage {
+        var saved = newsArticleImage
+        let caption = saved.caption?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        saved.caption = caption.isEmpty ? nil : caption
+
+        if saved.storagePath.isEmpty {
+            guard fileData != nil else {
+                throw SupabaseRepositoryError.server("请选择新闻图片。")
+            }
+            saved.storagePath = [
+                organizationID.uuidString.lowercased(),
+                saved.articleID.rawValue.uuidString.lowercased(),
+                saved.id.rawValue.uuidString.lowercased() + "." + newsFileExtension(for: saved.mimeType)
+            ].joined(separator: "/")
+        }
+
+        if let fileData {
+            try await client.storage
+                .from("news-media")
+                .upload(
+                    saved.storagePath,
+                    data: fileData,
+                    options: FileOptions(contentType: saved.mimeType, upsert: true)
+                )
+        }
+
+        let stored: NewsArticleImageRow = try await client
+            .from("news_article_images")
+            .upsert(NewsArticleImageRow(saved, organizationID: organizationID))
+            .select()
+            .single()
+            .execute()
+            .value
+        return try stored.domain()
+    }
+
+    func deleteNewsArticle(id: NewsArticleID) async throws {
+        let rows: [NewsArticleImageRow] = try await client
+            .from("news_article_images")
+            .select()
+            .eq("article_id", value: id.rawValue)
+            .execute()
+            .value
+        try await client.from("news_articles").delete().eq("id", value: id.rawValue).execute()
+        let paths = rows.map(\.storagePath)
+        if !paths.isEmpty {
+            _ = try? await client.storage.from("news-media").remove(paths: paths)
+        }
+    }
+
+    func deleteNewsArticleImage(id: NewsArticleImageID, storagePath: String) async throws {
+        try await client.from("news_article_images").delete().eq("id", value: id.rawValue).execute()
+        guard !storagePath.isEmpty else { return }
+        _ = try? await client.storage.from("news-media").remove(paths: [storagePath])
+    }
+
+    func newsMediaData(storagePath: String) async throws -> Data {
+        try await client.storage.from("news-media").download(path: storagePath)
+    }
+
     func listNotifications(recipientReference: String?) async throws -> [NotificationRecord] {
         let rows: [NotificationRow]
         if let recipientReference, let recipientID = UUID(uuidString: recipientReference) {
@@ -665,6 +794,15 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
             return try await client.auth.session.user.id
         } catch {
             throw SupabaseRepositoryError.missingSession
+        }
+    }
+
+    private func newsFileExtension(for mimeType: String) -> String {
+        switch mimeType.lowercased() {
+        case "image/png": "png"
+        case "image/heic", "image/heif": "heic"
+        case "image/webp": "webp"
+        default: "jpg"
         }
     }
 }

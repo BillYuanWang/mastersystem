@@ -197,6 +197,22 @@ public extension PreviewData {
             publishedAt: now
         )
 
+        let newsArticle = NewsArticle(
+            title: "秋季课程与开学安排",
+            summary: "新学期课程已经开放，请家长查看上课时间与教室安排。",
+            bodyText: "新学期课程已经开放，请家长在课程页确认孩子的上课时间与教室。\n\n如需请假，请至少在课程开始前 12 小时通过 App 提交。临时情况请直接联系教务老师。",
+            authorName: "Master Dance 教务",
+            status: .published,
+            publishedAt: now,
+            createdAt: now,
+            updatedAt: now
+        )
+        let newsCover = NewsArticleImage(
+            articleID: newsArticle.id,
+            kind: .cover,
+            storagePath: "preview/news-cover.jpg"
+        )
+
         return PreviewData(
             terms: [term],
             courseCategories: categories,
@@ -212,6 +228,8 @@ public extension PreviewData {
             attendance: attendance,
             leaveRequests: leaveRequests,
             contractDocuments: [agreement],
+            newsArticles: [newsArticle],
+            newsArticleImages: [newsCover],
             notifications: notifications
         )
     }

@@ -85,6 +85,16 @@ public protocol ContractConsentRepository: Sendable {
     func save(contractConsent: ContractConsent) async throws
 }
 
+public protocol NewsRepository: Sendable {
+    func listNewsArticles() async throws -> [NewsArticle]
+    func listNewsArticleImages(articleID: NewsArticleID?) async throws -> [NewsArticleImage]
+    func save(newsArticle: NewsArticle) async throws -> NewsArticle
+    func save(newsArticleImage: NewsArticleImage, fileData: Data?) async throws -> NewsArticleImage
+    func deleteNewsArticle(id: NewsArticleID) async throws
+    func deleteNewsArticleImage(id: NewsArticleImageID, storagePath: String) async throws
+    func newsMediaData(storagePath: String) async throws -> Data
+}
+
 public protocol NotificationRepository: Sendable {
     func listNotifications(recipientReference: String?) async throws -> [NotificationRecord]
     func save(notification: NotificationRecord) async throws
@@ -100,4 +110,5 @@ public typealias MasterDanceRepository = TermRepository
     & LeaveRequestRepository
     & ContractDocumentRepository
     & ContractConsentRepository
+    & NewsRepository
     & NotificationRepository

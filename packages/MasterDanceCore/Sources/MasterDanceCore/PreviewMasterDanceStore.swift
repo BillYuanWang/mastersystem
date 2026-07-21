@@ -17,6 +17,8 @@ public struct PreviewData: Codable, Sendable {
     public var leaveRequests: [LeaveRequest]
     public var contractDocuments: [ContractDocument]
     public var contractConsents: [ContractConsent]
+    public var newsArticles: [NewsArticle]
+    public var newsArticleImages: [NewsArticleImage]
     public var notifications: [NotificationRecord]
 
     public init(
@@ -36,6 +38,8 @@ public struct PreviewData: Codable, Sendable {
         leaveRequests: [LeaveRequest] = [],
         contractDocuments: [ContractDocument] = [],
         contractConsents: [ContractConsent] = [],
+        newsArticles: [NewsArticle] = [],
+        newsArticleImages: [NewsArticleImage] = [],
         notifications: [NotificationRecord] = []
     ) {
         self.terms = terms
@@ -54,12 +58,15 @@ public struct PreviewData: Codable, Sendable {
         self.leaveRequests = leaveRequests
         self.contractDocuments = contractDocuments
         self.contractConsents = contractConsents
+        self.newsArticles = newsArticles
+        self.newsArticleImages = newsArticleImages
         self.notifications = notifications
     }
 }
 
 public actor PreviewMasterDanceStore: MasterDanceRepository {
     private var data: PreviewData
+    private var newsMedia: [String: Data] = [:]
 
     public init(data: PreviewData = PreviewData()) {
         self.data = data
@@ -409,6 +416,74 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
 
     public func save(contractConsent: ContractConsent) {
         upsert(contractConsent, in: &data.contractConsents)
+    }
+
+    public func listNewsArticles() -> [NewsArticle] {
+        data.newsArticles
+    }
+
+    public func listNewsArticleImages(articleID: NewsArticleID? = nil) -> [NewsArticleImage] {
+        data.newsArticleImages.filter { articleID == nil || $0.articleID == articleID }
+    }
+
+    public func save(newsArticle: NewsArticle) -> NewsArticle {
+        var saved = newsArticle
+        let now = Date()
+        if let current = data.newsArticles.first(where: { $0.id == saved.id }) {
+            saved.createdAt = current.createdAt
+        }
+        saved.updatedAt = now
+        if saved.status == .published, saved.publishedAt == nil {
+            saved.publishedAt = now
+        } else if saved.status == .draft {
+            saved.publishedAt = nil
+        }
+        upsert(saved, in: &data.newsArticles)
+        return saved
+    }
+
+    public func save(
+        newsArticleImage: NewsArticleImage,
+        fileData: Data?
+    ) throws -> NewsArticleImage {
+        guard data.newsArticles.contains(where: { $0.id == newsArticleImage.articleID }) else {
+            throw PreviewRepositoryError.recordInUse("新闻不存在，无法保存图片。")
+        }
+        var saved = newsArticleImage
+        if saved.storagePath.isEmpty, fileData != nil {
+            saved.storagePath = "preview/\(saved.articleID)/\(saved.id).image"
+        }
+        if saved.kind == .cover {
+            data.newsArticleImages.removeAll {
+                $0.articleID == saved.articleID && $0.kind == .cover && $0.id != saved.id
+            }
+        }
+        upsert(saved, in: &data.newsArticleImages)
+        if let fileData {
+            newsMedia[saved.storagePath] = fileData
+        }
+        return saved
+    }
+
+    public func deleteNewsArticle(id: NewsArticleID) {
+        let paths = data.newsArticleImages
+            .filter { $0.articleID == id }
+            .map(\.storagePath)
+        paths.forEach { newsMedia.removeValue(forKey: $0) }
+        data.newsArticleImages.removeAll { $0.articleID == id }
+        remove(id: id, from: &data.newsArticles)
+    }
+
+    public func deleteNewsArticleImage(id: NewsArticleImageID, storagePath: String) {
+        newsMedia.removeValue(forKey: storagePath)
+        remove(id: id, from: &data.newsArticleImages)
+    }
+
+    public func newsMediaData(storagePath: String) throws -> Data {
+        guard let data = newsMedia[storagePath] else {
+            throw PreviewRepositoryError.recordInUse("预览图片尚未下载。")
+        }
+        return data
     }
 
     public func listNotifications(recipientReference: String? = nil) -> [NotificationRecord] {

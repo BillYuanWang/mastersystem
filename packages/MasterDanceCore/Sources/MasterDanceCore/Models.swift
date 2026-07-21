@@ -552,6 +552,99 @@ public struct ContractConsent: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+public enum NewsArticleStatus: String, Codable, CaseIterable, Sendable {
+    case draft
+    case published
+    case archived
+}
+
+public struct NewsArticle: Identifiable, Codable, Equatable, Sendable {
+    public let id: NewsArticleID
+    public var title: String
+    public var summary: String
+    public var bodyText: String
+    public var authorName: String
+    public var status: NewsArticleStatus
+    public var publishedAt: Date?
+    public var createdAt: Date
+    public var updatedAt: Date
+
+    public init(
+        id: NewsArticleID = NewsArticleID(),
+        title: String,
+        summary: String = "",
+        bodyText: String,
+        authorName: String,
+        status: NewsArticleStatus = .draft,
+        publishedAt: Date? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.title = title
+        self.summary = summary
+        self.bodyText = bodyText
+        self.authorName = authorName
+        self.status = status
+        self.publishedAt = publishedAt
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    public var previewText: String {
+        let explicit = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !explicit.isEmpty { return explicit }
+        return bodyText
+            .split(whereSeparator: \Character.isNewline)
+            .map(String.init)
+            .first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    public var paragraphs: [String] {
+        bodyText
+            .components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+}
+
+public enum NewsArticleImageKind: String, Codable, CaseIterable, Sendable {
+    case cover
+    case body
+}
+
+public struct NewsArticleImage: Identifiable, Codable, Equatable, Sendable {
+    public let id: NewsArticleImageID
+    public let articleID: NewsArticleID
+    public var kind: NewsArticleImageKind
+    public var storagePath: String
+    public var mimeType: String
+    public var caption: String?
+    public var sortOrder: Int
+    public var placementAfterParagraph: Int?
+
+    public init(
+        id: NewsArticleImageID = NewsArticleImageID(),
+        articleID: NewsArticleID,
+        kind: NewsArticleImageKind,
+        storagePath: String = "",
+        mimeType: String = "image/jpeg",
+        caption: String? = nil,
+        sortOrder: Int = 0,
+        placementAfterParagraph: Int? = nil
+    ) {
+        self.id = id
+        self.articleID = articleID
+        self.kind = kind
+        self.storagePath = storagePath
+        self.mimeType = mimeType
+        self.caption = caption
+        self.sortOrder = sortOrder
+        self.placementAfterParagraph = placementAfterParagraph
+    }
+}
+
 public enum NotificationKind: String, Codable, CaseIterable, Sendable {
     case classReminder
     case leaveSubmitted

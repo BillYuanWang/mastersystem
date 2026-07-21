@@ -8,6 +8,7 @@ enum AdminSection: String, CaseIterable, Identifiable {
     case enrollments
     case attendance
     case requests
+    case news
     case contracts
     case dataCenter
 
@@ -21,6 +22,7 @@ enum AdminSection: String, CaseIterable, Identifiable {
         case .enrollments: "报名"
         case .attendance: "签到"
         case .requests: "请假"
+        case .news: "新闻"
         case .contracts: "合同"
         case .dataCenter: "数据中心"
         }
@@ -34,6 +36,7 @@ enum AdminSection: String, CaseIterable, Identifiable {
         case .enrollments: "list.bullet.rectangle"
         case .attendance: "checkmark.circle"
         case .requests: "calendar.badge.minus"
+        case .news: "newspaper"
         case .contracts: "doc.text"
         case .dataCenter: "cylinder.split.1x2"
         }
@@ -119,6 +122,11 @@ struct CloudActivityPresentation: Equatable {
     var isActive: Bool {
         activeCount > 0
     }
+}
+
+struct NewsImageUpload: Sendable {
+    var image: NewsArticleImage
+    var fileData: Data?
 }
 
 struct EnrollmentSummary: Equatable {
@@ -237,6 +245,10 @@ enum AppModelError: LocalizedError {
     case attendanceRequiresEnrollment
     case courseTermHasEnrollments
     case courseScheduleHasRecords
+    case missingNewsTitle
+    case missingNewsBody
+    case missingNewsAuthor
+    case missingNewsCover
 
     var errorDescription: String? {
         switch self {
@@ -254,6 +266,10 @@ enum AppModelError: LocalizedError {
         case .attendanceRequiresEnrollment: "出勤、请假和缺席只能记录在已报名课程中。"
         case .courseTermHasEnrollments: "这门课程已有报名，不能更换学期；请先处理报名。"
         case .courseScheduleHasRecords: "这门课程已有签到或请假记录，不能整体重排课次。"
+        case .missingNewsTitle: "请输入新闻标题。"
+        case .missingNewsBody: "请输入新闻正文。"
+        case .missingNewsAuthor: "请输入作者。"
+        case .missingNewsCover: "发布新闻前请添加一张封面图。"
         }
     }
 }

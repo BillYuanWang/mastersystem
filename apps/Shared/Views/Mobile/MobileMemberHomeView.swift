@@ -19,7 +19,7 @@ struct MobileMemberHomeView: View {
 
                     summaryStrip(theme: theme)
 
-                    upcomingSection(student: student, theme: theme)
+                    newsSection(theme: theme)
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
@@ -115,26 +115,27 @@ struct MobileMemberHomeView: View {
     }
 
     private func summaryStrip(theme: MDTheme) -> some View {
-        HStack(spacing: 0) {
-            summaryItem(
-                value: "\(activeCourseCount)",
-                label: "已报课程",
-                color: theme.accent
-            )
-            Divider().frame(height: 42)
-            summaryItem(
-                value: "\(leaveRequestCount)",
-                label: "请假记录",
-                color: theme.success
-            )
-            Divider().frame(height: 42)
-            summaryItem(
-                value: "\(unreadCount)",
-                label: "未读消息",
-                color: theme.success
-            )
+        HStack(spacing: 10) {
+            Image(systemName: "checklist.checked")
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(theme.accent)
+                .frame(width: 34, height: 34)
+                .background(theme.accent.opacity(0.12), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text("已报课程")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+                Text("\(activeCourseCount) 门")
+                    .mdFont(size: 17, weight: .bold, design: .monospaced)
+                    .foregroundStyle(theme.primaryText)
+            }
+            Spacer()
+            Text("本学期")
+                .mdFont(.compact)
+                .foregroundStyle(theme.secondaryText)
         }
-        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
         .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
         .overlay {
             RoundedRectangle(cornerRadius: MDMetrics.radius)
@@ -142,35 +143,32 @@ struct MobileMemberHomeView: View {
         }
     }
 
-    private func summaryItem(value: String, label: String, color: Color) -> some View {
-        VStack(spacing: 3) {
-            Text(value)
-                .mdFont(size: 17, weight: .bold, design: .monospaced)
-                .foregroundStyle(color)
-            Text(label)
-                .mdFont(.compact)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
     @ViewBuilder
-    private func upcomingSection(student: Student, theme: MDTheme) -> some View {
-        let upcoming = Array(model.upcomingSessions(forStudent: student.id).prefix(5))
+    private func newsSection(theme: MDTheme) -> some View {
+        let articles = Array(publishedNews.prefix(6))
         VStack(alignment: .leading, spacing: 8) {
-            MobileSectionHeading("近期课程", detail: upcoming.isEmpty ? nil : "未来 \(upcoming.count) 节")
-            ForEach(upcoming) { session in
-                MobileSessionRow(
-                    session: session,
-                    course: model.course(id: session.courseID),
-                    room: model.effectiveRoom(for: session),
-                    instructor: model.effectiveInstructor(for: session),
-                    trailingText: session.startsAt.mdChineseFormatted(.dateTime.month().day())
-                )
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
+            MobileSectionHeading("新闻", detail: articles.isEmpty ? nil : "最近更新")
+            if articles.isEmpty {
+                Text("暂无新闻")
+                    .mdFont(.body)
+                    .foregroundStyle(theme.secondaryText)
+                    .frame(maxWidth: .infinity, minHeight: 92)
+                    .background(theme.subtleSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(articles.enumerated()), id: \.element.id) { index, article in
+                        NavigationLink {
+                            MobileNewsDetailView(model: model, article: article)
+                        } label: {
+                            MobileNewsRow(model: model, article: article)
+                        }
+                        .buttonStyle(.plain)
+
+                        if index < articles.count - 1 {
+                            Divider().padding(.leading, 118)
+                        }
+                    }
+                }
                 .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
                 .overlay {
                     RoundedRectangle(cornerRadius: MDMetrics.radius)
@@ -185,13 +183,10 @@ struct MobileMemberHomeView: View {
         return model.activeEnrollments(forStudent: selectedStudentID).count
     }
 
-    private var leaveRequestCount: Int {
-        guard let selectedStudentID else { return 0 }
-        return model.leaveRequests.filter { $0.studentID == selectedStudentID }.count
-    }
-
-    private var unreadCount: Int {
-        model.notifications.filter { $0.status != .read }.count
+    private var publishedNews: [NewsArticle] {
+        model.newsArticles
+            .filter { $0.status == .published }
+            .sorted { ($0.publishedAt ?? $0.updatedAt) > ($1.publishedAt ?? $1.updatedAt) }
     }
 }
 #endif

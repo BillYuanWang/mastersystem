@@ -872,6 +872,114 @@ struct ContractConsentInsertRow: Codable, Sendable {
     }
 }
 
+struct NewsArticleRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let title: String
+    let summary: String
+    let bodyText: String
+    let authorName: String
+    let status: String
+    let publishedAt: String?
+    let createdAt: String
+    let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case title
+        case summary
+        case bodyText = "body_text"
+        case authorName = "author_name"
+        case status
+        case publishedAt = "published_at"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    init(_ article: NewsArticle, organizationID: UUID) {
+        id = article.id.rawValue
+        self.organizationID = organizationID
+        title = article.title
+        summary = article.summary
+        bodyText = article.bodyText
+        authorName = article.authorName
+        status = article.status.rawValue
+        publishedAt = article.publishedAt.map(SupabaseDateCodec.timestampString(from:))
+        createdAt = SupabaseDateCodec.timestampString(from: article.createdAt)
+        updatedAt = SupabaseDateCodec.timestampString(from: article.updatedAt)
+    }
+
+    func domain() throws -> NewsArticle {
+        guard let status = NewsArticleStatus(rawValue: status) else {
+            throw SupabaseRepositoryError.invalidValue(field: "新闻状态", value: status)
+        }
+        return try NewsArticle(
+            id: NewsArticleID(serverID: id),
+            title: title,
+            summary: summary,
+            bodyText: bodyText,
+            authorName: authorName,
+            status: status,
+            publishedAt: publishedAt.map { try SupabaseDateCodec.timestamp(from: $0) },
+            createdAt: SupabaseDateCodec.timestamp(from: createdAt),
+            updatedAt: SupabaseDateCodec.timestamp(from: updatedAt)
+        )
+    }
+}
+
+struct NewsArticleImageRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let articleID: UUID
+    let kind: String
+    let storagePath: String
+    let mimeType: String
+    let caption: String?
+    let sortOrder: Int
+    let placementAfterParagraph: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case articleID = "article_id"
+        case kind
+        case storagePath = "storage_path"
+        case mimeType = "mime_type"
+        case caption
+        case sortOrder = "sort_order"
+        case placementAfterParagraph = "placement_after_paragraph"
+    }
+
+    init(_ image: NewsArticleImage, organizationID: UUID) {
+        id = image.id.rawValue
+        self.organizationID = organizationID
+        articleID = image.articleID.rawValue
+        kind = image.kind.rawValue
+        storagePath = image.storagePath
+        mimeType = image.mimeType
+        caption = image.caption
+        sortOrder = image.sortOrder
+        placementAfterParagraph = image.placementAfterParagraph
+    }
+
+    func domain() throws -> NewsArticleImage {
+        guard let kind = NewsArticleImageKind(rawValue: kind) else {
+            throw SupabaseRepositoryError.invalidValue(field: "新闻图片类型", value: kind)
+        }
+        return NewsArticleImage(
+            id: NewsArticleImageID(serverID: id),
+            articleID: NewsArticleID(serverID: articleID),
+            kind: kind,
+            storagePath: storagePath,
+            mimeType: mimeType,
+            caption: caption,
+            sortOrder: sortOrder,
+            placementAfterParagraph: placementAfterParagraph
+        )
+    }
+}
+
 struct NotificationRow: Codable, Sendable {
     let id: UUID
     let organizationID: UUID

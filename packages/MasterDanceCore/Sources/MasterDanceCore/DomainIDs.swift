@@ -45,6 +45,8 @@ public enum AttendanceIDTag: Sendable {}
 public enum LeaveRequestIDTag: Sendable {}
 public enum ContractConsentIDTag: Sendable {}
 public enum ContractDocumentIDTag: Sendable {}
+public enum NewsArticleIDTag: Sendable {}
+public enum NewsArticleImageIDTag: Sendable {}
 public enum NotificationRecordIDTag: Sendable {}
 
 public typealias TermID = EntityID<TermIDTag>
@@ -63,4 +65,6 @@ public typealias AttendanceID = EntityID<AttendanceIDTag>
 public typealias LeaveRequestID = EntityID<LeaveRequestIDTag>
 public typealias ContractConsentID = EntityID<ContractConsentIDTag>
 public typealias ContractDocumentID = EntityID<ContractDocumentIDTag>
+public typealias NewsArticleID = EntityID<NewsArticleIDTag>
+public typealias NewsArticleImageID = EntityID<NewsArticleImageIDTag>
 public typealias NotificationRecordID = EntityID<NotificationRecordIDTag>

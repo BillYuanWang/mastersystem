@@ -1,4 +1,5 @@
 #if os(iOS)
+import Foundation
 import MasterDanceCore
 import SwiftUI
 
@@ -20,7 +21,7 @@ struct MobileWorkspaceView: View {
                 onSignOut: onSignOut
             )
         } else if let memberActions {
-            if role == .guardian {
+            if role == .guardian && !isGuardianPreview {
                 MobileGuardianAgreementGateView(
                     model: model,
                     actions: memberActions,
@@ -39,6 +40,14 @@ struct MobileWorkspaceView: View {
                 description: Text("请退出后重新登录。")
             )
         }
+    }
+
+    private var isGuardianPreview: Bool {
+#if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--md-preview-guardian")
+#else
+        false
+#endif
     }
 
     private func memberTabs(actions: MobileMemberActionService) -> some View {
