@@ -6,6 +6,7 @@ enum AdminSection: String, CaseIterable, Identifiable {
     case courses
     case families
     case enrollments
+    case receipts
     case attendance
     case requests
     case news
@@ -20,6 +21,7 @@ enum AdminSection: String, CaseIterable, Identifiable {
         case .courses: "课程"
         case .families: "家庭/学员"
         case .enrollments: "报名"
+        case .receipts: "收据"
         case .attendance: "签到"
         case .requests: "请假"
         case .news: "新闻"
@@ -34,6 +36,7 @@ enum AdminSection: String, CaseIterable, Identifiable {
         case .courses: "books.vertical"
         case .families: "person.2"
         case .enrollments: "list.bullet.rectangle"
+        case .receipts: "receipt"
         case .attendance: "checkmark.circle"
         case .requests: "calendar.badge.minus"
         case .news: "newspaper"

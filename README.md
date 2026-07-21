@@ -1,6 +1,6 @@
 # Master Dance
 
-Current local test release: `v0.1.15a` (app version 0.1.15; macOS build 52, iOS build 27).
+Current local test release: `v0.1.15b` (app version 0.1.15; macOS build 53, iOS build 27).
 
 Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
 
@@ -83,6 +83,9 @@ See `supabase/README.md` and `docs/backend-operations.md` for deployment and rec
 The MVP supports term enrollment, scheduling, guardian-first learner profiles,
 one-time account linking, course enrollment, attendance, leave handling,
 contract-consent records, and notification records.
+MD Desk also creates local PNG receipts under
+`~/Documents/MD Desk Docs/<learner>/`; receipt drafts and files are not uploaded
+to Supabase.
 Guardian leave must be recorded at least 12 hours before class; administrators
 can record it at any time, and leave records do not use an approval workflow.
 Course categories, age groups, rooms, instructors, and course names are

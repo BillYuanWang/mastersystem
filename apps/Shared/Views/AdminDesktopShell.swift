@@ -82,6 +82,8 @@ struct AdminDesktopShell: View {
             StudentsWorkspaceView(model: model)
         case .enrollments:
             EnrollmentsWorkspaceView(model: model)
+        case .receipts:
+            ReceiptWorkspaceView(model: model)
         case .attendance:
             AttendanceWorkspaceView(model: model)
         case .requests:
