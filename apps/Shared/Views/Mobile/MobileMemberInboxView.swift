@@ -1,6 +1,7 @@
 #if os(iOS)
 import MasterDanceCore
 import SwiftUI
+import UIKit
 
 @MainActor
 struct MobileMemberInboxView: View {
@@ -105,9 +106,9 @@ struct MobileMemberInboxView: View {
             }
             Spacer()
             if model.contractConsents.contains(where: { $0.contractDocumentID == document.id }) {
-                Image(systemName: "checkmark.seal.fill")
+                Label("已签署", systemImage: "checkmark.seal.fill")
+                    .mdFont(.compactStrong)
                     .foregroundStyle(theme.success)
-                    .accessibilityLabel("已确认")
             }
         }
         .padding(.vertical, 3)
@@ -165,27 +166,27 @@ private struct MobileContractDetailView: View {
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(document.title)
-                        .mdFont(size: 20, weight: .bold)
-                        .foregroundStyle(theme.primaryText)
-                    HStack(spacing: 8) {
-                        Text("版本 \(document.version)")
-                            .mdFont(.mono)
-                        Label(
-                            hasConsent ? "已签署" : "未签署",
-                            systemImage: hasConsent ? "checkmark.seal.fill" : "exclamationmark.circle"
-                        )
-                        .mdFont(.compactStrong)
-                        .foregroundStyle(hasConsent ? theme.success : theme.danger)
-                    }
-                    .foregroundStyle(theme.secondaryText)
-                }
-
+            VStack(alignment: .leading, spacing: 22) {
+                contractHeader(theme: theme)
+                Divider()
+                MobileAgreementTextView(bodyText: document.bodyText)
+                MobileAgreementLegalFooter()
                 Divider()
 
-                MobileAgreementTextView(bodyText: document.bodyText)
+                if let consent {
+                    MobileContractSignatureRecord(consent: consent)
+                } else {
+                    Label("尚未找到这份合同的签署记录", systemImage: "signature")
+                        .mdFont(.bodyStrong)
+                        .foregroundStyle(theme.danger)
+                        .frame(maxWidth: .infinity, minHeight: 88, alignment: .center)
+                }
+
+                Text("合同正文、版本、签署时间与手写签名共同构成此电子签署记录。")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .multilineTextAlignment(.center)
             }
             .padding(20)
             .frame(maxWidth: 640)
@@ -194,12 +195,119 @@ private struct MobileContractDetailView: View {
         .background(theme.background)
         .navigationTitle("合同")
         .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await model.reload() }
     }
 
-    private var hasConsent: Bool {
-        model.contractConsents.contains {
-            $0.contractDocumentID == document.id && $0.enrollmentID == nil
+    private func contractHeader(theme: MDTheme) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(
+                consent == nil ? "待签署合同" : "已签署合同 / SIGNED AGREEMENT",
+                systemImage: consent == nil ? "doc.text" : "checkmark.seal.fill"
+            )
+            .mdFont(.compactStrong)
+            .foregroundStyle(consent == nil ? theme.danger : theme.success)
+
+            Text(document.title)
+                .mdFont(size: 23, weight: .bold)
+                .foregroundStyle(theme.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Starton EDU Irvine, Inc. · Master Dance")
+                .mdFont(.compactStrong)
+                .foregroundStyle(theme.secondaryText)
+
+            HStack(spacing: 8) {
+                Text("版本 \(document.version)")
+                    .mdFont(.mono)
+                Text("·")
+                Text(model.term(id: document.termID)?.name ?? "学期")
+                    .mdFont(.compact)
+            }
+            .foregroundStyle(theme.secondaryText)
         }
+    }
+
+    private var consent: ContractConsent? {
+        model.contractConsents
+            .filter {
+                $0.contractDocumentID == document.id && $0.enrollmentID == nil
+            }
+            .max { $0.consentedAt < $1.consentedAt }
+    }
+}
+
+@MainActor
+private struct MobileContractSignatureRecord: View {
+    let consent: ContractConsent
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("电子签署记录", systemImage: "signature")
+                    .mdFont(.bodyStrong)
+                    .foregroundStyle(theme.primaryText)
+                Spacer()
+                Label("已记录", systemImage: "checkmark.shield.fill")
+                    .mdFont(.compactStrong)
+                    .foregroundStyle(theme.success)
+            }
+
+            Divider()
+
+            LabeledContent("签署人") {
+                Text(consent.signerDisplayName)
+                    .mdFont(.bodyStrong)
+            }
+            LabeledContent("身份") {
+                Text(consent.signerKind == .guardian ? "监护人" : "成人学员")
+                    .mdFont(.compactStrong)
+            }
+            LabeledContent("签署时间") {
+                Text(consent.consentedAt.mdChineseFormatted(.dateTime.year().month().day().hour().minute()))
+                    .mdFont(.mono)
+                    .multilineTextAlignment(.trailing)
+            }
+            LabeledContent("合同版本") {
+                Text(consent.contractVersion)
+                    .mdFont(.mono)
+            }
+            LabeledContent("记录编号") {
+                Text(String(consent.id.description.prefix(8)).uppercased())
+                    .mdFont(.mono)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("监护人手写签名")
+                    .mdFont(.compactStrong)
+                    .foregroundStyle(theme.secondaryText)
+
+                if let image = consent.signaturePNG.flatMap(UIImage.init(data:)) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, minHeight: 112, maxHeight: 168)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: MDMetrics.radius))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: MDMetrics.radius)
+                                .stroke(theme.separator, lineWidth: 1)
+                        }
+                        .accessibilityLabel("\(consent.signerDisplayName)的手写签名")
+                } else {
+                    Label("签名影像暂未同步，请下拉刷新", systemImage: "icloud.and.arrow.down")
+                        .mdFont(.compactStrong)
+                        .foregroundStyle(theme.secondaryText)
+                        .frame(maxWidth: .infinity, minHeight: 112, alignment: .center)
+                        .background(theme.subtleSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: MDMetrics.radius))
+                }
+            }
+        }
+        .foregroundStyle(theme.primaryText)
     }
 }
 #endif

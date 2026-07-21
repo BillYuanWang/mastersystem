@@ -1,4 +1,5 @@
 import Foundation
+import MasterDanceCore
 import Testing
 @testable import MasterDanceAdmin
 
@@ -39,5 +40,35 @@ struct ContractSignatureTests {
         )
 
         #expect(row.decodedPNG == nil)
+    }
+
+    @Test("A newly accepted agreement keeps its signature in local UI state")
+    @MainActor
+    func keepsNewSignatureLocally() async {
+        let term = Term(name: "测试学期", startsOn: .now, endsOn: .now, status: .open)
+        let document = ContractDocument(
+            termID: term.id,
+            version: "v1",
+            title: "测试协议",
+            bodyText: "测试协议正文",
+            status: .published,
+            publishedAt: .now
+        )
+        let repository = PreviewMasterDanceStore(
+            data: PreviewData(terms: [term], contractDocuments: [document])
+        )
+        let model = AppModel(repository: repository)
+        await model.reload()
+        let signature = Data(pngBytes)
+
+        model.applyLocalContractConsent(
+            documentID: document.id,
+            enrollmentID: nil,
+            signerKind: .guardian,
+            signerDisplayName: "测试家长",
+            signaturePNG: signature
+        )
+
+        #expect(model.contractConsents.first?.signaturePNG == signature)
     }
 }

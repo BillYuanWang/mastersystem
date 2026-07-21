@@ -157,6 +157,7 @@ struct MobileGuardianContractRegistrationView: View {
             if let document {
                 VStack(alignment: .leading, spacing: 18) {
                     MobileAgreementTextView(bodyText: document.bodyText)
+                    MobileAgreementLegalFooter()
 
                     Divider()
 

@@ -196,6 +196,14 @@ public extension PreviewData {
             status: .published,
             publishedAt: now
         )
+        let agreementConsent = ContractConsent(
+            contractDocumentID: agreement.id,
+            termID: term.id,
+            contractVersion: agreement.version,
+            signerKind: .guardian,
+            signerDisplayName: "刘子墨家长",
+            consentedAt: now
+        )
 
         let newsArticle = NewsArticle(
             title: "秋季课程与开学安排",
@@ -228,6 +236,7 @@ public extension PreviewData {
             attendance: attendance,
             leaveRequests: leaveRequests,
             contractDocuments: [agreement],
+            contractConsents: [agreementConsent],
             newsArticles: [newsArticle],
             newsArticleImages: [newsCover],
             notifications: notifications

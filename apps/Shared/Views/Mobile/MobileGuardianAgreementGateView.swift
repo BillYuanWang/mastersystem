@@ -42,7 +42,9 @@ struct MobileGuardianAgreementGateView<Content: View>: View {
                     signerDisplayName: signerDisplayName,
                     actions: actions,
                     onSignOut: onSignOut,
-                    onAccepted: { accepted(agreement) },
+                    onAccepted: { signaturePNG in
+                        accepted(agreement, signaturePNG: signaturePNG)
+                    },
                     onRefresh: { Task { await refresh(showLoading: true) } }
                 )
             case .failed(let message):
@@ -118,12 +120,13 @@ struct MobileGuardianAgreementGateView<Content: View>: View {
         }
     }
 
-    private func accepted(_ agreement: MobileGuardianAgreement) {
+    private func accepted(_ agreement: MobileGuardianAgreement, signaturePNG: Data) {
         model.applyLocalContractConsent(
             documentID: ContractDocumentID(serverID: agreement.id),
             enrollmentID: nil,
             signerKind: .guardian,
-            signerDisplayName: signerDisplayName
+            signerDisplayName: signerDisplayName,
+            signaturePNG: signaturePNG
         )
         state = .ready
     }
@@ -142,7 +145,7 @@ private struct MobileGuardianAgreementSigningView: View {
     let signerDisplayName: String
     let actions: MobileMemberActionService
     let onSignOut: (() -> Void)?
-    let onAccepted: () -> Void
+    let onAccepted: (Data) -> Void
     let onRefresh: () -> Void
 
     @State private var hasReachedEnd = false
@@ -162,6 +165,7 @@ private struct MobileGuardianAgreementSigningView: View {
 
                         VStack(alignment: .leading, spacing: 18) {
                             MobileAgreementTextView(bodyText: agreement.bodyText)
+                            MobileAgreementLegalFooter()
                             Divider()
                             Label("已阅读至协议末尾", systemImage: "checkmark.circle")
                                 .mdFont(.compactStrong)
@@ -322,7 +326,7 @@ private struct MobileGuardianAgreementSigningView: View {
                     signaturePNG: signaturePNG
                 )
                 isSubmitting = false
-                onAccepted()
+                onAccepted(signaturePNG)
             } catch {
                 isSubmitting = false
                 errorMessage = error.localizedDescription

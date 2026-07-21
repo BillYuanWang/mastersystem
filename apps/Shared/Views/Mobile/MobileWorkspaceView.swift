@@ -99,9 +99,14 @@ private struct MobileMemberTabs: View {
     let onSignOut: (() -> Void)?
 
     @State private var selectedStudentID: StudentID?
+#if DEBUG
+    @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("--md-preview-inbox") ? 3 : 0
+#else
+    @State private var selectedTab = 0
+#endif
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             NavigationStack {
                 MobileMemberHomeView(
                     model: model,
@@ -109,6 +114,7 @@ private struct MobileMemberTabs: View {
                 )
             }
             .tabItem { Label("首页", systemImage: "house") }
+            .tag(0)
 
             NavigationStack {
                 MobileMemberCoursesView(
@@ -117,6 +123,7 @@ private struct MobileMemberTabs: View {
                 )
             }
             .tabItem { Label("课程", systemImage: "calendar") }
+            .tag(1)
 
             NavigationStack {
                 MobileMemberLeaveView(
@@ -126,6 +133,7 @@ private struct MobileMemberTabs: View {
                 )
             }
             .tabItem { Label("请假", systemImage: "calendar.badge.minus") }
+            .tag(2)
 
             NavigationStack {
                 MobileMemberInboxView(
@@ -135,6 +143,7 @@ private struct MobileMemberTabs: View {
             }
             .tabItem { Label("消息", systemImage: "bell") }
             .badge(unreadNotificationCount)
+            .tag(3)
 
             NavigationStack {
                 MobileAccountSettingsView(
@@ -147,6 +156,7 @@ private struct MobileMemberTabs: View {
                 )
             }
             .tabItem { Label("我的", systemImage: "person.crop.circle") }
+            .tag(4)
         }
         .task(id: model.students.map(\.id)) {
             selectAvailableStudent()

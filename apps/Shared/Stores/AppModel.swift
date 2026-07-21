@@ -285,7 +285,8 @@ final class AppModel {
         documentID: ContractDocumentID,
         enrollmentID: EnrollmentID?,
         signerKind: ConsentSignerKind,
-        signerDisplayName: String
+        signerDisplayName: String,
+        signaturePNG: Data? = nil
     ) {
         guard let document = contractDocuments.first(where: { $0.id == documentID }) else { return }
         guard !contractConsents.contains(where: {
@@ -299,7 +300,8 @@ final class AppModel {
                 contractVersion: document.version,
                 signerKind: signerKind,
                 signerDisplayName: signerDisplayName,
-                consentedAt: Date()
+                consentedAt: Date(),
+                signaturePNG: signaturePNG
             )
         )
     }

@@ -44,6 +44,42 @@ struct MobileAgreementTextView: View {
     }
 }
 
+struct MobileAgreementLegalFooter: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        VStack(alignment: .leading, spacing: 10) {
+            Label("合同主体 / CONTRACTING ENTITY", systemImage: "building.columns.fill")
+                .mdFont(.compactStrong)
+                .foregroundStyle(theme.secondaryText)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Starton EDU Irvine, Inc.")
+                    .mdFont(.bodyStrong)
+                    .foregroundStyle(theme.primaryText)
+                Text("Master Dance · 尔湾佳美舞蹈")
+                    .mdFont(.compactStrong)
+                    .foregroundStyle(theme.primaryText)
+            }
+
+            Divider()
+
+            Text("本协议由 Starton EDU Irvine, Inc. 运营的 Master Dance（尔湾佳美舞蹈）发布并执行。在适用法律允许的范围内，Master Dance 保留对本协议及相关课程、教务安排的最终解释权；本条不限制任何依法不得放弃或排除的权利。")
+                .mdFont(.compact)
+                .foregroundStyle(theme.secondaryText)
+                .lineSpacing(4)
+
+            Text("This agreement is issued and administered by Master Dance, operated by Starton EDU Irvine, Inc. To the fullest extent permitted by applicable law, Master Dance reserves the final right to interpret this agreement and related course and administrative matters. Nothing in this statement limits any non-waivable rights under applicable law.")
+                .mdFont(.compact)
+                .foregroundStyle(theme.secondaryText)
+                .lineSpacing(3)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+    }
+}
+
 private struct AgreementParagraph: Identifiable {
     let id: Int
     let text: String
