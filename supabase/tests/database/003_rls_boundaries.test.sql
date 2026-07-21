@@ -190,6 +190,8 @@ left join public.audit_events audit
   on audit.organization_id = organization.id
 group by organization.id;
 
+grant select on expected_sync_revisions to authenticated;
+
 set local role authenticated;
 select set_config(
   'request.jwt.claim.sub',

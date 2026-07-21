@@ -98,7 +98,7 @@ select ok(
 );
 select ok(
   to_regprocedure(
-    'public.admin_create_student_for_guardian(uuid,text,text,public.student_kind)'
+    'public.admin_create_student_for_guardian(uuid,text,text,public.student_kind,date)'
   ) is not null,
   'family-scoped student creation RPC exists'
 );
