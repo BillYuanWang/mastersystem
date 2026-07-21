@@ -46,9 +46,9 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.14</string>
+  <string>0.1.15</string>
   <key>CFBundleVersion</key>
-  <string>50</string>
+  <string>51</string>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>
