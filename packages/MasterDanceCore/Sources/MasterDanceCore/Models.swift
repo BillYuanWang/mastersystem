@@ -741,12 +741,10 @@ public enum AdvertisementRules {
     public static let slotRange = 1...5
     public static let monthlyRateCents = 9_900
     public static let maximumAdvertiserNameCount = 40
-    public static let maximumCopyCount = 120
+    public static let maximumCopyCount = 1_024
     public static let maximumFileByteCount = 8 * 1_024 * 1_024
     public static let maximumPixelDimension = 4_096
     public static let minimumThumbnailDimension = 600
-    public static let minimumPosterWidth = 900
-    public static let minimumPosterHeight = 1_125
 
     public static func isValidThumbnail(width: Int, height: Int) -> Bool {
         guard width >= minimumThumbnailDimension,
@@ -760,14 +758,10 @@ public enum AdvertisementRules {
     }
 
     public static func isValidPoster(width: Int, height: Int) -> Bool {
-        guard width >= minimumPosterWidth,
-              height >= minimumPosterHeight,
-              width <= maximumPixelDimension,
-              height <= maximumPixelDimension,
-              height > 0 else {
-            return false
-        }
-        return abs(Double(width) / Double(height) - 0.8) <= 0.02
+        width > 0
+            && height > 0
+            && width <= maximumPixelDimension
+            && height <= maximumPixelDimension
     }
 
     public static func billableMonthCount(

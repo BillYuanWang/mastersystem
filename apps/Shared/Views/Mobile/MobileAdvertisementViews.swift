@@ -149,17 +149,20 @@ private struct MobileAdvertisementDetailView: View {
                             .foregroundStyle(theme.primaryText)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Text(advertisement.copyText)
-                            .mdFont(.compactStrong)
-                            .foregroundStyle(theme.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-
                         Text("合作推广")
                             .mdFont(.compactStrong)
                             .foregroundStyle(theme.accent)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+
+                MobileSectionHeading("广告介绍")
+                    .padding(.top, 2)
+
+                Text(advertisement.copyText)
+                    .mdFont(.body)
+                    .foregroundStyle(theme.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 MobileSectionHeading("广告海报")
                     .padding(.top, 2)
@@ -171,7 +174,7 @@ private struct MobileAdvertisementDetailView: View {
                         contentMode: .fit
                     )
                     .frame(maxWidth: .infinity)
-                    .aspectRatio(4 / 5, contentMode: .fit)
+                    .aspectRatio(posterPreviewAspectRatio, contentMode: .fit)
                     .background(theme.subtleSurface)
                     .clipShape(RoundedRectangle(cornerRadius: MDMetrics.radius))
                     .overlay {
@@ -205,6 +208,16 @@ private struct MobileAdvertisementDetailView: View {
         .fullScreenCover(isPresented: $isShowingFullPoster) {
             AdvertisementPosterFullscreenView(model: model, media: advertisement.poster)
         }
+    }
+
+    private var posterPreviewAspectRatio: CGFloat {
+        guard let poster = advertisement.poster,
+              poster.pixelWidth > 0,
+              poster.pixelHeight > 0 else {
+            return 4 / 5
+        }
+        let sourceRatio = CGFloat(poster.pixelWidth) / CGFloat(poster.pixelHeight)
+        return min(max(sourceRatio, 0.5), 1.8)
     }
 }
 

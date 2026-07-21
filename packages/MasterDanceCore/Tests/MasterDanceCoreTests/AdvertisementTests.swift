@@ -28,6 +28,15 @@ struct AdvertisementTests {
         #expect(!advertisement.isActive(on: start, calendar: calendar))
     }
 
+    @Test("Advertisement copy and posters support flexible detail content")
+    func flexibleDetailContent() {
+        #expect(AdvertisementRules.maximumCopyCount == 1_024)
+        #expect(AdvertisementRules.isValidPoster(width: 1_600, height: 900))
+        #expect(AdvertisementRules.isValidPoster(width: 700, height: 2_000))
+        #expect(!AdvertisementRules.isValidPoster(width: 0, height: 900))
+        #expect(!AdvertisementRules.isValidPoster(width: 4_097, height: 900))
+    }
+
     @Test("Preview storage keeps both images and rejects slot overlap")
     func mediaAndSlotOverlap() async throws {
         let calendar = fixedCalendar

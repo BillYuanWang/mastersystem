@@ -297,12 +297,12 @@ enum AppModelError: LocalizedError {
         case .missingAdvertisementName: "请输入广告客户或品牌名称。"
         case .advertisementNameTooLong: "广告名称不能超过 40 个字符。"
         case .missingAdvertisementCopy: "请输入广告文字。"
-        case .advertisementCopyTooLong: "广告文字不能超过 120 个字符。"
+        case .advertisementCopyTooLong: "广告正文不能超过 1024 个字符。"
         case .invalidAdvertisementSlot: "广告位必须在 1 到 5 之间。"
         case .invalidAdvertisementDateRange: "广告结束日期不能早于起始日期。"
         case .invalidAdvertisementThumbnail: "缩略图必须为 1:1，至少 600×600，且不超过 8 MB。"
-        case .invalidAdvertisementPoster: "海报必须为 4:5，至少 900×1125，且不超过 8 MB。"
-        case .missingAdvertisementMedia: "发布广告前需要方形缩略图和 4:5 竖版海报。"
+        case .invalidAdvertisementPoster: "广告海报必须是有效图片，且不超过 8 MB。"
+        case .missingAdvertisementMedia: "发布广告前需要方形缩略图和广告海报。"
         case .advertisementSlotConflict: "这个广告位在所选日期内已有其他广告。"
         }
     }

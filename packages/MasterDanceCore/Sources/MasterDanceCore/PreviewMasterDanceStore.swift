@@ -530,7 +530,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         }
         if let posterData {
             guard var poster = saved.poster else {
-                throw PreviewRepositoryError.recordInUse("请选择 4:5 竖版海报。")
+                throw PreviewRepositoryError.recordInUse("请选择广告海报。")
             }
             poster.byteCount = posterData.count
             if poster.storagePath.isEmpty {
@@ -624,7 +624,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         }
         guard !advertisement.copyText.isEmpty,
               advertisement.copyText.count <= AdvertisementRules.maximumCopyCount else {
-            throw PreviewRepositoryError.recordInUse("广告文字需要填写，且不能超过 120 个字符。")
+            throw PreviewRepositoryError.recordInUse("广告正文需要填写，且不能超过 1024 个字符。")
         }
         guard advertisement.startsOn <= advertisement.endsOn else {
             throw PreviewRepositoryError.invalidTermRange
@@ -645,7 +645,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
                 width: poster.pixelWidth,
                 height: poster.pixelHeight
             ), poster.byteCount <= AdvertisementRules.maximumFileByteCount else {
-                throw PreviewRepositoryError.recordInUse("海报必须为 4:5，至少 900×1125，且不超过 8 MB。")
+                throw PreviewRepositoryError.recordInUse("广告海报必须是有效图片，且不超过 8 MB。")
             }
         }
         if advertisement.status == .published {
@@ -653,7 +653,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
                   let poster = advertisement.poster,
                   !thumbnail.storagePath.isEmpty,
                   !poster.storagePath.isEmpty else {
-                throw PreviewRepositoryError.recordInUse("发布广告前需要方形缩略图和 4:5 竖版海报。")
+                throw PreviewRepositoryError.recordInUse("发布广告前需要方形缩略图和广告海报。")
             }
             let overlaps = data.advertisements.contains {
                 $0.id != advertisement.id

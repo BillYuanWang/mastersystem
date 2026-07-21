@@ -1,6 +1,5 @@
 #if os(macOS)
 import AppKit
-import ImageIO
 import MasterDanceCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -540,20 +539,25 @@ private struct AdvertisementEditorView: View {
                         .frame(width: 110)
                     }
 
-                    editorField(title: "客户 / 品牌名称", required: true) {
-                        TextField("例如：美西餐饮", text: $draft.advertiserName)
-                            .textFieldStyle(.roundedBorder)
+                    editorField(title: "首页标题 / 品牌名称", required: true) {
+                        VStack(alignment: .trailing, spacing: 5) {
+                            TextField("例如：美西餐饮", text: $draft.advertiserName)
+                                .textFieldStyle(.roundedBorder)
+                            Text("\(draft.advertiserName.count) / \(AdvertisementRules.maximumAdvertiserNameCount)")
+                                .mdFont(.mono)
+                                .foregroundStyle(theme.secondaryText)
+                        }
                     }
                     .frame(maxWidth: .infinity)
                 }
 
-                editorField(title: "广告文字", required: true) {
+                editorField(title: "广告正文", required: true) {
                     VStack(alignment: .trailing, spacing: 5) {
                         TextEditor(text: $draft.copyText)
                             .mdFont(.body)
                             .scrollContentBackground(.hidden)
                             .padding(9)
-                            .frame(minHeight: 112)
+                            .frame(minHeight: 210)
                             .background(theme.raisedSurface)
                             .overlay {
                                 RoundedRectangle(cornerRadius: MDMetrics.radius)
@@ -621,7 +625,7 @@ private struct AdvertisementEditorView: View {
             VStack(alignment: .leading, spacing: 18) {
                 mediaSection(
                     title: "方形缩略图",
-                    detail: "1:1 · 最低 600×600 · 最大 8 MB",
+                    detail: "1:1 · 最低 600×600 · 自动优化至 7 MB 内",
                     media: draft.thumbnail,
                     data: thumbnailData,
                     aspectRatio: 1,
@@ -632,16 +636,16 @@ private struct AdvertisementEditorView: View {
                 Divider()
 
                 mediaSection(
-                    title: "iPhone 竖版海报",
-                    detail: "4:5 · 最低 900×1125 · 最大 8 MB",
+                    title: "广告海报",
+                    detail: "任意比例 · 自动按比例优化至 7 MB 内",
                     media: draft.poster,
                     data: posterData,
-                    aspectRatio: 4 / 5,
+                    aspectRatio: posterPreviewAspectRatio,
                     action: { chooseImage(kind: .poster) },
                     theme: theme
                 )
 
-                Text("支持 JPEG、PNG、HEIC。图片会完整展示，不会自动裁切。")
+                Text("支持 JPEG、PNG、HEIC。超限时会按比例自动缩小和压缩，不会裁切。")
                     .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
             }
@@ -768,6 +772,16 @@ private struct AdvertisementEditorView: View {
             && !hasSlotConflict
     }
 
+    private var posterPreviewAspectRatio: CGFloat {
+        guard let poster = draft.poster,
+              poster.pixelWidth > 0,
+              poster.pixelHeight > 0 else {
+            return 4 / 5
+        }
+        let sourceRatio = CGFloat(poster.pixelWidth) / CGFloat(poster.pixelHeight)
+        return min(max(sourceRatio, 0.5), 1.8)
+    }
+
     private var hasSlotConflict: Bool {
         model.advertisements.contains {
             $0.id != draft.id
@@ -814,24 +828,28 @@ private struct AdvertisementEditorView: View {
         url: URL,
         kind: AdvertisementImageKind
     ) throws -> AdvertisementImageSelection {
-        let data = try Data(contentsOf: url)
-        guard data.count <= AdvertisementRules.maximumFileByteCount else {
-            throw AdvertisementImageError.fileTooLarge
-        }
         let mimeType = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? ""
         guard ["image/jpeg", "image/png", "image/heic", "image/heif"].contains(mimeType) else {
             throw AdvertisementImageError.unsupportedType
         }
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = properties[kCGImagePropertyPixelWidth] as? Int,
-              let height = properties[kCGImagePropertyPixelHeight] as? Int else {
-            throw AdvertisementImageError.unreadable
-        }
+        let prepared = try ImageUploadOptimizer.prepare(
+            data: Data(contentsOf: url),
+            sourceMimeType: mimeType,
+            maximumByteCount: AdvertisementImageUploadRules.maximumFileByteCount,
+            maximumPixelDimension: AdvertisementRules.maximumPixelDimension
+        )
 
         let isValid = switch kind {
-        case .thumbnail: AdvertisementRules.isValidThumbnail(width: width, height: height)
-        case .poster: AdvertisementRules.isValidPoster(width: width, height: height)
+        case .thumbnail:
+            AdvertisementRules.isValidThumbnail(
+                width: prepared.pixelWidth,
+                height: prepared.pixelHeight
+            )
+        case .poster:
+            AdvertisementRules.isValidPoster(
+                width: prepared.pixelWidth,
+                height: prepared.pixelHeight
+            )
         }
         guard isValid else {
             throw kind == .thumbnail ? AdvertisementImageError.invalidThumbnail : AdvertisementImageError.invalidPoster
@@ -844,12 +862,12 @@ private struct AdvertisementEditorView: View {
         return AdvertisementImageSelection(
             media: AdvertisementMedia(
                 storagePath: previousPath,
-                mimeType: mimeType,
-                pixelWidth: width,
-                pixelHeight: height,
-                byteCount: data.count
+                mimeType: prepared.mimeType,
+                pixelWidth: prepared.pixelWidth,
+                pixelHeight: prepared.pixelHeight,
+                byteCount: prepared.data.count
             ),
-            data: data
+            data: prepared.data
         )
     }
 
@@ -889,25 +907,26 @@ private enum AdvertisementImageKind {
     case poster
 }
 
+private enum AdvertisementImageUploadRules {
+    // Leave headroom below the 8 MB bucket limit used by advertisement metadata validation.
+    static let maximumFileByteCount = 7 * 1_024 * 1_024
+}
+
 private struct AdvertisementImageSelection {
     let media: AdvertisementMedia
     let data: Data
 }
 
 private enum AdvertisementImageError: LocalizedError {
-    case fileTooLarge
     case unsupportedType
-    case unreadable
     case invalidThumbnail
     case invalidPoster
 
     var errorDescription: String? {
         switch self {
-        case .fileTooLarge: "单张广告图片不能超过 8 MB。"
         case .unsupportedType: "仅支持 JPEG、PNG 和 HEIC 图片。"
-        case .unreadable: "无法读取这张图片。"
-        case .invalidThumbnail: "缩略图必须为 1:1，至少 600×600，且最长边不能超过 4096。"
-        case .invalidPoster: "海报必须为 4:5，至少 900×1125，且最长边不能超过 4096。"
+        case .invalidThumbnail: "缩略图必须为 1:1，原图至少 600×600。"
+        case .invalidPoster: "无法读取这张广告海报，请更换图片。"
         }
     }
 }

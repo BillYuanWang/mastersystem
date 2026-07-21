@@ -100,7 +100,13 @@ private struct MobileMemberTabs: View {
 
     @State private var selectedStudentID: StudentID?
 #if DEBUG
-    @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("--md-preview-inbox") ? 3 : 0
+    @State private var selectedTab: Int = {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--md-preview-courses") { return 1 }
+        if arguments.contains("--md-preview-growth") { return 2 }
+        if arguments.contains("--md-preview-inbox") { return 3 }
+        return 0
+    }()
 #else
     @State private var selectedTab = 0
 #endif
@@ -126,13 +132,12 @@ private struct MobileMemberTabs: View {
             .tag(1)
 
             NavigationStack {
-                MobileMemberLeaveView(
+                MobileMemberGrowthView(
                     model: model,
-                    actions: actions,
                     selectedStudentID: $selectedStudentID
                 )
             }
-            .tabItem { Label("请假", systemImage: "calendar.badge.minus") }
+            .tabItem { Label("成长", systemImage: "chart.line.uptrend.xyaxis") }
             .tag(2)
 
             NavigationStack {
@@ -154,7 +159,7 @@ private struct MobileMemberTabs: View {
                     onSignOut: onSignOut
                 )
             }
-            .tabItem { Label("我的", systemImage: "person.crop.circle") }
+            .tabItem { Label("帐号", systemImage: "person.crop.circle") }
             .tag(4)
         }
         .task(id: model.students.map(\.id)) {

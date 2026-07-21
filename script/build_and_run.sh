@@ -8,6 +8,9 @@ BUNDLE_ID="com.masterdance.desk"
 MIN_SYSTEM_VERSION="14.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SOURCE_INFO_PLIST="$ROOT_DIR/apps/MasterDanceAdmin/Info.plist"
+APP_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$SOURCE_INFO_PLIST")"
+APP_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$SOURCE_INFO_PLIST")"
 APP_BUNDLE="$ROOT_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
@@ -46,9 +49,9 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.18</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>57</string>
+  <string>$APP_BUILD</string>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>

@@ -744,16 +744,24 @@ private struct NewsArticleEditorView: View {
         let allowed = Set(["image/jpeg", "image/png", "image/heic", "image/heif", "image/webp"])
         var selections: [NewsImageSelection] = []
         for url in panel.urls {
-            guard let data = try? Data(contentsOf: url), data.count <= 12 * 1_024 * 1_024 else {
-                errorMessage = "单张图片不能超过 12 MB。"
-                continue
-            }
             let mimeType = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? ""
             guard allowed.contains(mimeType) else {
                 errorMessage = "仅支持 JPEG、PNG、HEIC 和 WebP 图片。"
                 continue
             }
-            selections.append(NewsImageSelection(data: data, mimeType: mimeType))
+            do {
+                let prepared = try ImageUploadOptimizer.prepare(
+                    data: Data(contentsOf: url),
+                    sourceMimeType: mimeType,
+                    maximumByteCount: NewsImageUploadRules.maximumFileByteCount,
+                    maximumPixelDimension: NewsImageUploadRules.maximumPixelDimension
+                )
+                selections.append(
+                    NewsImageSelection(data: prepared.data, mimeType: prepared.mimeType)
+                )
+            } catch {
+                errorMessage = "\(url.lastPathComponent)：\(error.localizedDescription)"
+            }
         }
         return selections
     }
@@ -816,6 +824,12 @@ private struct NewsImageEditorDraft: Identifiable {
 private struct NewsImageSelection {
     let data: Data
     let mimeType: String
+}
+
+private enum NewsImageUploadRules {
+    // Keep a margin below the live Storage limit so upload framing never crosses it.
+    static let maximumFileByteCount = 8 * 1_024 * 1_024
+    static let maximumPixelDimension = 4_096
 }
 
 @MainActor

@@ -926,7 +926,7 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         }
         guard !advertisement.copyText.isEmpty,
               advertisement.copyText.count <= AdvertisementRules.maximumCopyCount else {
-            throw SupabaseRepositoryError.server("广告文字需要填写，且不能超过 120 个字符。")
+            throw SupabaseRepositoryError.server("广告正文需要填写，且不能超过 1024 个字符。")
         }
         guard advertisement.startsOn <= advertisement.endsOn else {
             throw SupabaseRepositoryError.server("广告结束日期不能早于起始日期。")
@@ -951,7 +951,7 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
                     height: poster.pixelHeight
                   ),
                   poster.byteCount <= AdvertisementRules.maximumFileByteCount else {
-                throw SupabaseRepositoryError.server("海报必须为 4:5，至少 900×1125，且不超过 8 MB。")
+                throw SupabaseRepositoryError.server("广告海报必须是有效图片，且不超过 8 MB。")
             }
         }
         if advertisement.status == .published {
@@ -959,7 +959,7 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
                   let poster = advertisement.poster,
                   !thumbnail.storagePath.isEmpty,
                   !poster.storagePath.isEmpty else {
-                throw SupabaseRepositoryError.server("发布广告前需要方形缩略图和 4:5 竖版海报。")
+                throw SupabaseRepositoryError.server("发布广告前需要方形缩略图和广告海报。")
             }
         }
     }

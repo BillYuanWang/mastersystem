@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(8);
+select plan(10);
 
 select has_table('public', 'advertisements', 'advertisements table exists');
 
@@ -33,7 +33,31 @@ select ok(
     where conname = 'advertisements_poster_metadata_check'
       and conrelid = 'public.advertisements'::regclass
   ),
-  'portrait poster metadata is constrained'
+  'poster metadata is constrained'
+);
+
+select ok(
+  position(
+    '1024' in coalesce((
+      select pg_get_constraintdef(oid)
+      from pg_catalog.pg_constraint
+      where conname = 'advertisements_copy_text_check'
+        and conrelid = 'public.advertisements'::regclass
+    ), '')
+  ) > 0,
+  'advertisement detail copy accepts up to 1024 characters'
+);
+
+select ok(
+  position(
+    '0.8' in coalesce((
+      select pg_get_constraintdef(oid)
+      from pg_catalog.pg_constraint
+      where conname = 'advertisements_poster_metadata_check'
+        and conrelid = 'public.advertisements'::regclass
+    ), '')
+  ) = 0,
+  'advertisement posters do not require a fixed aspect ratio'
 );
 
 select ok(

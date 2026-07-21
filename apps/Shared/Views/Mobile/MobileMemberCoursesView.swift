@@ -31,6 +31,11 @@ struct MobileMemberCoursesView: View {
                     }
                 }
             }
+
+            MobileMemberLeaveHistorySection(
+                model: model,
+                studentID: selectedStudentID
+            )
         }
         .listStyle(.insetGrouped)
         .navigationTitle("我的课程")
