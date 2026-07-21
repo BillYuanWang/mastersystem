@@ -10,6 +10,7 @@ final class AppModel {
     @ObservationIgnored private var pendingBackgroundOperations: [PendingBackgroundOperation] = []
     @ObservationIgnored private var pendingCloudOperations: [PendingCloudOperation] = []
     @ObservationIgnored private var newsMediaCache: [String: Data] = [:]
+    @ObservationIgnored private var advertisementMediaCache: [String: Data] = [:]
     @ObservationIgnored private var syncNoticeGeneration = UUID()
 
     var terms: [Term] = []
@@ -30,6 +31,7 @@ final class AppModel {
     var contractConsents: [ContractConsent] = []
     var newsArticles: [NewsArticle] = []
     var newsArticleImages: [NewsArticleImage] = []
+    var advertisements: [Advertisement] = []
     var notifications: [NotificationRecord] = []
     var backgroundSync = BackgroundSyncPresentation()
     var cloudActivity = CloudActivityPresentation()
@@ -142,6 +144,18 @@ final class AppModel {
             newsArticleImages = try await repository.listNewsArticleImages(articleID: nil)
             let validPaths = Set(newsArticleImages.map(\.storagePath))
             newsMediaCache = newsMediaCache.filter { validPaths.contains($0.key) }
+            advertisements = try await repository.listAdvertisements().sorted {
+                if $0.slotNumber != $1.slotNumber { return $0.slotNumber < $1.slotNumber }
+                return $0.startsOn > $1.startsOn
+            }
+            let validAdvertisementPaths = Set(
+                advertisements.flatMap { advertisement in
+                    [advertisement.thumbnail?.storagePath, advertisement.poster?.storagePath].compactMap { $0 }
+                }
+            )
+            advertisementMediaCache = advertisementMediaCache.filter {
+                validAdvertisementPaths.contains($0.key)
+            }
             if let deferred = repository as? any DeferredSyncMasterDanceRepository {
                 pendingSyncCount = await deferred.pendingMutationCount()
             } else {
@@ -392,6 +406,22 @@ final class AppModel {
 
     func sessions(forCourse courseID: CourseID) -> [ClassSession] {
         sessions.filter { $0.courseID == courseID }.sorted { $0.startsAt < $1.startsAt }
+    }
+
+    func remainingSessionCount(
+        forStudent studentID: StudentID,
+        asOf date: Date = Date()
+    ) -> Int {
+        let activeCourseIDs = Set(
+            enrollments
+                .filter { $0.studentID == studentID && $0.status == .active }
+                .map(\.courseID)
+        )
+        return sessions.filter {
+            activeCourseIDs.contains($0.courseID)
+                && $0.status == .scheduled
+                && $0.endsAt > date
+        }.count
     }
 
     func createTerm(name: String, startsOn: Date, endsOn: Date) async throws {
@@ -943,6 +973,110 @@ final class AppModel {
             let paths = newsImages(for: article.id).map(\.storagePath)
             try await repository.deleteNewsArticle(id: article.id)
             paths.forEach { newsMediaCache.removeValue(forKey: $0) }
+            await reload()
+        }
+    }
+
+    func activeAdvertisements(
+        on date: Date = Date(),
+        calendar: Calendar = .masterDance
+    ) -> [Advertisement] {
+        advertisements
+            .filter { $0.isActive(on: date, calendar: calendar) }
+            .sorted {
+                if $0.slotNumber != $1.slotNumber { return $0.slotNumber < $1.slotNumber }
+                return $0.startsOn < $1.startsOn
+            }
+    }
+
+    func advertisementMediaData(storagePath: String) async -> Data? {
+        if let cached = advertisementMediaCache[storagePath] { return cached }
+        do {
+            let data = try await repository.advertisementMediaData(storagePath: storagePath)
+            advertisementMediaCache[storagePath] = data
+            return data
+        } catch {
+            return nil
+        }
+    }
+
+    func saveAdvertisement(
+        _ advertisement: Advertisement,
+        thumbnailData: Data?,
+        posterData: Data?
+    ) async throws {
+        var saved = advertisement
+        saved.advertiserName = saved.advertiserName.trimmingCharacters(in: .whitespacesAndNewlines)
+        saved.copyText = saved.copyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !saved.advertiserName.isEmpty else { throw AppModelError.missingAdvertisementName }
+        guard saved.advertiserName.count <= AdvertisementRules.maximumAdvertiserNameCount else {
+            throw AppModelError.advertisementNameTooLong
+        }
+        guard !saved.copyText.isEmpty else { throw AppModelError.missingAdvertisementCopy }
+        guard saved.copyText.count <= AdvertisementRules.maximumCopyCount else {
+            throw AppModelError.advertisementCopyTooLong
+        }
+        guard AdvertisementRules.slotRange.contains(saved.slotNumber) else {
+            throw AppModelError.invalidAdvertisementSlot
+        }
+        guard saved.startsOn <= saved.endsOn else {
+            throw AppModelError.invalidAdvertisementDateRange
+        }
+        if let thumbnail = saved.thumbnail {
+            guard AdvertisementRules.isValidThumbnail(
+                width: thumbnail.pixelWidth,
+                height: thumbnail.pixelHeight
+            ), thumbnail.byteCount <= AdvertisementRules.maximumFileByteCount else {
+                throw AppModelError.invalidAdvertisementThumbnail
+            }
+        }
+        if let poster = saved.poster {
+            guard AdvertisementRules.isValidPoster(
+                width: poster.pixelWidth,
+                height: poster.pixelHeight
+            ), poster.byteCount <= AdvertisementRules.maximumFileByteCount else {
+                throw AppModelError.invalidAdvertisementPoster
+            }
+        }
+        if saved.status == .published {
+            guard saved.thumbnail != nil, saved.poster != nil else {
+                throw AppModelError.missingAdvertisementMedia
+            }
+            let overlaps = advertisements.contains {
+                $0.id != saved.id
+                    && $0.status == .published
+                    && $0.slotNumber == saved.slotNumber
+                    && $0.startsOn <= saved.endsOn
+                    && $0.endsOn >= saved.startsOn
+            }
+            guard !overlaps else { throw AppModelError.advertisementSlotConflict }
+        }
+
+        try await withImmediateCloudActivity(label: "保存广告") {
+            let stored = try await repository.save(
+                advertisement: saved,
+                thumbnailData: thumbnailData,
+                posterData: posterData
+            )
+            if let thumbnailData, let path = stored.thumbnail?.storagePath {
+                advertisementMediaCache[path] = thumbnailData
+            }
+            if let posterData, let path = stored.poster?.storagePath {
+                advertisementMediaCache[path] = posterData
+            }
+            await reload()
+        }
+    }
+
+    func deleteAdvertisement(_ advertisement: Advertisement) async throws {
+        try await withImmediateCloudActivity(label: "删除广告") {
+            try await repository.deleteAdvertisement(id: advertisement.id)
+            if let path = advertisement.thumbnail?.storagePath {
+                advertisementMediaCache.removeValue(forKey: path)
+            }
+            if let path = advertisement.poster?.storagePath {
+                advertisementMediaCache.removeValue(forKey: path)
+            }
             await reload()
         }
     }

@@ -988,6 +988,133 @@ struct NewsArticleImageRow: Codable, Sendable {
     }
 }
 
+struct AdvertisementRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let slotNumber: Int
+    let advertiserName: String
+    let copyText: String
+    let startsOn: String
+    let endsOn: String
+    let monthlyRateCents: Int
+    let status: String
+    let thumbnailStoragePath: String?
+    let thumbnailMimeType: String?
+    let thumbnailWidth: Int?
+    let thumbnailHeight: Int?
+    let thumbnailByteCount: Int?
+    let posterStoragePath: String?
+    let posterMimeType: String?
+    let posterWidth: Int?
+    let posterHeight: Int?
+    let posterByteCount: Int?
+    let createdAt: String
+    let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case slotNumber = "slot_number"
+        case advertiserName = "advertiser_name"
+        case copyText = "copy_text"
+        case startsOn = "starts_on"
+        case endsOn = "ends_on"
+        case monthlyRateCents = "monthly_rate_cents"
+        case status
+        case thumbnailStoragePath = "thumbnail_storage_path"
+        case thumbnailMimeType = "thumbnail_mime_type"
+        case thumbnailWidth = "thumbnail_width"
+        case thumbnailHeight = "thumbnail_height"
+        case thumbnailByteCount = "thumbnail_byte_count"
+        case posterStoragePath = "poster_storage_path"
+        case posterMimeType = "poster_mime_type"
+        case posterWidth = "poster_width"
+        case posterHeight = "poster_height"
+        case posterByteCount = "poster_byte_count"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    init(_ advertisement: Advertisement, organizationID: UUID) {
+        id = advertisement.id.rawValue
+        self.organizationID = organizationID
+        slotNumber = advertisement.slotNumber
+        advertiserName = advertisement.advertiserName
+        copyText = advertisement.copyText
+        startsOn = SupabaseDateCodec.dayString(from: advertisement.startsOn)
+        endsOn = SupabaseDateCodec.dayString(from: advertisement.endsOn)
+        monthlyRateCents = advertisement.monthlyRateCents
+        status = advertisement.status.rawValue
+        thumbnailStoragePath = advertisement.thumbnail?.storagePath
+        thumbnailMimeType = advertisement.thumbnail?.mimeType
+        thumbnailWidth = advertisement.thumbnail?.pixelWidth
+        thumbnailHeight = advertisement.thumbnail?.pixelHeight
+        thumbnailByteCount = advertisement.thumbnail?.byteCount
+        posterStoragePath = advertisement.poster?.storagePath
+        posterMimeType = advertisement.poster?.mimeType
+        posterWidth = advertisement.poster?.pixelWidth
+        posterHeight = advertisement.poster?.pixelHeight
+        posterByteCount = advertisement.poster?.byteCount
+        createdAt = SupabaseDateCodec.timestampString(from: advertisement.createdAt)
+        updatedAt = SupabaseDateCodec.timestampString(from: advertisement.updatedAt)
+    }
+
+    func domain() throws -> Advertisement {
+        guard let status = AdvertisementStatus(rawValue: status) else {
+            throw SupabaseRepositoryError.invalidValue(field: "广告状态", value: status)
+        }
+        return try Advertisement(
+            id: AdvertisementID(serverID: id),
+            slotNumber: slotNumber,
+            advertiserName: advertiserName,
+            copyText: copyText,
+            thumbnail: media(
+                storagePath: thumbnailStoragePath,
+                mimeType: thumbnailMimeType,
+                width: thumbnailWidth,
+                height: thumbnailHeight,
+                byteCount: thumbnailByteCount
+            ),
+            poster: media(
+                storagePath: posterStoragePath,
+                mimeType: posterMimeType,
+                width: posterWidth,
+                height: posterHeight,
+                byteCount: posterByteCount
+            ),
+            startsOn: SupabaseDateCodec.date(from: startsOn),
+            endsOn: SupabaseDateCodec.date(from: endsOn),
+            monthlyRateCents: monthlyRateCents,
+            status: status,
+            createdAt: SupabaseDateCodec.timestamp(from: createdAt),
+            updatedAt: SupabaseDateCodec.timestamp(from: updatedAt)
+        )
+    }
+
+    private func media(
+        storagePath: String?,
+        mimeType: String?,
+        width: Int?,
+        height: Int?,
+        byteCount: Int?
+    ) -> AdvertisementMedia? {
+        guard let storagePath,
+              let mimeType,
+              let width,
+              let height,
+              let byteCount else {
+            return nil
+        }
+        return AdvertisementMedia(
+            storagePath: storagePath,
+            mimeType: mimeType,
+            pixelWidth: width,
+            pixelHeight: height,
+            byteCount: byteCount
+        )
+    }
+}
+
 struct NotificationRow: Codable, Sendable {
     let id: UUID
     let organizationID: UUID

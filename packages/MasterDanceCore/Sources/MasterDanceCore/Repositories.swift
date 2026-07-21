@@ -95,6 +95,17 @@ public protocol NewsRepository: Sendable {
     func newsMediaData(storagePath: String) async throws -> Data
 }
 
+public protocol AdvertisementRepository: Sendable {
+    func listAdvertisements() async throws -> [Advertisement]
+    func save(
+        advertisement: Advertisement,
+        thumbnailData: Data?,
+        posterData: Data?
+    ) async throws -> Advertisement
+    func deleteAdvertisement(id: AdvertisementID) async throws
+    func advertisementMediaData(storagePath: String) async throws -> Data
+}
+
 public protocol NotificationRepository: Sendable {
     func listNotifications(recipientReference: String?) async throws -> [NotificationRecord]
     func save(notification: NotificationRecord) async throws
@@ -111,4 +122,5 @@ public typealias MasterDanceRepository = TermRepository
     & ContractDocumentRepository
     & ContractConsentRepository
     & NewsRepository
+    & AdvertisementRepository
     & NotificationRepository

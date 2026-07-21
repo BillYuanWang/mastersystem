@@ -9,18 +9,47 @@ struct MasterDanceAdminApp: App {
     @State private var session = AdminSessionModel()
     @AppStorage(MDInterfaceFontScale.storageKey) private var interfaceFontScale = MDInterfaceFontScale.defaultValue
 
+#if DEBUG
+    private let previewRepository = PreviewMasterDanceStore.sample()
+#endif
+
     var body: some Scene {
         WindowGroup("MD Desk") {
-            AdminAuthenticationRootView(session: session)
+            rootView
                 .mdInterfaceFontScale(interfaceFontScale)
                 .frame(minWidth: minimumWindowWidth, minHeight: minimumWindowHeight)
-                .task { await session.restore() }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 900)
         .commands {
             InterfaceFontCommands(scale: $interfaceFontScale)
         }
+    }
+
+    @ViewBuilder
+    private var rootView: some View {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--md-preview-admin") {
+            AppShell(
+                role: .administrator,
+                repository: previewRepository,
+                appearanceRawValue: Binding(
+                    get: { AppearancePreference.system.rawValue },
+                    set: { _ in }
+                ),
+                accountDisplayName: "教务预览"
+            )
+        } else {
+            authenticationRoot
+        }
+#else
+        authenticationRoot
+#endif
+    }
+
+    private var authenticationRoot: some View {
+        AdminAuthenticationRootView(session: session)
+            .task { await session.restore() }
     }
 
     private var minimumWindowWidth: CGFloat {

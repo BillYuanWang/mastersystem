@@ -645,6 +645,150 @@ public struct NewsArticleImage: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+public enum AdvertisementStatus: String, Codable, CaseIterable, Sendable {
+    case draft
+    case published
+    case archived
+}
+
+public struct AdvertisementMedia: Codable, Equatable, Sendable {
+    public var storagePath: String
+    public var mimeType: String
+    public var pixelWidth: Int
+    public var pixelHeight: Int
+    public var byteCount: Int
+
+    public init(
+        storagePath: String = "",
+        mimeType: String,
+        pixelWidth: Int,
+        pixelHeight: Int,
+        byteCount: Int
+    ) {
+        self.storagePath = storagePath
+        self.mimeType = mimeType
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
+        self.byteCount = byteCount
+    }
+}
+
+public struct Advertisement: Identifiable, Codable, Equatable, Sendable {
+    public let id: AdvertisementID
+    public var slotNumber: Int
+    public var advertiserName: String
+    public var copyText: String
+    public var thumbnail: AdvertisementMedia?
+    public var poster: AdvertisementMedia?
+    public var startsOn: Date
+    public var endsOn: Date
+    public var monthlyRateCents: Int
+    public var status: AdvertisementStatus
+    public var createdAt: Date
+    public var updatedAt: Date
+
+    public init(
+        id: AdvertisementID = AdvertisementID(),
+        slotNumber: Int,
+        advertiserName: String,
+        copyText: String,
+        thumbnail: AdvertisementMedia? = nil,
+        poster: AdvertisementMedia? = nil,
+        startsOn: Date,
+        endsOn: Date,
+        monthlyRateCents: Int = AdvertisementRules.monthlyRateCents,
+        status: AdvertisementStatus = .draft,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.slotNumber = slotNumber
+        self.advertiserName = advertiserName
+        self.copyText = copyText
+        self.thumbnail = thumbnail
+        self.poster = poster
+        self.startsOn = startsOn
+        self.endsOn = endsOn
+        self.monthlyRateCents = monthlyRateCents
+        self.status = status
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    public func isActive(on date: Date, calendar: Calendar = .current) -> Bool {
+        guard status == .published else { return false }
+        let day = calendar.startOfDay(for: date)
+        return day >= calendar.startOfDay(for: startsOn)
+            && day <= calendar.startOfDay(for: endsOn)
+    }
+
+    public var billableMonthCount: Int {
+        AdvertisementRules.billableMonthCount(startsOn: startsOn, endsOn: endsOn)
+    }
+
+    public var estimatedTotalCents: Int {
+        billableMonthCount * monthlyRateCents
+    }
+}
+
+public enum AdvertisementRules {
+    public static let slotRange = 1...5
+    public static let monthlyRateCents = 9_900
+    public static let maximumAdvertiserNameCount = 40
+    public static let maximumCopyCount = 120
+    public static let maximumFileByteCount = 8 * 1_024 * 1_024
+    public static let maximumPixelDimension = 4_096
+    public static let minimumThumbnailDimension = 600
+    public static let minimumPosterWidth = 900
+    public static let minimumPosterHeight = 1_125
+
+    public static func isValidThumbnail(width: Int, height: Int) -> Bool {
+        guard width >= minimumThumbnailDimension,
+              height >= minimumThumbnailDimension,
+              width <= maximumPixelDimension,
+              height <= maximumPixelDimension,
+              height > 0 else {
+            return false
+        }
+        return abs(Double(width) / Double(height) - 1) <= 0.02
+    }
+
+    public static func isValidPoster(width: Int, height: Int) -> Bool {
+        guard width >= minimumPosterWidth,
+              height >= minimumPosterHeight,
+              width <= maximumPixelDimension,
+              height <= maximumPixelDimension,
+              height > 0 else {
+            return false
+        }
+        return abs(Double(width) / Double(height) - 0.8) <= 0.02
+    }
+
+    public static func billableMonthCount(
+        startsOn: Date,
+        endsOn: Date,
+        calendar: Calendar = .current
+    ) -> Int {
+        let start = calendar.startOfDay(for: startsOn)
+        let end = calendar.startOfDay(for: endsOn)
+        guard end >= start,
+              let endExclusive = calendar.date(byAdding: .day, value: 1, to: end) else {
+            return 0
+        }
+
+        let completeMonths = max(
+            0,
+            calendar.dateComponents([.month], from: start, to: endExclusive).month ?? 0
+        )
+        let completeMonthBoundary = calendar.date(
+            byAdding: .month,
+            value: completeMonths,
+            to: start
+        ) ?? start
+        return max(1, completeMonthBoundary < endExclusive ? completeMonths + 1 : completeMonths)
+    }
+}
+
 public enum NotificationKind: String, Codable, CaseIterable, Sendable {
     case classReminder
     case leaveSubmitted

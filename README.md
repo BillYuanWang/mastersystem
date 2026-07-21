@@ -1,6 +1,6 @@
 # Master Dance
 
-Current local test release: `v0.1.16` (app version 0.1.16; macOS build 54, iOS build 28).
+Current local test release: `v0.1.17` (app version 0.1.17; macOS build 55, iOS build 32).
 
 Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
 
@@ -82,7 +82,10 @@ See `supabase/README.md` and `docs/backend-operations.md` for deployment and rec
 
 The MVP supports term enrollment, scheduling, guardian-first learner profiles,
 one-time account linking, course enrollment, attendance, leave handling,
-contract-consent records, and notification records.
+contract-consent records, advertising campaigns, and notification records.
+Administrators can schedule up to five concurrent advertising slots at $99 per
+month with a square thumbnail and a 4:5 iPhone poster; guardians see only
+published campaigns active on the current date.
 MD Desk also creates local PNG receipts under
 `~/Documents/MD Desk Docs/<learner>/`; receipt drafts and files are not uploaded
 to Supabase.

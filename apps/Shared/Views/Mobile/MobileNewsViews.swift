@@ -26,14 +26,7 @@ struct MobileNewsRow: View {
                 Text(article.previewText + (article.previewText.isEmpty ? "" : " …"))
                     .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
-                    .lineLimit(2)
-
-                if let date = article.publishedAt {
-                    Text(date.mdChineseFormatted(.dateTime.year().month().day()))
-                        .mdFont(.mono)
-                        .foregroundStyle(theme.secondaryText)
-                        .lineLimit(1)
-                }
+                    .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -44,6 +37,56 @@ struct MobileNewsRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .contentShape(Rectangle())
+    }
+}
+
+@MainActor
+struct MobileNewsArchiveView: View {
+    let model: AppModel
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        ScrollView {
+            if articles.isEmpty {
+                ContentUnavailableView("暂无新闻", systemImage: "newspaper")
+                    .frame(maxWidth: .infinity, minHeight: 420)
+            } else {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(articles.enumerated()), id: \.element.id) { index, article in
+                        NavigationLink {
+                            MobileNewsDetailView(model: model, article: article)
+                        } label: {
+                            MobileNewsRow(model: model, article: article)
+                        }
+                        .buttonStyle(.plain)
+
+                        if index < articles.count - 1 {
+                            Divider().padding(.leading, 118)
+                        }
+                    }
+                }
+                .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
+                .overlay {
+                    RoundedRectangle(cornerRadius: MDMetrics.radius)
+                        .stroke(theme.faintSeparator, lineWidth: 1)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
+            }
+        }
+        .background(theme.background)
+        .navigationTitle("全部新闻")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .refreshable { await model.refreshFromCloud() }
+    }
+
+    private var articles: [NewsArticle] {
+        model.newsArticles
+            .filter { $0.status == .published }
+            .sorted { ($0.publishedAt ?? $0.updatedAt) > ($1.publishedAt ?? $1.updatedAt) }
     }
 }
 

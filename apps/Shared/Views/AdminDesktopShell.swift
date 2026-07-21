@@ -90,6 +90,8 @@ struct AdminDesktopShell: View {
             RequestsWorkspaceView(model: model)
         case .news:
             NewsWorkspaceView(model: model)
+        case .advertisements:
+            AdvertisementsWorkspaceView(model: model)
         case .contracts:
             ContractsWorkspaceView(model: model)
         case .dataCenter:

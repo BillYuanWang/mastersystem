@@ -94,6 +94,52 @@ struct EnrollmentSummaryTests {
         #expect(summary.activeFamilyCount == 1)
     }
 
+    @MainActor
+    @Test("Remaining lesson count uses active enrollments and unfinished scheduled sessions")
+    func remainingLessonCount() {
+        let student = Student(guardianID: GuardianID(), displayName: "Student", kind: .child)
+        let termID = TermID()
+        let courses = (0..<3).map {
+            course(termID: termID, name: "Course \($0)", format: .group)
+        }
+        let cutoff = Date(timeIntervalSince1970: 100_000)
+        var sessions: [ClassSession] = []
+
+        for index in 0..<51 {
+            let startsAt = index < 8
+                ? cutoff.addingTimeInterval(Double(index - 9) * 3_600)
+                : cutoff.addingTimeInterval(Double(index - 7) * 3_600)
+            sessions.append(
+                ClassSession(
+                    courseID: courses[index % courses.count].id,
+                    startsAt: startsAt,
+                    endsAt: startsAt.addingTimeInterval(3_000)
+                )
+            )
+        }
+        sessions.append(
+            ClassSession(
+                courseID: courses[0].id,
+                startsAt: cutoff.addingTimeInterval(86_400),
+                endsAt: cutoff.addingTimeInterval(90_000),
+                status: .cancelled
+            )
+        )
+
+        let model = AppModel(repository: PreviewMasterDanceStore())
+        model.enrollments = courses.map {
+            Enrollment(
+                termID: termID,
+                courseID: $0.id,
+                studentID: student.id,
+                enrolledAt: cutoff
+            )
+        }
+        model.sessions = sessions
+
+        #expect(model.remainingSessionCount(forStudent: student.id, asOf: cutoff) == 43)
+    }
+
     private var testCalendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

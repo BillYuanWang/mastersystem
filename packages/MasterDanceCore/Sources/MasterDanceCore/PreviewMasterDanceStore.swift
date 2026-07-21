@@ -19,6 +19,7 @@ public struct PreviewData: Codable, Sendable {
     public var contractConsents: [ContractConsent]
     public var newsArticles: [NewsArticle]
     public var newsArticleImages: [NewsArticleImage]
+    public var advertisements: [Advertisement]
     public var notifications: [NotificationRecord]
 
     public init(
@@ -40,6 +41,7 @@ public struct PreviewData: Codable, Sendable {
         contractConsents: [ContractConsent] = [],
         newsArticles: [NewsArticle] = [],
         newsArticleImages: [NewsArticleImage] = [],
+        advertisements: [Advertisement] = [],
         notifications: [NotificationRecord] = []
     ) {
         self.terms = terms
@@ -60,6 +62,7 @@ public struct PreviewData: Codable, Sendable {
         self.contractConsents = contractConsents
         self.newsArticles = newsArticles
         self.newsArticleImages = newsArticleImages
+        self.advertisements = advertisements
         self.notifications = notifications
     }
 }
@@ -67,6 +70,7 @@ public struct PreviewData: Codable, Sendable {
 public actor PreviewMasterDanceStore: MasterDanceRepository {
     private var data: PreviewData
     private var newsMedia: [String: Data] = [:]
+    private var advertisementMedia: [String: Data] = [:]
 
     public init(data: PreviewData = PreviewData()) {
         self.data = data
@@ -501,6 +505,85 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         return data
     }
 
+    public func listAdvertisements() -> [Advertisement] {
+        data.advertisements
+    }
+
+    public func save(
+        advertisement: Advertisement,
+        thumbnailData: Data?,
+        posterData: Data?
+    ) throws -> Advertisement {
+        var saved = advertisement
+        saved.advertiserName = saved.advertiserName.trimmingCharacters(in: .whitespacesAndNewlines)
+        saved.copyText = saved.copyText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let thumbnailData {
+            guard var thumbnail = saved.thumbnail else {
+                throw PreviewRepositoryError.recordInUse("请选择方形缩略图。")
+            }
+            thumbnail.byteCount = thumbnailData.count
+            if thumbnail.storagePath.isEmpty {
+                thumbnail.storagePath = "preview/advertisements/\(saved.id)/thumbnail.image"
+            }
+            saved.thumbnail = thumbnail
+        }
+        if let posterData {
+            guard var poster = saved.poster else {
+                throw PreviewRepositoryError.recordInUse("请选择 4:5 竖版海报。")
+            }
+            poster.byteCount = posterData.count
+            if poster.storagePath.isEmpty {
+                poster.storagePath = "preview/advertisements/\(saved.id)/poster.image"
+            }
+            saved.poster = poster
+        }
+
+        try validate(advertisement: saved)
+        let now = Date()
+        if let current = data.advertisements.first(where: { $0.id == saved.id }) {
+            saved.createdAt = current.createdAt
+        }
+        saved.updatedAt = now
+
+        if let current = data.advertisements.first(where: { $0.id == saved.id }) {
+            if current.thumbnail?.storagePath != saved.thumbnail?.storagePath,
+               let oldPath = current.thumbnail?.storagePath {
+                advertisementMedia.removeValue(forKey: oldPath)
+            }
+            if current.poster?.storagePath != saved.poster?.storagePath,
+               let oldPath = current.poster?.storagePath {
+                advertisementMedia.removeValue(forKey: oldPath)
+            }
+        }
+        if let thumbnailData, let path = saved.thumbnail?.storagePath {
+            advertisementMedia[path] = thumbnailData
+        }
+        if let posterData, let path = saved.poster?.storagePath {
+            advertisementMedia[path] = posterData
+        }
+        upsert(saved, in: &data.advertisements)
+        return saved
+    }
+
+    public func deleteAdvertisement(id: AdvertisementID) {
+        guard let advertisement = data.advertisements.first(where: { $0.id == id }) else { return }
+        if let path = advertisement.thumbnail?.storagePath {
+            advertisementMedia.removeValue(forKey: path)
+        }
+        if let path = advertisement.poster?.storagePath {
+            advertisementMedia.removeValue(forKey: path)
+        }
+        remove(id: id, from: &data.advertisements)
+    }
+
+    public func advertisementMediaData(storagePath: String) throws -> Data {
+        guard let data = advertisementMedia[storagePath] else {
+            throw PreviewRepositoryError.recordInUse("预览广告图片尚未下载。")
+        }
+        return data
+    }
+
     public func listNotifications(recipientReference: String? = nil) -> [NotificationRecord] {
         data.notifications.filter {
             recipientReference == nil || $0.recipientReference == recipientReference
@@ -529,6 +612,60 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
 
     private func requireUnused(_ condition: Bool, _ message: String) throws {
         guard condition else { throw PreviewRepositoryError.recordInUse(message) }
+    }
+
+    private func validate(advertisement: Advertisement) throws {
+        guard AdvertisementRules.slotRange.contains(advertisement.slotNumber) else {
+            throw PreviewRepositoryError.recordInUse("广告位必须在 1 到 5 之间。")
+        }
+        guard !advertisement.advertiserName.isEmpty,
+              advertisement.advertiserName.count <= AdvertisementRules.maximumAdvertiserNameCount else {
+            throw PreviewRepositoryError.recordInUse("广告名称需要填写，且不能超过 40 个字符。")
+        }
+        guard !advertisement.copyText.isEmpty,
+              advertisement.copyText.count <= AdvertisementRules.maximumCopyCount else {
+            throw PreviewRepositoryError.recordInUse("广告文字需要填写，且不能超过 120 个字符。")
+        }
+        guard advertisement.startsOn <= advertisement.endsOn else {
+            throw PreviewRepositoryError.invalidTermRange
+        }
+        guard advertisement.monthlyRateCents == AdvertisementRules.monthlyRateCents else {
+            throw PreviewRepositoryError.recordInUse("广告月费必须为 $99。")
+        }
+        if let thumbnail = advertisement.thumbnail {
+            guard AdvertisementRules.isValidThumbnail(
+                width: thumbnail.pixelWidth,
+                height: thumbnail.pixelHeight
+            ), thumbnail.byteCount <= AdvertisementRules.maximumFileByteCount else {
+                throw PreviewRepositoryError.recordInUse("缩略图必须为 1:1，至少 600×600，且不超过 8 MB。")
+            }
+        }
+        if let poster = advertisement.poster {
+            guard AdvertisementRules.isValidPoster(
+                width: poster.pixelWidth,
+                height: poster.pixelHeight
+            ), poster.byteCount <= AdvertisementRules.maximumFileByteCount else {
+                throw PreviewRepositoryError.recordInUse("海报必须为 4:5，至少 900×1125，且不超过 8 MB。")
+            }
+        }
+        if advertisement.status == .published {
+            guard let thumbnail = advertisement.thumbnail,
+                  let poster = advertisement.poster,
+                  !thumbnail.storagePath.isEmpty,
+                  !poster.storagePath.isEmpty else {
+                throw PreviewRepositoryError.recordInUse("发布广告前需要方形缩略图和 4:5 竖版海报。")
+            }
+            let overlaps = data.advertisements.contains {
+                $0.id != advertisement.id
+                    && $0.status == .published
+                    && $0.slotNumber == advertisement.slotNumber
+                    && $0.startsOn <= advertisement.endsOn
+                    && $0.endsOn >= advertisement.startsOn
+            }
+            guard !overlaps else {
+                throw PreviewRepositoryError.recordInUse("这个广告位在所选日期内已有其他广告。")
+            }
+        }
     }
 }
 

@@ -763,6 +763,88 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         try await client.storage.from("news-media").download(path: storagePath)
     }
 
+    func listAdvertisements() async throws -> [Advertisement] {
+        let rows: [AdvertisementRow] = try await client
+            .from("advertisements")
+            .select()
+            .order("slot_number")
+            .order("starts_on", ascending: false)
+            .execute()
+            .value
+        return try rows.map { try $0.domain() }
+    }
+
+    func save(
+        advertisement: Advertisement,
+        thumbnailData: Data?,
+        posterData: Data?
+    ) async throws -> Advertisement {
+        let previousRows: [AdvertisementRow] = try await client
+            .from("advertisements")
+            .select()
+            .eq("id", value: advertisement.id.rawValue)
+            .limit(1)
+            .execute()
+            .value
+        let previous = try previousRows.first?.domain()
+
+        var saved = advertisement
+        saved.advertiserName = saved.advertiserName.trimmingCharacters(in: .whitespacesAndNewlines)
+        saved.copyText = saved.copyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        saved.createdAt = previous?.createdAt ?? saved.createdAt
+        saved.updatedAt = Date()
+        saved.thumbnail = try await uploadAdvertisementMedia(
+            advertisementID: saved.id,
+            kind: "thumbnail",
+            media: saved.thumbnail,
+            fileData: thumbnailData
+        )
+        saved.poster = try await uploadAdvertisementMedia(
+            advertisementID: saved.id,
+            kind: "poster",
+            media: saved.poster,
+            fileData: posterData
+        )
+        try validate(advertisement: saved)
+
+        let stored: AdvertisementRow = try await client
+            .from("advertisements")
+            .upsert(AdvertisementRow(saved, organizationID: organizationID))
+            .select()
+            .single()
+            .execute()
+            .value
+
+        let result = try stored.domain()
+        let oldPaths = [previous?.thumbnail?.storagePath, previous?.poster?.storagePath].compactMap { $0 }
+        let newPaths = Set([result.thumbnail?.storagePath, result.poster?.storagePath].compactMap { $0 })
+        let retiredPaths = oldPaths.filter { !newPaths.contains($0) }
+        if !retiredPaths.isEmpty {
+            _ = try? await client.storage.from("advertisement-media").remove(paths: retiredPaths)
+        }
+        return result
+    }
+
+    func deleteAdvertisement(id: AdvertisementID) async throws {
+        let rows: [AdvertisementRow] = try await client
+            .from("advertisements")
+            .select()
+            .eq("id", value: id.rawValue)
+            .limit(1)
+            .execute()
+            .value
+        try await client.from("advertisements").delete().eq("id", value: id.rawValue).execute()
+        guard let row = rows.first else { return }
+        let paths = [row.thumbnailStoragePath, row.posterStoragePath].compactMap { $0 }
+        if !paths.isEmpty {
+            _ = try? await client.storage.from("advertisement-media").remove(paths: paths)
+        }
+    }
+
+    func advertisementMediaData(storagePath: String) async throws -> Data {
+        try await client.storage.from("advertisement-media").download(path: storagePath)
+    }
+
     func listNotifications(recipientReference: String?) async throws -> [NotificationRecord] {
         let rows: [NotificationRow]
         if let recipientReference, let recipientID = UUID(uuidString: recipientReference) {
@@ -801,6 +883,95 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
             return try await client.auth.session.user.id
         } catch {
             throw SupabaseRepositoryError.missingSession
+        }
+    }
+
+    private func uploadAdvertisementMedia(
+        advertisementID: AdvertisementID,
+        kind: String,
+        media: AdvertisementMedia?,
+        fileData: Data?
+    ) async throws -> AdvertisementMedia? {
+        guard let fileData else { return media }
+        guard var media else {
+            throw SupabaseRepositoryError.server("请选择广告图片。")
+        }
+        guard supportedAdvertisementMimeTypes.contains(media.mimeType.lowercased()) else {
+            throw SupabaseRepositoryError.server("广告图片仅支持 JPEG、PNG 和 HEIC。")
+        }
+        media.byteCount = fileData.count
+        media.storagePath = [
+            organizationID.uuidString.lowercased(),
+            advertisementID.rawValue.uuidString.lowercased(),
+            kind + "." + advertisementFileExtension(for: media.mimeType)
+        ].joined(separator: "/")
+        try await client.storage
+            .from("advertisement-media")
+            .upload(
+                media.storagePath,
+                data: fileData,
+                options: FileOptions(contentType: media.mimeType, upsert: true)
+            )
+        return media
+    }
+
+    private func validate(advertisement: Advertisement) throws {
+        guard AdvertisementRules.slotRange.contains(advertisement.slotNumber) else {
+            throw SupabaseRepositoryError.server("广告位必须在 1 到 5 之间。")
+        }
+        guard !advertisement.advertiserName.isEmpty,
+              advertisement.advertiserName.count <= AdvertisementRules.maximumAdvertiserNameCount else {
+            throw SupabaseRepositoryError.server("广告名称需要填写，且不能超过 40 个字符。")
+        }
+        guard !advertisement.copyText.isEmpty,
+              advertisement.copyText.count <= AdvertisementRules.maximumCopyCount else {
+            throw SupabaseRepositoryError.server("广告文字需要填写，且不能超过 120 个字符。")
+        }
+        guard advertisement.startsOn <= advertisement.endsOn else {
+            throw SupabaseRepositoryError.server("广告结束日期不能早于起始日期。")
+        }
+        guard advertisement.monthlyRateCents == AdvertisementRules.monthlyRateCents else {
+            throw SupabaseRepositoryError.server("广告月费必须为 $99。")
+        }
+        if let thumbnail = advertisement.thumbnail {
+            guard supportedAdvertisementMimeTypes.contains(thumbnail.mimeType.lowercased()),
+                  AdvertisementRules.isValidThumbnail(
+                    width: thumbnail.pixelWidth,
+                    height: thumbnail.pixelHeight
+                  ),
+                  thumbnail.byteCount <= AdvertisementRules.maximumFileByteCount else {
+                throw SupabaseRepositoryError.server("缩略图必须为 1:1，至少 600×600，且不超过 8 MB。")
+            }
+        }
+        if let poster = advertisement.poster {
+            guard supportedAdvertisementMimeTypes.contains(poster.mimeType.lowercased()),
+                  AdvertisementRules.isValidPoster(
+                    width: poster.pixelWidth,
+                    height: poster.pixelHeight
+                  ),
+                  poster.byteCount <= AdvertisementRules.maximumFileByteCount else {
+                throw SupabaseRepositoryError.server("海报必须为 4:5，至少 900×1125，且不超过 8 MB。")
+            }
+        }
+        if advertisement.status == .published {
+            guard let thumbnail = advertisement.thumbnail,
+                  let poster = advertisement.poster,
+                  !thumbnail.storagePath.isEmpty,
+                  !poster.storagePath.isEmpty else {
+                throw SupabaseRepositoryError.server("发布广告前需要方形缩略图和 4:5 竖版海报。")
+            }
+        }
+    }
+
+    private var supportedAdvertisementMimeTypes: Set<String> {
+        ["image/jpeg", "image/png", "image/heic", "image/heif"]
+    }
+
+    private func advertisementFileExtension(for mimeType: String) -> String {
+        switch mimeType.lowercased() {
+        case "image/png": "png"
+        case "image/heic", "image/heif": "heic"
+        default: "jpg"
         }
     }
 

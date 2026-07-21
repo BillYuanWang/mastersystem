@@ -12,14 +12,16 @@ struct MobileMemberHomeView: View {
         let theme = MDTheme(scheme: colorScheme)
         ScrollView {
             if let student = selectedStudent {
-                LazyVStack(alignment: .leading, spacing: 22) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     greeting(student: student, theme: theme)
 
                     nextClassSection(student: student, theme: theme)
 
-                    summaryStrip(theme: theme)
+                    summaryStrip(student: student, theme: theme)
 
                     newsSection(theme: theme)
+
+                    MobileAdvertisementSection(model: model)
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
@@ -50,13 +52,18 @@ struct MobileMemberHomeView: View {
     }
 
     private func greeting(student: Student, theme: MDTheme) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(student.kind == .adult ? "你好，\(student.displayName)" : "\(student.displayName)的课程")
                 .mdFont(size: 20, weight: .bold)
                 .foregroundStyle(theme.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+            Spacer(minLength: 6)
             Text(Date().mdChineseFormatted(.dateTime.year().month().day().weekday(.wide)))
                 .mdFont(.mono)
                 .foregroundStyle(theme.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -67,25 +74,26 @@ struct MobileMemberHomeView: View {
             MobileSectionHeading("下一节课")
             if let session = model.upcomingSessions(forStudent: student.id).first {
                 let course = model.course(id: session.courseID)
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(course?.name ?? "课程")
-                                .mdFont(size: 17, weight: .bold)
-                                .foregroundStyle(theme.primaryText)
-                            Text(session.startsAt.mdChineseFormatted(.dateTime.weekday(.wide).month().day()))
-                                .mdFont(.bodyStrong)
-                                .foregroundStyle(theme.accent)
-                        }
-                        Spacer()
-                        Text(session.startsAt.mdChineseFormatted(.dateTime.hour().minute()))
-                            .mdFont(size: 16, weight: .bold, design: .monospaced)
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(course?.name ?? "课程")
+                            .mdFont(size: 17, weight: .bold)
                             .foregroundStyle(theme.primaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.68)
+                            .layoutPriority(1)
+                        Spacer(minLength: 2)
+                        Text(session.startsAt.mdChineseFormatted(.dateTime.month().day().weekday(.abbreviated)))
+                            .mdFont(.compactStrong)
+                            .foregroundStyle(theme.accent)
+                            .lineLimit(1)
+                        Text(session.startsAt.mdChineseFormatted(.dateTime.hour().minute()))
+                            .mdFont(.monoStrong)
+                            .foregroundStyle(theme.primaryText)
+                            .lineLimit(1)
                     }
 
-                    Divider()
-
-                    HStack(spacing: 16) {
+                    HStack(spacing: 14) {
                         Label(
                             model.effectiveInstructor(for: session)?.displayName ?? "待定老师",
                             systemImage: "person.fill"
@@ -97,8 +105,10 @@ struct MobileMemberHomeView: View {
                     }
                     .mdFont(.compactStrong)
                     .foregroundStyle(theme.secondaryText)
+                    .lineLimit(1)
                 }
-                .padding(14)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 11)
                 .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
                 .overlay {
                     RoundedRectangle(cornerRadius: MDMetrics.radius)
@@ -114,25 +124,41 @@ struct MobileMemberHomeView: View {
         }
     }
 
-    private func summaryStrip(theme: MDTheme) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "checklist.checked")
-                .font(.system(size: 19, weight: .semibold))
-                .foregroundStyle(theme.accent)
-                .frame(width: 34, height: 34)
-                .background(theme.accent.opacity(0.12), in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text("已报课程")
+    private func summaryStrip(student: Student, theme: MDTheme) -> some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "checklist.checked")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(theme.accent)
+                    .frame(width: 34, height: 34)
+                    .background(theme.accent.opacity(0.12), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("已报课程")
+                        .mdFont(.compact)
+                        .foregroundStyle(theme.secondaryText)
+                    Text("\(activeCourseCount) 门")
+                        .mdFont(size: 17, weight: .bold, design: .monospaced)
+                        .foregroundStyle(theme.primaryText)
+                }
+                Spacer()
+                Text("本学期")
                     .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
-                Text("\(activeCourseCount) 门")
-                    .mdFont(size: 17, weight: .bold, design: .monospaced)
+            }
+
+            Divider()
+                .padding(.leading, 44)
+
+            HStack {
+                Text("剩余课程数量")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+                Spacer()
+                Text("\(model.remainingSessionCount(forStudent: student.id)) 节")
+                    .mdFont(.monoStrong)
                     .foregroundStyle(theme.primaryText)
             }
-            Spacer()
-            Text("本学期")
-                .mdFont(.compact)
-                .foregroundStyle(theme.secondaryText)
+            .padding(.leading, 44)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
@@ -145,9 +171,31 @@ struct MobileMemberHomeView: View {
 
     @ViewBuilder
     private func newsSection(theme: MDTheme) -> some View {
-        let articles = Array(publishedNews.prefix(6))
+        let articles = Array(publishedNews.prefix(3))
         VStack(alignment: .leading, spacing: 8) {
-            MobileSectionHeading("新闻", detail: articles.isEmpty ? nil : "最近更新")
+            HStack(alignment: .firstTextBaseline) {
+                Text("新闻")
+                    .mdFont(.bodyStrong)
+                    .foregroundStyle(theme.primaryText)
+                Spacer()
+                if publishedNews.count > articles.count {
+                    NavigationLink {
+                        MobileNewsArchiveView(model: model)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("查看更多")
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .mdFont(.compactStrong)
+                        .foregroundStyle(theme.accent)
+                    }
+                } else if !articles.isEmpty {
+                    Text("最近更新")
+                        .mdFont(.mono)
+                        .foregroundStyle(theme.secondaryText)
+                }
+            }
             if articles.isEmpty {
                 Text("暂无新闻")
                     .mdFont(.body)

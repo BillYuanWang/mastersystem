@@ -47,6 +47,7 @@ public enum ContractConsentIDTag: Sendable {}
 public enum ContractDocumentIDTag: Sendable {}
 public enum NewsArticleIDTag: Sendable {}
 public enum NewsArticleImageIDTag: Sendable {}
+public enum AdvertisementIDTag: Sendable {}
 public enum NotificationRecordIDTag: Sendable {}
 
 public typealias TermID = EntityID<TermIDTag>
@@ -67,4 +68,5 @@ public typealias ContractConsentID = EntityID<ContractConsentIDTag>
 public typealias ContractDocumentID = EntityID<ContractDocumentIDTag>
 public typealias NewsArticleID = EntityID<NewsArticleIDTag>
 public typealias NewsArticleImageID = EntityID<NewsArticleImageIDTag>
+public typealias AdvertisementID = EntityID<AdvertisementIDTag>
 public typealias NotificationRecordID = EntityID<NotificationRecordIDTag>

@@ -216,6 +216,39 @@ public extension PreviewData {
             createdAt: now,
             updatedAt: now
         )
+        let previewNewsArticles = [
+            newsArticle,
+            NewsArticle(
+                title: "暑期汇演照片已更新",
+                summary: "舞台照片已经整理完成，欢迎家长查看孩子们的精彩瞬间。",
+                bodyText: "感谢所有家庭参与本次暑期汇演。舞台照片已经完成整理，更多活动安排将在开学后陆续公布。",
+                authorName: "Master Dance 教务",
+                status: .published,
+                publishedAt: now.addingTimeInterval(-86_400),
+                createdAt: now.addingTimeInterval(-86_400),
+                updatedAt: now.addingTimeInterval(-86_400)
+            ),
+            NewsArticle(
+                title: "新学期教室使用提醒",
+                summary: "请按课程信息前往对应教室，并提前五分钟到达。",
+                bodyText: "新学期大教室与小教室会同时上课。请家长在首页或课程页确认教室，并提前五分钟到达。",
+                authorName: "Master Dance 教务",
+                status: .published,
+                publishedAt: now.addingTimeInterval(-172_800),
+                createdAt: now.addingTimeInterval(-172_800),
+                updatedAt: now.addingTimeInterval(-172_800)
+            ),
+            NewsArticle(
+                title: "家长请假功能开放",
+                summary: "课程开始十二小时前，可以直接在 App 中提交请假。",
+                bodyText: "家长请假功能现已开放。请在课程开始十二小时前提交；临时情况请直接联系教务老师。",
+                authorName: "Master Dance 教务",
+                status: .published,
+                publishedAt: now.addingTimeInterval(-259_200),
+                createdAt: now.addingTimeInterval(-259_200),
+                updatedAt: now.addingTimeInterval(-259_200)
+            )
+        ]
         let newsCover = NewsArticleImage(
             articleID: newsArticle.id,
             kind: .cover,
@@ -238,7 +271,7 @@ public extension PreviewData {
             leaveRequests: leaveRequests,
             contractDocuments: [agreement],
             contractConsents: [agreementConsent],
-            newsArticles: [newsArticle],
+            newsArticles: previewNewsArticles,
             newsArticleImages: [newsCover],
             notifications: notifications
         )

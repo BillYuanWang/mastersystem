@@ -495,6 +495,44 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
         try await remote.newsMediaData(storagePath: storagePath)
     }
 
+    public func listAdvertisements() async throws -> [Advertisement] {
+        try await ensureSnapshot()
+        return await local.listAdvertisements()
+    }
+
+    public func save(
+        advertisement: Advertisement,
+        thumbnailData: Data?,
+        posterData: Data?
+    ) async throws -> Advertisement {
+        try await ensureSnapshot()
+        _ = try await synchronizeIfNeeded()
+        let saved = try await remote.save(
+            advertisement: advertisement,
+            thumbnailData: thumbnailData,
+            posterData: posterData
+        )
+        _ = try await local.save(
+            advertisement: saved,
+            thumbnailData: thumbnailData,
+            posterData: posterData
+        )
+        try await persist()
+        return saved
+    }
+
+    public func deleteAdvertisement(id: AdvertisementID) async throws {
+        try await ensureSnapshot()
+        _ = try await synchronizeIfNeeded()
+        try await remote.deleteAdvertisement(id: id)
+        await local.deleteAdvertisement(id: id)
+        try await persist()
+    }
+
+    public func advertisementMediaData(storagePath: String) async throws -> Data {
+        try await remote.advertisementMediaData(storagePath: storagePath)
+    }
+
     public func listNotifications(recipientReference: String?) async throws -> [NotificationRecord] {
         try await ensureSnapshot()
         return await local.listNotifications(recipientReference: recipientReference)
@@ -568,6 +606,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
         }
         let newsArticles = try await remote.listNewsArticles()
         let newsArticleImages = try await remote.listNewsArticleImages(articleID: nil)
+        let advertisements = try await remote.listAdvertisements()
         let notifications = try await remote.listNotifications(recipientReference: nil)
 
         return PreviewData(
@@ -589,6 +628,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
             contractConsents: contractConsents,
             newsArticles: newsArticles,
             newsArticleImages: newsArticleImages,
+            advertisements: advertisements,
             notifications: notifications
         )
     }
@@ -629,7 +669,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 }
 
 private struct CacheEnvelope: Codable {
-    static let currentVersion = 2
+    static let currentVersion = 3
 
     let version: Int
     let snapshot: PreviewData
