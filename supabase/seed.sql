@@ -289,6 +289,7 @@ insert into public.contract_documents (
   version,
   title,
   storage_path,
+  body_text,
   status
 )
 values (
@@ -298,6 +299,7 @@ values (
   '2026-fall-draft',
   '2026 秋季课程协议（演示草稿）',
   '00000000-0000-0000-0000-000000000001/10000000-0000-0000-0000-000000000001/2026-fall-draft.pdf',
+  '这是用于本地 Supabase 测试的演示合同正文，不会发布给真实学员或监护人。',
   'draft'
 )
 on conflict (id) do nothing;

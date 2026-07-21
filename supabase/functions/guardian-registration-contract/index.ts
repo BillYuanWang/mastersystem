@@ -70,11 +70,16 @@ function isUUID(value: string): boolean {
 }
 
 function validPNGSignature(value: unknown): value is string {
-  if (typeof value !== "string" || value.length < 172 || value.length > 700000) {
+  if (
+    typeof value !== "string" || value.length < 172 || value.length > 700000
+  ) {
     return false;
   }
   try {
-    const bytes = Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+    const bytes = Uint8Array.from(
+      atob(value),
+      (character) => character.charCodeAt(0),
+    );
     const pngHeader = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
     return bytes.length >= 128 && bytes.length <= 524288 &&
       pngHeader.every((byte, index) => bytes[index] === byte);
@@ -119,7 +124,9 @@ export default {
       manifestError || !manifest?.body_text ||
       !/^[0-9a-f]{64}$/.test(manifest?.content_sha256 ?? "")
     ) {
-      const changed = manifestError?.message?.includes("Registration contract changed");
+      const changed = manifestError?.message?.includes(
+        "Registration contract changed",
+      );
       return jsonError(
         changed
           ? "合同已更新，请重新验证邀请码并阅读新合同。"
@@ -172,7 +179,9 @@ export default {
         acceptanceError?.message?.includes("Registration contract changed")
           ? "合同已更新，请重新阅读后签名。"
           : "签名暂时无法保存，请稍后重试。",
-        acceptanceError?.message?.includes("Registration contract changed") ? 409 : 422,
+        acceptanceError?.message?.includes("Registration contract changed")
+          ? 409
+          : 422,
       );
     }
 
