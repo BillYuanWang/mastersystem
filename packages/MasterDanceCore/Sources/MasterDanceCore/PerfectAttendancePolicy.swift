@@ -8,6 +8,36 @@ public enum PerfectAttendanceStatus: Equatable, Sendable {
 }
 
 public enum PerfectAttendancePolicy {
+    public static func evaluationTerm(
+        from terms: [Term],
+        enrollments: [Enrollment],
+        studentID: StudentID,
+        asOf date: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Term? {
+        let enrolledTermIDs = Set(
+            enrollments
+                .filter { $0.studentID == studentID && $0.status != .withdrawn }
+                .map(\.termID)
+        )
+        let candidates = terms.filter {
+            $0.status != .draft && enrolledTermIDs.contains($0.id)
+        }
+        let day = calendar.startOfDay(for: date)
+
+        if let latestStarted = (
+            candidates
+                .filter { calendar.startOfDay(for: $0.startsOn) <= day }
+                .max(by: { $0.startsOn < $1.startsOn })
+        ) {
+            return latestStarted
+        }
+
+        return candidates
+            .filter { calendar.startOfDay(for: $0.startsOn) > day }
+            .min(by: { $0.startsOn < $1.startsOn })
+    }
+
     public static func evaluate(
         term: Term,
         enrollments: [Enrollment],

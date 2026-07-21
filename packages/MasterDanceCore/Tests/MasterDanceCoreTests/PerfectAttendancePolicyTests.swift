@@ -4,6 +4,22 @@ import Testing
 
 @Suite("Perfect attendance policy")
 struct PerfectAttendancePolicyTests {
+    @Test("An enrolled upcoming term starts as currently perfect")
+    func upcomingTermIsCurrentPerfect() throws {
+        let fixture = try Fixture()
+        let beforeTerm = try Fixture.date(2026, 7, 1, 12, calendar: fixture.calendar)
+        let selectedTerm = PerfectAttendancePolicy.evaluationTerm(
+            from: [fixture.term],
+            enrollments: [fixture.enrollment],
+            studentID: fixture.studentID,
+            asOf: beforeTerm,
+            calendar: fixture.calendar
+        )
+
+        #expect(selectedTerm?.id == fixture.term.id)
+        #expect(fixture.evaluate(asOf: beforeTerm) == .currentPerfect)
+    }
+
     @Test("Present history remains currently perfect")
     func currentPerfect() throws {
         let fixture = try Fixture()
@@ -214,7 +230,7 @@ private struct Fixture {
         )
     }
 
-    private static func date(
+    fileprivate static func date(
         _ year: Int,
         _ month: Int,
         _ day: Int,

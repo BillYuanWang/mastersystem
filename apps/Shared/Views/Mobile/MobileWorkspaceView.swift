@@ -170,7 +170,14 @@ private struct MobileMemberTabs: View {
         if let selectedStudentID, model.student(id: selectedStudentID) != nil {
             return
         }
-        selectedStudentID = model.students.first?.id
+        let activelyEnrolledStudentIDs = Set(
+            model.enrollments
+                .filter { $0.status == .active }
+                .map(\.studentID)
+        )
+        selectedStudentID = model.students.first(where: {
+            activelyEnrolledStudentIDs.contains($0.id)
+        })?.id ?? model.students.first?.id
     }
 }
 #endif

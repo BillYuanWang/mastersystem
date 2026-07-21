@@ -434,15 +434,16 @@ final class AppModel {
         asOf date: Date = Date(),
         calendar: Calendar = .masterDance
     ) -> PerfectAttendanceStatus? {
-        let day = calendar.startOfDay(for: date)
-        guard let latestStartedTerm = (
-            terms
-                .filter { $0.status != .draft && calendar.startOfDay(for: $0.startsOn) <= day }
-                .max(by: { $0.startsOn < $1.startsOn })
+        guard let evaluationTerm = PerfectAttendancePolicy.evaluationTerm(
+            from: terms,
+            enrollments: enrollments,
+            studentID: studentID,
+            asOf: date,
+            calendar: calendar
         ) else { return nil }
 
         return PerfectAttendancePolicy.evaluate(
-            term: latestStartedTerm,
+            term: evaluationTerm,
             enrollments: enrollments,
             sessions: sessions,
             attendance: attendance,
