@@ -159,13 +159,14 @@ public extension PreviewData {
         }
 
         let leaveRequests: [LeaveRequest]
-        if let session = currentWeekSessions.dropFirst().first, let student = students.first {
-            let enrollment = enrollments.first { $0.studentID == student.id && $0.courseID == session.courseID }
+        if let session = currentWeekSessions.dropFirst().first,
+           let enrollment = enrollments.first(where: { $0.courseID == session.courseID }),
+           let student = students.first(where: { $0.id == enrollment.studentID }) {
             leaveRequests = [
                 LeaveRequest(
                     sessionID: session.id,
                     studentID: student.id,
-                    enrollmentID: enrollment?.id,
+                    enrollmentID: enrollment.id,
                     source: .app,
                     status: .approved,
                     submittedAt: now,

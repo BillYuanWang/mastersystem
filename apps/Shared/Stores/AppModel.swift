@@ -332,6 +332,24 @@ final class AppModel {
         return instructors.first { $0.id == id }
     }
 
+    func attendanceRecord(sessionID: ClassSessionID, studentID: StudentID) -> Attendance? {
+        attendance.first { $0.sessionID == sessionID && $0.studentID == studentID }
+    }
+
+    func leaveRequest(sessionID: ClassSessionID, studentID: StudentID) -> LeaveRequest? {
+        leaveRequests.first { $0.sessionID == sessionID && $0.studentID == studentID }
+    }
+
+    func effectiveAttendanceStatus(
+        sessionID: ClassSessionID,
+        studentID: StudentID
+    ) -> AttendanceStatus? {
+        if let record = attendanceRecord(sessionID: sessionID, studentID: studentID) {
+            return record.status
+        }
+        return leaveRequest(sessionID: sessionID, studentID: studentID) == nil ? nil : .excused
+    }
+
     func student(id: StudentID) -> Student? {
         students.first { $0.id == id }
     }

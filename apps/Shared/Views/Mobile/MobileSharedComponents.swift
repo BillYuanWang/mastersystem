@@ -167,13 +167,6 @@ extension AppModel {
             .min { $0.startsAt < $1.startsAt }
     }
 
-    func attendanceRecord(sessionID: ClassSessionID, studentID: StudentID) -> Attendance? {
-        attendance.first { $0.sessionID == sessionID && $0.studentID == studentID }
-    }
-
-    func leaveRequest(sessionID: ClassSessionID, studentID: StudentID) -> LeaveRequest? {
-        leaveRequests.first { $0.sessionID == sessionID && $0.studentID == studentID }
-    }
 }
 
 extension Date {

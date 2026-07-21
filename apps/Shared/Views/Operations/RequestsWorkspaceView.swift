@@ -56,6 +56,9 @@ struct RequestsWorkspaceView: View {
             let date = session?.startsAt.formatted(date: .abbreviated, time: .shortened) ?? "该课次"
             Text("确定删除 \(student) 在 \(date) 的请假记录吗？")
         }
+        .task {
+            await model.synchronizeRemoteChanges()
+        }
     }
 
     private func toolbar(theme: MDTheme) -> some View {

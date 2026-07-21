@@ -132,6 +132,11 @@ struct CourseAttendancePreview {
                 .filter { $0.status.isGuestAttendance }
                 .map(\.studentID)
         )
+        let leaveStudentIDs = Set(
+            model.leaveRequests
+                .filter { $0.sessionID == session.id }
+                .map(\.studentID)
+        )
         var recordByStudent: [StudentID: Attendance] = [:]
         for record in sessionRecords {
             recordByStudent[record.studentID] = record
@@ -139,9 +144,11 @@ struct CourseAttendancePreview {
 
         let people = enrolledStudentIDs
             .union(guestStudentIDs)
+            .union(leaveStudentIDs)
             .compactMap { studentID -> CourseAttendancePerson? in
                 guard let student = model.student(id: studentID) else { return nil }
                 let status = recordByStudent[studentID]?.status
+                    ?? (leaveStudentIDs.contains(studentID) ? .excused : nil)
                 return CourseAttendancePerson(
                     id: studentID,
                     nickname: student.displayName,

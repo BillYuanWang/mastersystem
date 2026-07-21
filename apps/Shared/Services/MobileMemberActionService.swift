@@ -158,6 +158,10 @@ private actor MobileMemberActionQueue {
             pending.append(queued)
         }
         try persist()
+
+        Task {
+            try? await self.synchronizeIfNeeded()
+        }
     }
 
     func synchronizeIfNeeded() async throws -> Int {

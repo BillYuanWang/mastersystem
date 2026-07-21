@@ -98,7 +98,10 @@ struct MobileAttendanceHomeView: View {
                 .disabled(Calendar.masterDance.isDateInToday(selectedDate))
             }
         }
-        .refreshable { await model.reload() }
+        .refreshable { await model.refreshFromCloud() }
+        .task {
+            await model.synchronizeRemoteChanges()
+        }
         .sheet(isPresented: $isShowingDateWheel) {
             MobileAttendanceDateWheel(
                 draftDate: $wheelDate,
@@ -119,10 +122,19 @@ struct MobileAttendanceHomeView: View {
 
     private func attendanceProgress(for session: ClassSession) -> String {
         let enrolledIDs = Set(model.enrollments(forCourse: session.courseID).map(\.studentID))
-        let records = model.attendance.filter {
-            $0.sessionID == session.id && enrolledIDs.contains($0.studentID)
-        }
-        return "\(records.count)/\(enrolledIDs.count)"
+        let attendanceIDs: Set<StudentID> = Set(model.attendance.compactMap { record in
+            guard record.sessionID == session.id, enrolledIDs.contains(record.studentID) else {
+                return nil
+            }
+            return record.studentID
+        })
+        let leaveIDs: Set<StudentID> = Set(model.leaveRequests.compactMap { request in
+            guard request.sessionID == session.id, enrolledIDs.contains(request.studentID) else {
+                return nil
+            }
+            return request.studentID
+        })
+        return "\(attendanceIDs.union(leaveIDs).count)/\(enrolledIDs.count) · 请假 \(leaveIDs.count)"
     }
 
     private func moveDay(_ offset: Int) {
@@ -326,20 +338,31 @@ private struct MobileAttendanceSessionView: View {
         theme: MDTheme
     ) -> some View {
         let record = model.attendanceRecord(sessionID: session.id, studentID: student.id)
+        let leaveRequest = model.leaveRequest(sessionID: session.id, studentID: student.id)
+        let effectiveStatus = model.effectiveAttendanceStatus(
+            sessionID: session.id,
+            studentID: student.id
+        )
+        let derivedLeaveTitle = record == nil
+            ? leaveRequest.map { $0.source == .app ? "家长请假" : "教务请假" }
+            : nil
+        let leaveTitle = derivedLeaveTitle ?? "请假"
         return HStack(spacing: 10) {
             Button {
                 setAttendance(record == nil ? .present : nil, student: student, session: session)
             } label: {
-                Image(systemName: record == nil ? "circle" : record!.status.mobileSystemImage)
+                Image(systemName: effectiveStatus?.mobileSystemImage ?? "circle")
                     .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(record.map { $0.status.mobileColor(theme: theme) } ?? theme.secondaryText)
+                    .foregroundStyle(effectiveStatus?.mobileColor(theme: theme) ?? theme.secondaryText)
                     .frame(width: 28, height: 32)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
                 record == nil
-                    ? "标记出勤"
-                    : "取消\(record!.status.mobileTitle)，恢复为未记录"
+                    ? (derivedLeaveTitle == nil ? "标记出勤" : "\(leaveTitle)，点按改为出勤")
+                    : (leaveRequest == nil
+                        ? "取消\(record!.status.mobileTitle)，恢复为未记录"
+                        : "取消\(record!.status.mobileTitle)，恢复显示请假")
             )
 
             VStack(alignment: .leading, spacing: 2) {
@@ -362,12 +385,15 @@ private struct MobileAttendanceSessionView: View {
                         )
                     } label: {
                         Label(
-                            status.mobileTitle,
-                            systemImage: record?.status == status
+                            derivedLeaveTitle != nil && status == .excused
+                                ? leaveTitle
+                                : status.mobileTitle,
+                            systemImage: effectiveStatus == status
                                 ? "checkmark.circle.fill"
                                 : status.mobileSystemImage
                         )
                     }
+                    .disabled(derivedLeaveTitle != nil && status == .excused)
                 }
                 if record != nil {
                     Divider()
@@ -378,11 +404,11 @@ private struct MobileAttendanceSessionView: View {
                     }
                 }
             } label: {
-                if let record {
+                if let effectiveStatus {
                     MobileStatusPill(
-                        title: record.status.mobileTitle,
-                        systemImage: record.status.mobileSystemImage,
-                        color: record.status.mobileColor(theme: theme)
+                        title: derivedLeaveTitle ?? effectiveStatus.mobileTitle,
+                        systemImage: effectiveStatus.mobileSystemImage,
+                        color: effectiveStatus.mobileColor(theme: theme)
                     )
                 } else {
                     Text("未记录")
@@ -400,7 +426,11 @@ private struct MobileAttendanceSessionView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.secondaryText)
-                .accessibilityLabel("取消签到状态，恢复为未记录")
+                .accessibilityLabel(
+                    leaveRequest == nil
+                        ? "取消签到状态，恢复为未记录"
+                        : "取消签到覆盖，恢复显示请假"
+                )
             }
         }
         .padding(.vertical, 3)
@@ -484,9 +514,15 @@ private struct MobileAttendanceSessionView: View {
 
     private func removeAttendance(_ record: Attendance) {
         let studentName = model.student(id: record.studentID)?.displayName ?? "学员"
+        let restoresLeave = model.leaveRequest(
+            sessionID: record.sessionID,
+            studentID: record.studentID
+        ) != nil
         model.performBackgroundOperation(
             label: "取消签到状态",
-            successMessage: "\(studentName)已恢复为未记录"
+            successMessage: restoresLeave
+                ? "\(studentName)已恢复显示请假"
+                : "\(studentName)已恢复为未记录"
         ) {
             try await model.deleteAttendance(id: record.id)
         }

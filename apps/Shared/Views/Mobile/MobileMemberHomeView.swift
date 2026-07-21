@@ -42,7 +42,7 @@ struct MobileMemberHomeView: View {
                 MobileStudentPicker(students: model.students, selection: $selectedStudentID)
             }
         }
-        .refreshable { await model.reload() }
+        .refreshable { await model.refreshFromCloud() }
     }
 
     private var selectedStudent: Student? {

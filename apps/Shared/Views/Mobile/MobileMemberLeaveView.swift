@@ -33,7 +33,10 @@ struct MobileMemberLeaveView: View {
                 MobileStudentPicker(students: model.students, selection: $selectedStudentID)
             }
         }
-        .refreshable { await model.reload() }
+        .refreshable {
+            _ = try? await actions.synchronizePendingChanges()
+            await model.refreshFromCloud()
+        }
         .sheet(item: selectedSessionBinding) { session in
             if let studentID = selectedStudentID {
                 MobileLeaveRequestSheet(

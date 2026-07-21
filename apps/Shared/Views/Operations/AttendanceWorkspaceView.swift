@@ -173,6 +173,7 @@ struct AttendanceWorkspaceView: View {
                     course: course,
                     session: session,
                     regularCount: regularRoster.count,
+                    leaveCount: leaveCount(session),
                     trialCount: trials.count,
                     makeupCount: makeups.count,
                     theme: theme
@@ -214,6 +215,7 @@ struct AttendanceWorkspaceView: View {
         course: Course,
         session: ClassSession,
         regularCount: Int,
+        leaveCount: Int,
         trialCount: Int,
         makeupCount: Int,
         theme: MDTheme
@@ -229,6 +231,8 @@ struct AttendanceWorkspaceView: View {
             Spacer()
             Label("出勤 \(presentCount(session))/\(regularCount)", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(theme.success)
+            Label("请假 \(leaveCount)", systemImage: "calendar.badge.minus")
+                .foregroundStyle(theme.warning)
             Label("试课 \(trialCount)", systemImage: "sparkles")
                 .foregroundStyle(theme.accent)
             Label("补课 \(makeupCount)", systemImage: "arrow.clockwise")
@@ -486,6 +490,10 @@ struct AttendanceWorkspaceView: View {
         model.attendance.filter { $0.sessionID == session.id && $0.status == .present }.count
     }
 
+    private func leaveCount(_ session: ClassSession) -> Int {
+        model.leaveRequests.filter { $0.sessionID == session.id }.count
+    }
+
     private var normalizedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -530,6 +538,17 @@ private struct AttendanceRow: View {
         let record = model.attendance.first {
             $0.sessionID == session.id && $0.studentID == enrollment.studentID
         }
+        let leaveRequest = model.leaveRequest(
+            sessionID: session.id,
+            studentID: enrollment.studentID
+        )
+        let effectiveStatus = model.effectiveAttendanceStatus(
+            sessionID: session.id,
+            studentID: enrollment.studentID
+        )
+        let derivedLeaveLabel = record == nil
+            ? leaveRequest.map { $0.source == .app ? "家长请假" : "教务请假" }
+            : nil
         HStack(spacing: 0) {
             attendanceCell(
                 model.student(id: enrollment.studentID)?.displayName ?? "学员",
@@ -538,9 +557,27 @@ private struct AttendanceRow: View {
             )
 
             HStack(spacing: 12) {
-                statusButton(.present, record: record, color: theme.success)
-                statusButton(.excused, record: record, color: theme.warning)
-                statusButton(.absent, record: record, color: theme.danger)
+                statusButton(
+                    .present,
+                    record: record,
+                    effectiveStatus: effectiveStatus,
+                    derivedLeaveLabel: derivedLeaveLabel,
+                    color: theme.success
+                )
+                statusButton(
+                    .excused,
+                    record: record,
+                    effectiveStatus: effectiveStatus,
+                    derivedLeaveLabel: derivedLeaveLabel,
+                    color: theme.warning
+                )
+                statusButton(
+                    .absent,
+                    record: record,
+                    effectiveStatus: effectiveStatus,
+                    derivedLeaveLabel: derivedLeaveLabel,
+                    color: theme.danger
+                )
                 if let record {
                     Button {
                         updateAttendance(nil, record: record)
@@ -558,7 +595,8 @@ private struct AttendanceRow: View {
             .frame(width: AttendanceColumns.regularStatus, alignment: .leading)
 
             attendanceCell(
-                record?.recordedAt.formatted(date: .omitted, time: .shortened) ?? "—",
+                (record?.recordedAt ?? leaveRequest?.submittedAt)?
+                    .formatted(date: .omitted, time: .shortened) ?? "—",
                 width: AttendanceColumns.time,
                 mono: true,
                 secondary: true
@@ -577,19 +615,32 @@ private struct AttendanceRow: View {
     private func statusButton(
         _ status: AttendanceStatus,
         record: Attendance?,
+        effectiveStatus: AttendanceStatus?,
+        derivedLeaveLabel: String?,
         color: Color
     ) -> some View {
-        let isCurrent = record?.status == status
+        let isCurrent = effectiveStatus == status
+        let isReadOnlyLeave = derivedLeaveLabel != nil && status == .excused
         return Button {
+            guard !isReadOnlyLeave else { return }
             updateAttendance(isCurrent ? nil : status, record: record)
         } label: {
-            Label(attendanceStatusLabel(status), systemImage: isCurrent ? "checkmark.circle.fill" : "circle")
+            Label(
+                isReadOnlyLeave ? (derivedLeaveLabel ?? "请假") : attendanceStatusLabel(status),
+                systemImage: isCurrent ? "checkmark.circle.fill" : "circle"
+            )
                 .mdFont(.compact)
                 .foregroundStyle(isCurrent ? color : .secondary)
         }
         .buttonStyle(.plain)
         .disabled(isSaving)
-        .help(isCurrent ? "再次点击取消\(attendanceStatusLabel(status))" : "标记为\(attendanceStatusLabel(status))")
+        .help(
+            isReadOnlyLeave
+                ? "这是请假记录；请到“请假”页编辑或删除"
+                : (isCurrent
+                    ? "再次点击取消\(attendanceStatusLabel(status))"
+                    : "标记为\(attendanceStatusLabel(status))")
+        )
     }
 
     private func updateAttendance(_ status: AttendanceStatus?, record: Attendance?) {

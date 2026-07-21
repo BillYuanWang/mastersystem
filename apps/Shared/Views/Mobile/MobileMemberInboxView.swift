@@ -51,7 +51,10 @@ struct MobileMemberInboxView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("消息与合同")
-        .refreshable { await model.reload() }
+        .refreshable {
+            _ = try? await actions.synchronizePendingChanges()
+            await model.refreshFromCloud()
+        }
     }
 
     private var notifications: [NotificationRecord] {
@@ -195,7 +198,7 @@ private struct MobileContractDetailView: View {
         .background(theme.background)
         .navigationTitle("合同")
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await model.reload() }
+        .refreshable { await model.refreshFromCloud() }
     }
 
     private func contractHeader(theme: MDTheme) -> some View {

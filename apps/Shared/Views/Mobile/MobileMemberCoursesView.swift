@@ -39,7 +39,7 @@ struct MobileMemberCoursesView: View {
                 MobileStudentPicker(students: model.students, selection: $selectedStudentID)
             }
         }
-        .refreshable { await model.reload() }
+        .refreshable { await model.refreshFromCloud() }
     }
 
     private var enrollments: [Enrollment] {
