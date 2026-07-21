@@ -1,10 +1,15 @@
 import Foundation
 import MasterDanceCore
 import Observation
+import OSLog
 
 @MainActor
 @Observable
 final class AppModel {
+    @ObservationIgnored private static let syncLogger = Logger(
+        subsystem: "com.masterdance.shared",
+        category: "Synchronization"
+    )
     @ObservationIgnored private let repository: any MasterDanceRepository
     @ObservationIgnored private let referenceOrderStore = ReferenceOrderStore()
     @ObservationIgnored private var pendingBackgroundOperations: [PendingBackgroundOperation] = []
@@ -176,6 +181,7 @@ final class AppModel {
             if try await deferred.refreshFromRemoteIfClean() {
                 await reload()
             }
+            markBackgroundSyncHealthy()
         } catch {
             presentBackgroundSyncFailure(error)
         }
@@ -190,6 +196,7 @@ final class AppModel {
             if try await deferred.refreshFromRemoteIfChanged() {
                 await reload()
             }
+            markBackgroundSyncHealthy()
         } catch {
             presentBackgroundSyncFailure(error)
         }
@@ -207,6 +214,7 @@ final class AppModel {
             if try await deferred.refreshFromRemoteIfClean() {
                 await reload()
             }
+            markBackgroundSyncHealthy()
         } catch {
             presentBackgroundSyncFailure(error)
         }
@@ -1347,10 +1355,20 @@ final class AppModel {
     }
 
     private func presentBackgroundSyncFailure(_ error: Error) {
+        Self.syncLogger.error(
+            "Background synchronization failed: \(String(reflecting: error), privacy: .public)"
+        )
         let notice = BackgroundSyncNotice.failure(error.localizedDescription)
         guard backgroundSync.notice != notice else { return }
         syncNoticeGeneration = UUID()
         backgroundSync.notice = notice
+    }
+
+    private func markBackgroundSyncHealthy() {
+        guard case .failure = backgroundSync.notice else { return }
+        syncNoticeGeneration = UUID()
+        backgroundSync.notice = .success("同步已恢复")
+        scheduleSuccessNoticeDismissal()
     }
 
     private func scheduleSuccessNoticeDismissal() {
