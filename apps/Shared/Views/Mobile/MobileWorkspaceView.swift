@@ -141,8 +141,7 @@ private struct MobileMemberTabs: View {
                     actions: actions
                 )
             }
-            .tabItem { Label("消息", systemImage: "bell") }
-            .badge(unreadNotificationCount)
+            .tabItem { Label("文件", systemImage: "folder") }
             .tag(3)
 
             NavigationStack {
@@ -161,10 +160,6 @@ private struct MobileMemberTabs: View {
         .task(id: model.students.map(\.id)) {
             selectAvailableStudent()
         }
-    }
-
-    private var unreadNotificationCount: Int {
-        model.notifications.filter { $0.status != .read }.count
     }
 
     private func selectAvailableStudent() {

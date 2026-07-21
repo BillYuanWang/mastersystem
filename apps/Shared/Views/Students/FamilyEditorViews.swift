@@ -10,6 +10,7 @@ struct GuardianEditorView: View {
 
     @State private var displayName: String
     @State private var email: String
+    @State private var secondaryEmail: String
     @State private var phone: String
     @State private var address: String
 
@@ -20,6 +21,7 @@ struct GuardianEditorView: View {
         original = guardian
         _displayName = State(initialValue: guardian?.displayName ?? "")
         _email = State(initialValue: guardian?.email ?? "")
+        _secondaryEmail = State(initialValue: guardian?.secondaryEmail ?? "")
         let storedPhone = guardian?.phone ?? ""
         _phone = State(initialValue: GuardianContact.formattedUSPhone(storedPhone) ?? storedPhone)
         _address = State(initialValue: guardian?.address ?? "")
@@ -40,6 +42,15 @@ struct GuardianEditorView: View {
                 }
                 if !trimmedEmail.isEmpty, !emailIsValid {
                     Text("邮箱格式不正确。")
+                        .mdFont(.compact)
+                        .foregroundStyle(.red)
+                }
+                LabeledContent("额外联系邮箱（选填）") {
+                    TextField("optional@example.com", text: $secondaryEmail)
+                        .frame(minWidth: 360)
+                }
+                if !trimmedSecondaryEmail.isEmpty, !secondaryEmailIsValid {
+                    Text("额外联系邮箱格式不正确。")
                         .mdFont(.compact)
                         .foregroundStyle(.red)
                 }
@@ -77,6 +88,7 @@ struct GuardianEditorView: View {
         if var guardian = original {
             guardian.displayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
             guardian.email = email
+            guardian.secondaryEmail = secondaryEmail
             guardian.phone = phone
             guardian.address = address
             model.performBackgroundOperation(
@@ -88,6 +100,7 @@ struct GuardianEditorView: View {
         } else {
             let nameSnapshot = displayName
             let emailSnapshot = email
+            let secondaryEmailSnapshot = secondaryEmail
             let phoneSnapshot = phone
             let addressSnapshot = address
             model.performBackgroundOperation(
@@ -98,7 +111,8 @@ struct GuardianEditorView: View {
                     displayName: nameSnapshot,
                     email: emailSnapshot,
                     phone: phoneSnapshot,
-                    address: addressSnapshot
+                    address: addressSnapshot,
+                    secondaryEmail: secondaryEmailSnapshot
                 )
                 model.retainGuardianLinkCode(code)
             }
@@ -114,6 +128,10 @@ struct GuardianEditorView: View {
         phone.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var trimmedSecondaryEmail: String {
+        secondaryEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var emailIsValid: Bool {
         GuardianContact.normalizedEmail(trimmedEmail) != nil
     }
@@ -122,9 +140,15 @@ struct GuardianEditorView: View {
         GuardianContact.formattedUSPhone(trimmedPhone) != nil
     }
 
+    private var secondaryEmailIsValid: Bool {
+        trimmedSecondaryEmail.isEmpty
+            || GuardianContact.normalizedEmail(trimmedSecondaryEmail) != nil
+    }
+
     private var canSave: Bool {
         !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && emailIsValid
+            && secondaryEmailIsValid
             && phoneIsValid
     }
 }

@@ -56,7 +56,14 @@ struct AttendanceWorkspaceView: View {
                     model: model,
                     kind: kind,
                     candidates: guestCandidates(course: course, session: session),
-                    add: { studentID in addGuest(studentID, kind: kind, session: session) }
+                    add: { studentID, sourceSessionID in
+                        addGuest(
+                            studentID,
+                            kind: kind,
+                            session: session,
+                            sourceSessionID: sourceSessionID
+                        )
+                    }
                 )
             }
         }
@@ -498,7 +505,12 @@ struct AttendanceWorkspaceView: View {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func addGuest(_ studentID: StudentID, kind: AttendanceGuestKind, session: ClassSession) {
+    private func addGuest(
+        _ studentID: StudentID,
+        kind: AttendanceGuestKind,
+        session: ClassSession,
+        sourceSessionID: ClassSessionID?
+    ) {
         addingGuestKind = nil
         model.performBackgroundOperation(
             label: kind.addTitle,
@@ -507,7 +519,8 @@ struct AttendanceWorkspaceView: View {
             try await model.recordAttendance(
                 sessionID: session.id,
                 studentID: studentID,
-                status: kind.status
+                status: kind.status,
+                makeupForSessionID: sourceSessionID
             )
         }
     }
@@ -675,7 +688,7 @@ private struct AttendanceGuestPicker: View {
     let model: AppModel
     let kind: AttendanceGuestKind
     let candidates: [Student]
-    let add: (StudentID) -> Void
+    let add: (StudentID, ClassSessionID?) -> Void
 
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
@@ -743,35 +756,7 @@ private struct AttendanceGuestPicker: View {
                             .background(theme.subtleSurface)
 
                             ForEach(group.students) { student in
-                                Button {
-                                    add(student.id)
-                                    dismiss()
-                                } label: {
-                                    HStack(spacing: 10) {
-                                        Image(systemName: student.kind == .adult ? "person.crop.circle" : "figure.child.circle")
-                                            .font(.system(size: 17))
-                                            .foregroundStyle(kind.color(theme: theme))
-                                            .frame(width: 22)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(student.displayName)
-                                                .mdFont(.bodyStrong)
-                                                .foregroundStyle(theme.primaryText)
-                                            Text(student.kind == .adult ? "成人学员" : "少儿学员")
-                                                .mdFont(.compact)
-                                                .foregroundStyle(theme.secondaryText)
-                                        }
-                                        Spacer()
-                                        Text("已报 \(model.enrollments(for: student.id).count) 门课")
-                                            .mdFont(.compact)
-                                            .foregroundStyle(theme.secondaryText)
-                                        Image(systemName: "plus.circle")
-                                            .foregroundStyle(kind.color(theme: theme))
-                                    }
-                                    .padding(.horizontal, 14)
-                                    .frame(minHeight: 48)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
+                                studentAction(student, theme: theme)
                                 Divider().padding(.leading, 46)
                             }
                         }
@@ -782,6 +767,72 @@ private struct AttendanceGuestPicker: View {
         .frame(width: 560, height: 570)
         .background(theme.background)
         .onAppear { searchFocused = true }
+    }
+
+    @ViewBuilder
+    private func studentAction(_ student: Student, theme: MDTheme) -> some View {
+        if kind == .makeup {
+            let sources = model.availableMakeupSourceSessions(forStudent: student.id)
+            Menu {
+                ForEach(sources) { source in
+                    Button(model.makeupSourceDescription(source, forStudent: student.id)) {
+                        add(student.id, source.id)
+                        dismiss()
+                    }
+                }
+            } label: {
+                studentRow(
+                    student,
+                    trailing: sources.isEmpty ? "无待补课次" : "选择要补的 \(sources.count) 次",
+                    theme: theme
+                )
+            }
+            .menuStyle(.borderlessButton)
+            .disabled(sources.isEmpty)
+            .help(sources.isEmpty ? "这名学员目前没有可对应的请假或缺席" : "选择这次补课对应的原课次")
+        } else {
+            Button {
+                add(student.id, nil)
+                dismiss()
+            } label: {
+                studentRow(
+                    student,
+                    trailing: "已报 \(model.enrollments(for: student.id).count) 门课",
+                    theme: theme
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func studentRow(
+        _ student: Student,
+        trailing: String,
+        theme: MDTheme
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: student.kind == .adult ? "person.crop.circle" : "figure.child.circle")
+                .font(.system(size: 17))
+                .foregroundStyle(kind.color(theme: theme))
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(student.displayName)
+                    .mdFont(.bodyStrong)
+                    .foregroundStyle(theme.primaryText)
+                Text(student.kind == .adult ? "成人学员" : "少儿学员")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+            }
+            Spacer()
+            Text(trailing)
+                .mdFont(.compact)
+                .foregroundStyle(theme.secondaryText)
+            Image(systemName: kind == .makeup ? "chevron.down.circle" : "plus.circle")
+                .foregroundStyle(kind.color(theme: theme))
+        }
+        .padding(.horizontal, 14)
+        .frame(minHeight: 48)
+        .contentShape(Rectangle())
     }
 
     private var filteredCandidates: [Student] {

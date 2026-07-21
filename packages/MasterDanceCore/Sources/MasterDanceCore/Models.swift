@@ -237,6 +237,7 @@ public struct Guardian: Identifiable, Codable, Equatable, Sendable {
     public let id: GuardianID
     public var displayName: String
     public var email: String?
+    public var secondaryEmail: String?
     public var phone: String?
     public var address: String?
     public var profileUserID: UUID?
@@ -248,6 +249,7 @@ public struct Guardian: Identifiable, Codable, Equatable, Sendable {
         id: GuardianID = GuardianID(),
         displayName: String,
         email: String? = nil,
+        secondaryEmail: String? = nil,
         phone: String? = nil,
         address: String? = nil,
         profileUserID: UUID? = nil,
@@ -258,6 +260,7 @@ public struct Guardian: Identifiable, Codable, Equatable, Sendable {
         self.id = id
         self.displayName = displayName
         self.email = email
+        self.secondaryEmail = secondaryEmail
         self.phone = phone
         self.address = address
         self.profileUserID = profileUserID
@@ -346,6 +349,7 @@ public struct Attendance: Identifiable, Codable, Equatable, Sendable {
     public let sessionID: ClassSessionID
     public let studentID: StudentID
     public var enrollmentID: EnrollmentID?
+    public var makeupForSessionID: ClassSessionID?
     public var status: AttendanceStatus
     public var recordedAt: Date
     public var note: String?
@@ -355,6 +359,7 @@ public struct Attendance: Identifiable, Codable, Equatable, Sendable {
         sessionID: ClassSessionID,
         studentID: StudentID,
         enrollmentID: EnrollmentID? = nil,
+        makeupForSessionID: ClassSessionID? = nil,
         status: AttendanceStatus,
         recordedAt: Date,
         note: String? = nil
@@ -363,6 +368,7 @@ public struct Attendance: Identifiable, Codable, Equatable, Sendable {
         self.sessionID = sessionID
         self.studentID = studentID
         self.enrollmentID = enrollmentID
+        self.makeupForSessionID = makeupForSessionID
         self.status = status
         self.recordedAt = recordedAt
         self.note = note

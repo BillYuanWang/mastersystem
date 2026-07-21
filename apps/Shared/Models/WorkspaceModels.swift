@@ -245,10 +245,14 @@ enum AppModelError: LocalizedError {
     case missingGuardianName
     case missingGuardianEmail
     case invalidGuardianEmail
+    case invalidGuardianSecondaryEmail
     case missingGuardianPhone
     case invalidGuardianPhone
     case missingStudentName
     case attendanceRequiresEnrollment
+    case makeupRequiresSource
+    case invalidMakeupSource
+    case makeupSourceAlreadyUsed
     case courseTermHasEnrollments
     case courseScheduleHasRecords
     case missingNewsTitle
@@ -276,10 +280,14 @@ enum AppModelError: LocalizedError {
         case .missingGuardianName: "请输入监护人姓名。"
         case .missingGuardianEmail: "请输入监护人邮箱。"
         case .invalidGuardianEmail: "请输入有效的监护人邮箱。"
+        case .invalidGuardianSecondaryEmail: "请输入有效的额外联系邮箱，或留空。"
         case .missingGuardianPhone: "请输入监护人电话。"
         case .invalidGuardianPhone: "请输入 10 位美国电话号码。"
         case .missingStudentName: "请输入学员姓名。"
         case .attendanceRequiresEnrollment: "出勤、请假和缺席只能记录在已报名课程中。"
+        case .makeupRequiresSource: "请选择这次补课对应的请假或缺席课次。"
+        case .invalidMakeupSource: "所选课次不是这名学员可补的请假或缺席。"
+        case .makeupSourceAlreadyUsed: "这次请假或缺席已经登记过补课。"
         case .courseTermHasEnrollments: "这门课程已有报名，不能更换学期；请先处理报名。"
         case .courseScheduleHasRecords: "这门课程已有签到或请假记录，不能整体重排课次。"
         case .missingNewsTitle: "请输入新闻标题。"

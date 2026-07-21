@@ -284,15 +284,20 @@ final class AppModel {
         notifications[index].status = .read
     }
 
-    func applyLocalGuardianContact(
+    func applyLocalGuardianCommunication(
         id: GuardianID,
-        email: String,
-        phone: String
+        phone: String,
+        secondaryEmail: String
     ) throws {
-        let contact = try normalizedGuardianContact(email: email, phone: phone)
+        let trimmedPhone = phone.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPhone.isEmpty else { throw AppModelError.missingGuardianPhone }
+        guard let formattedPhone = GuardianContact.formattedUSPhone(trimmedPhone) else {
+            throw AppModelError.invalidGuardianPhone
+        }
+        let normalizedSecondaryEmail = try normalizedOptionalGuardianEmail(secondaryEmail)
         guard let index = guardians.firstIndex(where: { $0.id == id }) else { return }
-        guardians[index].email = contact.email
-        guardians[index].phone = contact.phone
+        guardians[index].phone = formattedPhone
+        guardians[index].secondaryEmail = normalizedSecondaryEmail
     }
 
     func applyLocalContractConsent(
@@ -422,6 +427,67 @@ final class AppModel {
                 && $0.status == .scheduled
                 && $0.endsAt > date
         }.count
+    }
+
+    func perfectAttendanceStatus(
+        forStudent studentID: StudentID,
+        asOf date: Date = Date(),
+        calendar: Calendar = .masterDance
+    ) -> PerfectAttendanceStatus? {
+        let day = calendar.startOfDay(for: date)
+        guard let latestStartedTerm = (
+            terms
+                .filter { $0.status != .draft && calendar.startOfDay(for: $0.startsOn) <= day }
+                .max(by: { $0.startsOn < $1.startsOn })
+        ) else { return nil }
+
+        return PerfectAttendancePolicy.evaluate(
+            term: latestStartedTerm,
+            enrollments: enrollments,
+            sessions: sessions,
+            attendance: attendance,
+            leaveRequests: leaveRequests,
+            studentID: studentID,
+            asOf: date,
+            calendar: calendar
+        )
+    }
+
+    func availableMakeupSourceSessions(forStudent studentID: StudentID) -> [ClassSession] {
+        let usedSourceIDs = Set(attendance.compactMap(\.makeupForSessionID))
+        let studentCourseIDs = Set(
+            enrollments
+                .filter { $0.studentID == studentID && $0.status != .withdrawn }
+                .map(\.courseID)
+        )
+        return sessions
+            .filter { session in
+                guard
+                    session.status != .cancelled,
+                    studentCourseIDs.contains(session.courseID),
+                    !usedSourceIDs.contains(session.id)
+                else { return false }
+                switch effectiveAttendanceStatus(sessionID: session.id, studentID: studentID) {
+                case .absent, .excused: return true
+                case .present, .makeup, .trial, nil: return false
+                }
+            }
+            .sorted { $0.startsAt > $1.startsAt }
+    }
+
+    func makeupSourceDescription(_ session: ClassSession, forStudent studentID: StudentID) -> String {
+        let courseName = course(id: session.courseID)?.name ?? "课程"
+        let status = effectiveAttendanceStatus(sessionID: session.id, studentID: studentID)
+        let statusLabel = status == .absent ? "缺席" : "请假"
+        let dateText = session.startsAt.formatted(
+            .dateTime
+                .year()
+                .month()
+                .day()
+                .weekday(.abbreviated)
+                .locale(Locale(identifier: "zh_Hans_CN"))
+        )
+        return "\(dateText) · \(courseName) · \(statusLabel)"
     }
 
     func createTerm(name: String, startsOn: Date, endsOn: Date) async throws {
@@ -718,17 +784,23 @@ final class AppModel {
         displayName: String,
         email: String,
         phone: String,
-        address: String
+        address: String,
+        secondaryEmail: String = ""
     ) async throws -> GuardianLinkCode {
         let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
             throw AppModelError.missingGuardianName
         }
-        let contact = try normalizedGuardianContact(email: email, phone: phone)
+        let contact = try normalizedGuardianContact(
+            email: email,
+            phone: phone,
+            secondaryEmail: secondaryEmail
+        )
 
         let guardian = Guardian(
             displayName: trimmedName,
             email: contact.email,
+            secondaryEmail: contact.secondaryEmail,
             phone: contact.phone,
             address: address.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         )
@@ -791,11 +863,13 @@ final class AppModel {
         guard !name.isEmpty else { throw AppModelError.missingGuardianName }
         let contact = try normalizedGuardianContact(
             email: guardian.email ?? "",
-            phone: guardian.phone ?? ""
+            phone: guardian.phone ?? "",
+            secondaryEmail: guardian.secondaryEmail ?? ""
         )
         var updated = guardian
         updated.displayName = name
         updated.email = contact.email
+        updated.secondaryEmail = contact.secondaryEmail
         updated.phone = contact.phone
         updated.address = guardian.address?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -808,8 +882,9 @@ final class AppModel {
 
     private func normalizedGuardianContact(
         email: String,
-        phone: String
-    ) throws -> (email: String, phone: String) {
+        phone: String,
+        secondaryEmail: String = ""
+    ) throws -> (email: String, secondaryEmail: String?, phone: String) {
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedEmail.isEmpty else { throw AppModelError.missingGuardianEmail }
         guard let normalizedEmail = GuardianContact.normalizedEmail(trimmedEmail) else {
@@ -822,7 +897,20 @@ final class AppModel {
             throw AppModelError.invalidGuardianPhone
         }
 
-        return (normalizedEmail, formattedPhone)
+        return (
+            normalizedEmail,
+            try normalizedOptionalGuardianEmail(secondaryEmail),
+            formattedPhone
+        )
+    }
+
+    private func normalizedOptionalGuardianEmail(_ email: String) throws -> String? {
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedEmail.isEmpty else { return nil }
+        guard let normalizedEmail = GuardianContact.normalizedEmail(trimmedEmail) else {
+            throw AppModelError.invalidGuardianSecondaryEmail
+        }
+        return normalizedEmail
     }
 
     #if os(macOS)
@@ -1111,7 +1199,12 @@ final class AppModel {
         }
     }
 
-    func recordAttendance(sessionID: ClassSessionID, studentID: StudentID, status: AttendanceStatus) async throws {
+    func recordAttendance(
+        sessionID: ClassSessionID,
+        studentID: StudentID,
+        status: AttendanceStatus,
+        makeupForSessionID: ClassSessionID? = nil
+    ) async throws {
         let matchingEnrollmentID = session(id: sessionID).flatMap { session in
             enrollments.first {
                 $0.courseID == session.courseID
@@ -1123,10 +1216,26 @@ final class AppModel {
         guard status.isGuestAttendance || enrollmentID != nil else {
             throw AppModelError.attendanceRequiresEnrollment
         }
+        let validatedMakeupSourceID: ClassSessionID?
+        if status == .makeup {
+            guard let makeupForSessionID else { throw AppModelError.makeupRequiresSource }
+            guard availableMakeupSourceSessions(forStudent: studentID).contains(where: { $0.id == makeupForSessionID }) else {
+                if attendance.contains(where: {
+                    $0.studentID == studentID && $0.makeupForSessionID == makeupForSessionID
+                }) {
+                    throw AppModelError.makeupSourceAlreadyUsed
+                }
+                throw AppModelError.invalidMakeupSource
+            }
+            validatedMakeupSourceID = makeupForSessionID
+        } else {
+            validatedMakeupSourceID = nil
+        }
         try await withCloudActivity(label: "记录签到") {
             if let existing = attendance.first(where: { $0.sessionID == sessionID && $0.studentID == studentID }) {
                 var updated = existing
                 updated.enrollmentID = enrollmentID
+                updated.makeupForSessionID = validatedMakeupSourceID
                 updated.status = status
                 updated.recordedAt = Date()
                 try await repository.save(attendance: updated)
@@ -1136,6 +1245,7 @@ final class AppModel {
                         sessionID: sessionID,
                         studentID: studentID,
                         enrollmentID: enrollmentID,
+                        makeupForSessionID: validatedMakeupSourceID,
                         status: status,
                         recordedAt: Date()
                     )

@@ -543,30 +543,7 @@ private struct MobileGuestAttendancePicker: View {
         let theme = MDTheme(scheme: colorScheme)
         NavigationStack {
             List(filteredCandidates) { student in
-                Button {
-                    add(student)
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(student.displayName)
-                                .mdFont(.bodyStrong)
-                                .foregroundStyle(theme.primaryText)
-                            Text(model.guardian(id: student.guardianID)?.displayName ?? "")
-                                .mdFont(.compact)
-                                .foregroundStyle(theme.secondaryText)
-                        }
-                        Spacer()
-                        if existingStudentIDs.contains(student.id) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(mode.mobileColor(theme: theme))
-                        } else {
-                            Image(systemName: "plus.circle")
-                                .foregroundStyle(theme.accent)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-                .disabled(existingStudentIDs.contains(student.id))
+                candidateAction(student, theme: theme)
             }
             .searchable(text: $searchText, prompt: "搜索学员或监护人")
             .overlay {
@@ -580,6 +557,68 @@ private struct MobileGuestAttendancePicker: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func candidateAction(_ student: Student, theme: MDTheme) -> some View {
+        if mode == .makeup {
+            let sources = model.availableMakeupSourceSessions(forStudent: student.id)
+            NavigationLink {
+                MobileMakeupSourcePicker(
+                    model: model,
+                    student: student,
+                    sources: sources,
+                    onSelect: { sourceSessionID in
+                        add(student, sourceSessionID: sourceSessionID)
+                        dismiss()
+                    }
+                )
+            } label: {
+                candidateRow(
+                    student,
+                    detail: sources.isEmpty ? "没有待补的请假或缺席" : "可对应 \(sources.count) 次请假或缺席",
+                    theme: theme
+                )
+            }
+            .disabled(existingStudentIDs.contains(student.id) || sources.isEmpty)
+        } else {
+            Button {
+                add(student, sourceSessionID: nil)
+            } label: {
+                candidateRow(
+                    student,
+                    detail: model.guardian(id: student.guardianID)?.displayName ?? "",
+                    theme: theme
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(existingStudentIDs.contains(student.id))
+        }
+    }
+
+    private func candidateRow(
+        _ student: Student,
+        detail: String,
+        theme: MDTheme
+    ) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(student.displayName)
+                    .mdFont(.bodyStrong)
+                    .foregroundStyle(theme.primaryText)
+                Text(detail)
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+            }
+            Spacer()
+            if existingStudentIDs.contains(student.id) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(mode.mobileColor(theme: theme))
+            } else if mode != .makeup {
+                Image(systemName: "plus.circle")
+                    .foregroundStyle(theme.accent)
             }
         }
     }
@@ -607,7 +646,7 @@ private struct MobileGuestAttendancePicker: View {
             .sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
     }
 
-    private func add(_ student: Student) {
+    private func add(_ student: Student, sourceSessionID: ClassSessionID?) {
         model.performBackgroundOperation(
             label: "添加\(mode.mobileTitle)",
             successMessage: "\(student.displayName)已加入\(mode.mobileTitle)"
@@ -615,9 +654,54 @@ private struct MobileGuestAttendancePicker: View {
             try await model.recordAttendance(
                 sessionID: session.id,
                 studentID: student.id,
-                status: mode
+                status: mode,
+                makeupForSessionID: sourceSessionID
             )
         }
+    }
+}
+
+@MainActor
+private struct MobileMakeupSourcePicker: View {
+    let model: AppModel
+    let student: Student
+    let sources: [ClassSession]
+    let onSelect: (ClassSessionID) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        List(sources) { source in
+            Button {
+                onSelect(source.id)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: sourceStatus(source) == .absent ? "xmark.circle.fill" : "calendar.badge.minus")
+                        .foregroundStyle(sourceStatus(source) == .absent ? theme.danger : theme.warning)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.course(id: source.courseID)?.name ?? "课程")
+                            .mdFont(.bodyStrong)
+                            .foregroundStyle(theme.primaryText)
+                        Text(source.startsAt.mdChineseFormatted(.dateTime.year().month().day().weekday(.wide).hour().minute()))
+                            .mdFont(.compact)
+                            .foregroundStyle(theme.secondaryText)
+                    }
+                    Spacer()
+                    Text(sourceStatus(source) == .absent ? "缺席" : "请假")
+                        .mdFont(.compactStrong)
+                        .foregroundStyle(sourceStatus(source) == .absent ? theme.danger : theme.warning)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .navigationTitle("选择要补的课次")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func sourceStatus(_ session: ClassSession) -> AttendanceStatus? {
+        model.effectiveAttendanceStatus(sessionID: session.id, studentID: student.id)
     }
 }
 #endif

@@ -13,17 +13,18 @@ struct MobileAdvertisementSection: View {
         let theme = MDTheme(scheme: colorScheme)
         let advertisements = model.activeAdvertisements()
         if !advertisements.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
+                Divider()
+                    .padding(.bottom, 4)
+
                 HStack(alignment: .firstTextBaseline) {
-                    Text("合作推广")
+                    Text("广告")
                         .mdFont(.bodyStrong)
                         .foregroundStyle(theme.primaryText)
                     Spacer()
-                    if advertisements.count > 1 {
-                        Text("\(advertisements.count) 个推荐")
-                            .mdFont(.mono)
-                            .foregroundStyle(theme.secondaryText)
-                    }
+                    Text(advertisements.count > 1 ? "合作推广 · \(advertisements.count)" : "合作推广")
+                        .mdFont(.mono)
+                        .foregroundStyle(theme.secondaryText)
                 }
 
                 TabView {
@@ -35,6 +36,7 @@ struct MobileAdvertisementSection: View {
                 .tabViewStyle(.page(indexDisplayMode: advertisements.count > 1 ? .automatic : .never))
                 .frame(height: advertisements.count > 1 ? 126 : 106)
             }
+            .padding(.top, 2)
         }
     }
 }

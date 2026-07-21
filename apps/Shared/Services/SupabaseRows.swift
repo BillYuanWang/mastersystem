@@ -426,6 +426,7 @@ struct GuardianRow: Codable, Sendable {
     let displayName: String
     let profileUserID: UUID?
     let email: String?
+    let secondaryEmail: String?
     let phone: String?
     let address: String?
 
@@ -435,6 +436,7 @@ struct GuardianRow: Codable, Sendable {
         case displayName = "display_name"
         case profileUserID = "profile_user_id"
         case email
+        case secondaryEmail = "secondary_email"
         case phone
         case address
     }
@@ -445,6 +447,7 @@ struct GuardianRow: Codable, Sendable {
         displayName = guardian.displayName
         profileUserID = guardian.profileUserID
         email = guardian.email
+        secondaryEmail = guardian.secondaryEmail
         phone = guardian.phone
         address = guardian.address
     }
@@ -602,6 +605,7 @@ struct AttendanceRecordRow: Codable, Sendable {
     let sessionID: UUID
     let studentID: UUID
     let enrollmentID: UUID?
+    let makeupForSessionID: UUID?
     let status: String
     let recordedAt: String
     let recordedBy: UUID?
@@ -613,6 +617,7 @@ struct AttendanceRecordRow: Codable, Sendable {
         case sessionID = "session_id"
         case studentID = "student_id"
         case enrollmentID = "enrollment_id"
+        case makeupForSessionID = "makeup_for_session_id"
         case status
         case recordedAt = "recorded_at"
         case recordedBy = "recorded_by"
@@ -625,6 +630,7 @@ struct AttendanceRecordRow: Codable, Sendable {
         sessionID = attendance.sessionID.rawValue
         studentID = attendance.studentID.rawValue
         enrollmentID = attendance.enrollmentID?.rawValue
+        makeupForSessionID = attendance.makeupForSessionID?.rawValue
         status = attendance.status.rawValue
         recordedAt = SupabaseDateCodec.timestampString(from: attendance.recordedAt)
         self.recordedBy = recordedBy
@@ -640,6 +646,7 @@ struct AttendanceRecordRow: Codable, Sendable {
             sessionID: ClassSessionID(serverID: sessionID),
             studentID: StudentID(serverID: studentID),
             enrollmentID: enrollmentID.map(EnrollmentID.init(serverID:)),
+            makeupForSessionID: makeupForSessionID.map(ClassSessionID.init(serverID:)),
             status: status,
             recordedAt: SupabaseDateCodec.timestamp(from: recordedAt),
             note: note

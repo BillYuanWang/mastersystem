@@ -300,6 +300,7 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
                 id: GuardianID(serverID: row.id),
                 displayName: row.displayName,
                 email: row.email,
+                secondaryEmail: row.secondaryEmail,
                 phone: row.phone,
                 address: row.address,
                 profileUserID: status?.linkedUserID ?? row.profileUserID,

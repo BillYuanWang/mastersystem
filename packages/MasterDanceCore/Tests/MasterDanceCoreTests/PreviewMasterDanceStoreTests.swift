@@ -217,11 +217,12 @@ struct PreviewMasterDanceStoreTests {
         #expect(savedGuardian.studentIDs == [child.id, adult.id])
     }
 
-    @Test("Optional family address and learner birthday persist")
+    @Test("Optional family contacts, address, and learner birthday persist")
     func familyProfileDetailsPersist() async throws {
         let birthDate = Date(timeIntervalSince1970: 1_087_862_400)
         let guardian = Guardian(
             displayName: "Family",
+            secondaryEmail: "grandparent@example.com",
             address: "123 Main Street, Irvine, CA 92618"
         )
         let child = Student(
@@ -239,6 +240,7 @@ struct PreviewMasterDanceStoreTests {
         )
         let savedStudent = try #require(try await store.listStudents().first)
 
+        #expect(savedGuardian.secondaryEmail == "grandparent@example.com")
         #expect(savedGuardian.address == "123 Main Street, Irvine, CA 92618")
         #expect(savedStudent.birthDate == birthDate)
     }

@@ -164,6 +164,12 @@ struct GuardianInspectorView: View {
                     .foregroundStyle(theme.secondaryText)
                     .textSelection(.enabled)
             }
+            if let secondaryEmail = guardian.secondaryEmail, !secondaryEmail.isEmpty {
+                Label(secondaryEmail, systemImage: "envelope.open")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+                    .textSelection(.enabled)
+            }
             if let phone = guardian.phone, !phone.isEmpty {
                 Label(phone, systemImage: "phone")
                     .mdFont(.compact)
@@ -177,7 +183,7 @@ struct GuardianInspectorView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
-            if guardian.email == nil, guardian.phone == nil {
+            if guardian.email == nil, guardian.secondaryEmail == nil, guardian.phone == nil {
                 Text("未填写联系方式")
                     .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)

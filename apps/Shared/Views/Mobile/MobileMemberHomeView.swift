@@ -17,7 +17,9 @@ struct MobileMemberHomeView: View {
 
                     nextClassSection(student: student, theme: theme)
 
-                    summaryStrip(student: student, theme: theme)
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        summaryStrip(student: student, asOf: context.date, theme: theme)
+                    }
 
                     newsSection(theme: theme)
 
@@ -124,7 +126,7 @@ struct MobileMemberHomeView: View {
         }
     }
 
-    private func summaryStrip(student: Student, theme: MDTheme) -> some View {
+    private func summaryStrip(student: Student, asOf date: Date, theme: MDTheme) -> some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
                 Image(systemName: "checklist.checked")
@@ -154,11 +156,25 @@ struct MobileMemberHomeView: View {
                     .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                 Spacer()
-                Text("\(model.remainingSessionCount(forStudent: student.id)) 节")
+                Text("\(model.remainingSessionCount(forStudent: student.id, asOf: date)) 节")
                     .mdFont(.monoStrong)
                     .foregroundStyle(theme.primaryText)
             }
             .padding(.leading, 44)
+
+            if let attendanceStatus = model.perfectAttendanceStatus(forStudent: student.id, asOf: date) {
+                Divider()
+                    .padding(.leading, 44)
+
+                HStack {
+                    Text("全勤状态")
+                        .mdFont(.compact)
+                        .foregroundStyle(theme.secondaryText)
+                    Spacer()
+                    perfectAttendanceValue(attendanceStatus, theme: theme)
+                }
+                .padding(.leading, 44)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
@@ -166,6 +182,31 @@ struct MobileMemberHomeView: View {
         .overlay {
             RoundedRectangle(cornerRadius: MDMetrics.radius)
                 .stroke(theme.separator, lineWidth: 1)
+        }
+    }
+
+    @ViewBuilder
+    private func perfectAttendanceValue(
+        _ status: PerfectAttendanceStatus,
+        theme: MDTheme
+    ) -> some View {
+        switch status {
+        case .currentPerfect:
+            Text("当下全勤")
+                .mdFont(.monoStrong)
+                .foregroundStyle(theme.success)
+        case .makeupPerfect:
+            Text("补课全勤")
+                .mdFont(.monoStrong)
+                .foregroundStyle(theme.warning)
+        case .notPerfect:
+            Text("无全勤")
+                .mdFont(.monoStrong)
+                .foregroundStyle(theme.danger)
+        case .termPerfect:
+            Label("学期全勤", systemImage: "crown.fill")
+                .mdFont(.monoStrong)
+                .foregroundStyle(theme.warning)
         }
     }
 

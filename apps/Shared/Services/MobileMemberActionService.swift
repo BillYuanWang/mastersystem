@@ -80,18 +80,26 @@ struct MobileMemberActionService {
         try await queue.enqueue(.markNotificationRead(id))
     }
 
-    func updateGuardianContact(
+    func updateGuardianCommunication(
         guardianID: GuardianID,
-        email: String,
-        phone: String
+        phone: String,
+        secondaryEmail: String
     ) async throws {
-        guard let email = GuardianContact.normalizedEmail(email) else {
-            throw MobileMemberActionError.invalidEmail
-        }
         guard let phone = GuardianContact.formattedUSPhone(phone) else {
             throw MobileMemberActionError.invalidPhone
         }
-        try await queue.enqueue(.updateGuardianContact(guardianID, email, phone))
+        let trimmedSecondaryEmail = secondaryEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedSecondaryEmail: String?
+        if trimmedSecondaryEmail.isEmpty {
+            normalizedSecondaryEmail = nil
+        } else if let email = GuardianContact.normalizedEmail(trimmedSecondaryEmail) {
+            normalizedSecondaryEmail = email
+        } else {
+            throw MobileMemberActionError.invalidSecondaryEmail
+        }
+        try await queue.enqueue(
+            .updateGuardianCommunication(guardianID, phone, normalizedSecondaryEmail)
+        )
     }
 
     @discardableResult
@@ -220,7 +228,9 @@ private enum PendingMobileMemberAction: Codable, Sendable {
     case submitLeave(ClassSessionID, StudentID, String?)
     case recordContractConsent(ContractDocumentID, EnrollmentID?, String?)
     case markNotificationRead(NotificationRecordID)
+    // Retained so updates queued by an older build can still be decoded safely.
     case updateGuardianContact(GuardianID, String, String)
+    case updateGuardianCommunication(GuardianID, String, String?)
 
     var coalescingKey: String {
         switch self {
@@ -231,6 +241,8 @@ private enum PendingMobileMemberAction: Codable, Sendable {
         case .markNotificationRead(let id):
             "notification:\(id)"
         case .updateGuardianContact(let id, _, _):
+            "guardian-contact:\(id)"
+        case .updateGuardianCommunication(let id, _, _):
             "guardian-contact:\(id)"
         }
     }
@@ -269,10 +281,22 @@ private enum PendingMobileMemberAction: Codable, Sendable {
                 )
                 .execute()
                 .value
-        case .updateGuardianContact(let guardianID, let email, let phone):
+        case .updateGuardianContact(let guardianID, _, let phone):
+            // Older queued actions included the account email. Never replay that field.
             try await client
                 .from("guardians")
-                .update(GuardianContactUpdate(email: email, phone: phone))
+                .update(GuardianPhoneUpdate(phone: phone))
+                .eq("id", value: guardianID.rawValue)
+                .execute()
+        case .updateGuardianCommunication(let guardianID, let phone, let secondaryEmail):
+            try await client
+                .from("guardians")
+                .update(
+                    GuardianCommunicationUpdate(
+                        phone: phone,
+                        secondaryEmail: secondaryEmail
+                    )
+                )
                 .eq("id", value: guardianID.rawValue)
                 .execute()
         }
@@ -280,13 +304,13 @@ private enum PendingMobileMemberAction: Codable, Sendable {
 }
 
 enum MobileMemberActionError: LocalizedError {
-    case invalidEmail
+    case invalidSecondaryEmail
     case invalidPhone
     case invalidSignature
 
     var errorDescription: String? {
         switch self {
-        case .invalidEmail: "请输入有效邮箱。"
+        case .invalidSecondaryEmail: "请输入有效的额外联系邮箱，或留空。"
         case .invalidPhone: "请输入 10 位美国电话号码。"
         case .invalidSignature: "请先完成手写签名。"
         }
@@ -347,7 +371,26 @@ private struct MarkNotificationReadParameters: Encodable, Sendable {
     }
 }
 
-private struct GuardianContactUpdate: Encodable, Sendable {
-    let email: String
+private struct GuardianPhoneUpdate: Encodable, Sendable {
     let phone: String
+}
+
+private struct GuardianCommunicationUpdate: Encodable, Sendable {
+    let phone: String
+    let secondaryEmail: String?
+
+    enum CodingKeys: String, CodingKey {
+        case phone
+        case secondaryEmail = "secondary_email"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(phone, forKey: .phone)
+        if let secondaryEmail {
+            try container.encode(secondaryEmail, forKey: .secondaryEmail)
+        } else {
+            try container.encodeNil(forKey: .secondaryEmail)
+        }
+    }
 }

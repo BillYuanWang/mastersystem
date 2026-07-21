@@ -12,23 +12,9 @@ struct MobileMemberInboxView: View {
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         List {
-            Section("通知") {
-                if notifications.isEmpty {
-                    Text("暂无通知")
-                        .foregroundStyle(theme.secondaryText)
-                } else {
-                    ForEach(notifications) { notification in
-                        NavigationLink {
-                            MobileNotificationDetailView(
-                                model: model,
-                                actions: actions,
-                                notification: notification
-                            )
-                        } label: {
-                            notificationRow(notification, theme: theme)
-                        }
-                    }
-                }
+            Section("收据") {
+                Text("暂无收据")
+                    .foregroundStyle(theme.secondaryText)
             }
 
             Section("合同") {
@@ -50,19 +36,10 @@ struct MobileMemberInboxView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("消息与合同")
+        .navigationTitle("合同与收据")
         .refreshable {
             _ = try? await actions.synchronizePendingChanges()
             await model.refreshFromCloud()
-        }
-    }
-
-    private var notifications: [NotificationRecord] {
-        model.notifications.sorted { lhs, rhs in
-            if lhs.status == .read, rhs.status != .read { return false }
-            if lhs.status != .read, rhs.status == .read { return true }
-            return (lhs.sentAt ?? lhs.scheduledAt ?? .distantPast)
-                > (rhs.sentAt ?? rhs.scheduledAt ?? .distantPast)
         }
     }
 
@@ -70,28 +47,6 @@ struct MobileMemberInboxView: View {
         model.contractDocuments
             .filter { $0.status == .published }
             .sorted { ($0.publishedAt ?? .distantPast) > ($1.publishedAt ?? .distantPast) }
-    }
-
-    private func notificationRow(
-        _ notification: NotificationRecord,
-        theme: MDTheme
-    ) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Circle()
-                .fill(notification.status == .read ? Color.clear : theme.accent)
-                .frame(width: 7, height: 7)
-                .padding(.top, 7)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(notification.title)
-                    .mdFont(.bodyStrong)
-                    .lineLimit(2)
-                Text(notification.body)
-                    .mdFont(.compact)
-                    .foregroundStyle(theme.secondaryText)
-                    .lineLimit(2)
-            }
-        }
-        .padding(.vertical, 3)
     }
 
     private func contractRow(_ document: ContractDocument, theme: MDTheme) -> some View {

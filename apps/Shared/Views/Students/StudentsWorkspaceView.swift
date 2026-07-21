@@ -541,6 +541,7 @@ struct StudentsWorkspaceView: View {
         let learners = model.students(for: guardian.id)
         return guardian.displayName.localizedCaseInsensitiveContains(query)
             || guardian.email?.localizedCaseInsensitiveContains(query) == true
+            || guardian.secondaryEmail?.localizedCaseInsensitiveContains(query) == true
             || guardian.phone?.localizedCaseInsensitiveContains(query) == true
             || guardian.address?.localizedCaseInsensitiveContains(query) == true
             || learners.contains { learner in

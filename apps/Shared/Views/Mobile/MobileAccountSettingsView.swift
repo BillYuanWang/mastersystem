@@ -52,8 +52,20 @@ struct MobileAccountSettingsView: View {
 
                 if let guardian = model.guardians.first, actions != nil {
                     Section("联系方式") {
-                        LabeledContent("邮箱", value: guardian.email ?? "")
-                        LabeledContent("电话", value: guardian.phone ?? "")
+                        LabeledContent("帐号邮箱") {
+                            HStack(spacing: 6) {
+                                Image(systemName: "lock.fill")
+                                    .mdFont(.compact)
+                                    .foregroundStyle(theme.secondaryText)
+                                Text(guardian.email ?? "未设置")
+                                    .lineLimit(1)
+                            }
+                        }
+                        LabeledContent("电话", value: guardian.phone ?? "未设置")
+                        LabeledContent(
+                            "额外联系邮箱",
+                            value: guardian.secondaryEmail ?? "未设置"
+                        )
                         Button {
                             editingGuardian = guardian
                         } label: {
@@ -85,7 +97,7 @@ struct MobileAccountSettingsView: View {
                     actions: actions,
                     guardian: guardian
                 )
-                .presentationDetents([.medium])
+                .presentationDetents([.medium, .large])
             }
         }
     }
@@ -184,9 +196,10 @@ private struct MobileGuardianContactEditor: View {
     let actions: MobileMemberActionService
     let guardian: Guardian
 
-    @State private var email: String
     @State private var phone: String
+    @State private var secondaryEmail: String
     @State private var errorMessage: String?
+    @State private var isSaving = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
@@ -194,8 +207,8 @@ private struct MobileGuardianContactEditor: View {
         self.model = model
         self.actions = actions
         self.guardian = guardian
-        _email = State(initialValue: guardian.email ?? "")
         _phone = State(initialValue: guardian.phone ?? "")
+        _secondaryEmail = State(initialValue: guardian.secondaryEmail ?? "")
     }
 
     var body: some View {
@@ -203,15 +216,37 @@ private struct MobileGuardianContactEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("name@example.com", text: $email)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .textContentType(.emailAddress)
+                    HStack(spacing: 10) {
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(theme.secondaryText)
+                        Text(guardian.email ?? "未设置")
+                            .textSelection(.enabled)
+                            .lineLimit(1)
+                    }
+                } header: {
+                    Text("帐号邮箱")
+                } footer: {
+                    Text("帐号邮箱由学校维护。如需修改，请联系教务老师。")
+                }
+
+                Section("电话号码") {
                     TextField("+1 (000) 000-0000", text: $phone)
                         .keyboardType(.phonePad)
                         .textContentType(.telephoneNumber)
                 }
+
+                Section {
+                    TextField("optional@example.com", text: $secondaryEmail)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .textContentType(.emailAddress)
+                } header: {
+                    Text("额外邮箱联系方式")
+                } footer: {
+                    Text("选填。学校发送邮件时可同时使用这个地址。")
+                }
+
                 if let errorMessage {
                     Section {
                         Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
@@ -227,30 +262,43 @@ private struct MobileGuardianContactEditor: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { save() }
+                        .disabled(!canSave || isSaving)
                 }
             }
+            .interactiveDismissDisabled(isSaving)
         }
     }
 
     private func save() {
+        guard !isSaving else { return }
         errorMessage = nil
+        isSaving = true
         Task {
+            defer { isSaving = false }
             do {
-                try await actions.updateGuardianContact(
+                try await actions.updateGuardianCommunication(
                     guardianID: guardian.id,
-                    email: email,
-                    phone: phone
+                    phone: phone,
+                    secondaryEmail: secondaryEmail
                 )
-                try model.applyLocalGuardianContact(
+                try model.applyLocalGuardianCommunication(
                     id: guardian.id,
-                    email: email,
-                    phone: phone
+                    phone: phone,
+                    secondaryEmail: secondaryEmail
                 )
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private var canSave: Bool {
+        GuardianContact.formattedUSPhone(phone) != nil
+            && (
+                secondaryEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || GuardianContact.normalizedEmail(secondaryEmail) != nil
+            )
     }
 }
 #endif
