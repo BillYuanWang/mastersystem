@@ -137,6 +137,32 @@ struct WriteBehindMasterDanceRepositoryTests {
         #expect(await remote.listLeaveRequests(sessionID: nil, studentID: nil).isEmpty)
     }
 
+    @Test("Guarded family deletion is confirmed remotely before local removal")
+    func familyDeletionIsRemoteFirst() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let guardian = Guardian(displayName: "Temporary Family")
+        let student = Student(guardianID: guardian.id, displayName: "Student", kind: .child)
+        let remote = PreviewMasterDanceStore(
+            data: PreviewData(students: [student], guardians: [guardian])
+        )
+        let repository = WriteBehindMasterDanceRepository(
+            remote: remote,
+            cacheDirectory: directory,
+            cacheKey: "family-deletion"
+        )
+        _ = try await repository.listGuardians(studentID: nil)
+
+        try await repository.deleteGuardian(id: guardian.id)
+
+        #expect(await repository.pendingMutationCount() == 0)
+        #expect(try await repository.listGuardians(studentID: nil).isEmpty)
+        #expect(try await repository.listStudents().isEmpty)
+        #expect(try await remote.listGuardians(studentID: nil).isEmpty)
+        #expect(try await remote.listStudents().isEmpty)
+    }
+
     @Test("Remote changes refresh the local snapshot only after the sequence advances")
     func remoteChangeSequenceControlsRefresh() async throws {
         let directory = temporaryDirectory()

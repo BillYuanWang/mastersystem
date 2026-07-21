@@ -374,7 +374,14 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
     }
 
     func deleteGuardian(id: GuardianID) async throws {
-        try await deleteRecord(kind: "guardian", id: id.rawValue)
+        try await client
+            .rpc(
+                "admin_delete_guardian_household",
+                params: AdminDeleteGuardianHouseholdParameters(
+                    guardianID: id.rawValue
+                )
+            )
+            .execute()
     }
 
     func listEnrollments(

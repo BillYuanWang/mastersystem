@@ -163,7 +163,7 @@ final class AppModel {
                 await reload()
             }
         } catch {
-            backgroundSync.notice = .failure(error.localizedDescription)
+            presentBackgroundSyncFailure(error)
         }
     }
 
@@ -177,7 +177,7 @@ final class AppModel {
                 await reload()
             }
         } catch {
-            backgroundSync.notice = .failure(error.localizedDescription)
+            presentBackgroundSyncFailure(error)
         }
     }
 
@@ -194,7 +194,7 @@ final class AppModel {
                 await reload()
             }
         } catch {
-            backgroundSync.notice = .failure(error.localizedDescription)
+            presentBackgroundSyncFailure(error)
         }
     }
 
@@ -221,12 +221,12 @@ final class AppModel {
             pendingBackgroundOperations.removeAll { $0.id == id }
             pendingSyncCount = await deferred.pendingMutationCount()
             refreshBackgroundSyncActivity()
-            backgroundSync.notice = .failure(error.localizedDescription)
+            presentBackgroundSyncFailure(error)
         }
     }
 
     func reportBackgroundSyncFailure(_ error: Error) {
-        backgroundSync.notice = .failure(error.localizedDescription)
+        presentBackgroundSyncFailure(error)
     }
 
     func applyLocalLeaveRequest(
@@ -1091,8 +1091,7 @@ final class AppModel {
         refreshBackgroundSyncActivity()
 
         if let error {
-            syncNoticeGeneration = UUID()
-            backgroundSync.notice = .failure(error.localizedDescription)
+            presentBackgroundSyncFailure(error)
             return
         }
 
@@ -1100,6 +1099,13 @@ final class AppModel {
         if case .failure = backgroundSync.notice { return }
         backgroundSync.notice = .success(successMessage)
         scheduleSuccessNoticeDismissal()
+    }
+
+    private func presentBackgroundSyncFailure(_ error: Error) {
+        let notice = BackgroundSyncNotice.failure(error.localizedDescription)
+        guard backgroundSync.notice != notice else { return }
+        syncNoticeGeneration = UUID()
+        backgroundSync.notice = notice
     }
 
     private func scheduleSuccessNoticeDismissal() {

@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(17);
+select plan(20);
 
 select ok(
   not has_table_privilege('authenticated', 'public.terms', 'DELETE')
@@ -443,6 +443,35 @@ select lives_ok(
     )
   $remove_second_term$,
   '依赖逆序撤销后学期可以删除'
+);
+
+select lives_ok(
+  $remove_empty_family$
+    select public.admin_delete_guardian_household(
+      '94000000-0000-0000-0000-000000000015'
+    )
+  $remove_empty_family$,
+  '没有业务记录的家庭可以连同空学员档案一起删除'
+);
+
+select is(
+  (
+    select count(*)
+    from public.students
+    where guardian_id = '94000000-0000-0000-0000-000000000015'
+  ),
+  0::bigint,
+  '家庭删除后不残留空学员档案'
+);
+
+select is(
+  (
+    select count(*)
+    from public.guardians
+    where id = '94000000-0000-0000-0000-000000000015'
+  ),
+  0::bigint,
+  '家庭记录已删除'
 );
 
 select * from finish();

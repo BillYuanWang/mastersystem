@@ -100,7 +100,7 @@ struct GuardianInspectorView: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("“\(guardian.displayName)”的家庭与监护人资料删除后无法恢复。仅当帐号尚未连接、名下没有学员档案时才能删除；有关联数据时系统会阻止操作。")
+            Text("“\(guardian.displayName)”的家庭与监护人资料删除后无法恢复。未连接帐号且没有报名、签到、请假或签字记录时，名下空学员档案会一并删除；有正式记录时系统会阻止操作。")
         }
         .alert(
             "永久删除学员？",

@@ -158,6 +158,47 @@ struct PreviewMasterDanceStoreTests {
         #expect(firstGuardians.first?.studentIDs == [firstChild.id, secondChild.id])
     }
 
+    @Test("Deleting an unclaimed family removes empty learner profiles")
+    func deletesUnclaimedFamilyWithEmptyLearners() async throws {
+        let guardian = Guardian(displayName: "Temporary Family")
+        let firstChild = Student(guardianID: guardian.id, displayName: "First", kind: .child)
+        let secondChild = Student(guardianID: guardian.id, displayName: "Second", kind: .child)
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(students: [firstChild, secondChild], guardians: [guardian])
+        )
+
+        try await store.deleteGuardian(id: guardian.id)
+
+        #expect(try await store.listGuardians(studentID: nil).isEmpty)
+        #expect(try await store.listStudents().isEmpty)
+    }
+
+    @Test("A family with enrollment history cannot be deleted")
+    func protectsFamilyWithEnrollment() async throws {
+        let guardian = Guardian(displayName: "Active Family")
+        let student = Student(guardianID: guardian.id, displayName: "Student", kind: .child)
+        let enrollment = Enrollment(
+            termID: TermID(),
+            courseID: CourseID(),
+            studentID: student.id,
+            enrolledAt: Date()
+        )
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(
+                students: [student],
+                guardians: [guardian],
+                enrollments: [enrollment]
+            )
+        )
+
+        await #expect(throws: PreviewRepositoryError.recordInUse("这个家庭仍有学员报名，不能删除；请先撤销报名。")) {
+            try await store.deleteGuardian(id: guardian.id)
+        }
+
+        #expect(try await store.listGuardians(studentID: nil).map(\.id) == [guardian.id])
+        #expect(try await store.listStudents() == [student])
+    }
+
     @Test("A family owns child and adult learner profiles")
     func familyCreatesMultipleLearners() async throws {
         let guardian = Guardian(displayName: "Family")

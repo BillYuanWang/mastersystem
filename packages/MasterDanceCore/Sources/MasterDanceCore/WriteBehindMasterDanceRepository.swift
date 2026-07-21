@@ -302,14 +302,18 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 
     public func deleteStudent(id: StudentID) async throws {
         try await ensureSnapshot()
+        _ = try await synchronizeIfNeeded()
+        try await remote.deleteStudent(id: id)
         try await local.deleteStudent(id: id)
-        try await enqueue(.deleteStudent(id))
+        try await persist()
     }
 
     public func deleteGuardian(id: GuardianID) async throws {
         try await ensureSnapshot()
+        _ = try await synchronizeIfNeeded()
+        try await remote.deleteGuardian(id: id)
         try await local.deleteGuardian(id: id)
-        try await enqueue(.deleteGuardian(id))
+        try await persist()
     }
 
     public func listEnrollments(

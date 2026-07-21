@@ -530,6 +530,14 @@ struct AdminDeleteRecordParameters: Encodable, Sendable {
     }
 }
 
+struct AdminDeleteGuardianHouseholdParameters: Encodable, Sendable {
+    let guardianID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case guardianID = "target_guardian_id"
+    }
+}
+
 struct GuardianStudentRow: Codable, Sendable {
     let organizationID: UUID
     let guardianID: UUID

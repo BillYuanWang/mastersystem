@@ -297,8 +297,23 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
 
     public func deleteGuardian(id: GuardianID) throws {
         guard let guardian = data.guardians.first(where: { $0.id == id }) else { return }
-        let inUse = guardian.isAccountLinked || data.students.contains { $0.guardianID == id }
-        try requireUnused(!inUse, "这个监护人已连接帐号或仍有学员档案，不能删除。")
+        try requireUnused(!guardian.isAccountLinked, "这个监护人已连接帐号，不能删除。")
+
+        let studentIDs = Set(
+            data.students
+                .filter { $0.guardianID == id }
+                .map(\.id)
+        )
+        let hasEnrollment = data.enrollments.contains { studentIDs.contains($0.studentID) }
+        try requireUnused(!hasEnrollment, "这个家庭仍有学员报名，不能删除；请先撤销报名。")
+
+        let hasAttendance = data.attendance.contains { studentIDs.contains($0.studentID) }
+        try requireUnused(!hasAttendance, "这个家庭已有签到记录，不能删除；可以停用学员档案。")
+
+        let hasLeaveRequest = data.leaveRequests.contains { studentIDs.contains($0.studentID) }
+        try requireUnused(!hasLeaveRequest, "这个家庭已有请假记录，不能删除；可以停用学员档案。")
+
+        data.students.removeAll { studentIDs.contains($0.id) }
         remove(id: id, from: &data.guardians)
     }
 
