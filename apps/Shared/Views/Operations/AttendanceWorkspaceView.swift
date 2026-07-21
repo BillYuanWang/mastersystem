@@ -6,9 +6,9 @@ import SwiftUI
 struct AttendanceWorkspaceView: View {
     let model: AppModel
 
-    @State private var selectedDate = Date()
-    @State private var selectedSessionID: ClassSessionID?
-    @State private var searchText = ""
+    @SceneStorage("md-desk.attendance.selected-date") private var selectedDateStorage = Calendar.masterDance.startOfDay(for: Date()).timeIntervalSinceReferenceDate
+    @SceneStorage("md-desk.attendance.selected-session-id") private var selectedSessionIDStorage = ""
+    @SceneStorage("md-desk.attendance.search") private var searchText = ""
     @State private var addingGuestKind: AttendanceGuestKind?
     @State private var deletingAttendanceID: AttendanceID?
 
@@ -28,13 +28,14 @@ struct AttendanceWorkspaceView: View {
                 attendanceContent(theme: theme)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(theme.background)
         .task(id: model.sessions.count) {
             if let focused = model.focusedSessionID, let session = model.session(id: focused) {
                 selectedDate = session.startsAt
                 selectedSessionID = focused
                 model.focusedSessionID = nil
-            } else if selectedSessionID == nil {
+            } else if selectedSessionID == nil || !sessionsForDate.contains(where: { $0.id == selectedSessionID }) {
                 selectedSessionID = sessionsForDate.first?.id
             }
         }
@@ -65,7 +66,15 @@ struct AttendanceWorkspaceView: View {
         HStack(spacing: 12) {
             MDSectionTitle(chinese: "签到", english: "ATTENDANCE")
             Spacer()
-            DatePicker("日期", selection: $selectedDate, displayedComponents: .date)
+            Button {
+                selectedDate = Calendar.masterDance.startOfDay(for: Date())
+            } label: {
+                Label("今天", systemImage: "calendar.badge.clock")
+            }
+            .buttonStyle(MDHeaderActionButtonStyle(isActive: isShowingToday))
+            .help(isShowingToday ? "当前正在显示今天" : "返回今天")
+
+            DatePicker("日期", selection: selectedDateSelection, displayedComponents: .date)
                 .labelsHidden()
             TextField("搜索学员或家庭", text: $searchText)
                 .textFieldStyle(.roundedBorder)
@@ -74,6 +83,31 @@ struct AttendanceWorkspaceView: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 54)
+    }
+
+    private var selectedDate: Date {
+        get { Date(timeIntervalSinceReferenceDate: selectedDateStorage) }
+        nonmutating set {
+            selectedDateStorage = Calendar.masterDance
+                .startOfDay(for: newValue)
+                .timeIntervalSinceReferenceDate
+        }
+    }
+
+    private var selectedDateSelection: Binding<Date> {
+        Binding(
+            get: { selectedDate },
+            set: { selectedDate = $0 }
+        )
+    }
+
+    private var selectedSessionID: ClassSessionID? {
+        get { try? ClassSessionID(uuidString: selectedSessionIDStorage) }
+        nonmutating set { selectedSessionIDStorage = newValue?.description ?? "" }
+    }
+
+    private var isShowingToday: Bool {
+        Calendar.masterDance.isDateInToday(selectedDate)
     }
 
     private func sessionList(theme: MDTheme) -> some View {

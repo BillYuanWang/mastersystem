@@ -299,6 +299,58 @@ struct PreviewMasterDanceStoreTests {
         #expect(decoded.storagePath == "contracts/legacy.pdf")
     }
 
+    @Test("Legacy cached contract consents decode without signature images")
+    func legacyContractConsentDecoding() throws {
+        let consentID = ContractConsentID()
+        let termID = TermID()
+        let json = """
+        {
+          "id": { "rawValue": "\(consentID.rawValue.uuidString)" },
+          "termID": { "rawValue": "\(termID.rawValue.uuidString)" },
+          "contractVersion": "v1",
+          "signerKind": "guardian",
+          "signerDisplayName": "Legacy Guardian",
+          "consentedAt": 0
+        }
+        """
+
+        let decoded = try JSONDecoder().decode(ContractConsent.self, from: Data(json.utf8))
+
+        #expect(decoded.signaturePNG == nil)
+        #expect(decoded.signerDisplayName == "Legacy Guardian")
+    }
+
+    @Test("Administrator leave requests support create, update, and delete")
+    func leaveRequestCRUD() async throws {
+        let store = PreviewMasterDanceStore()
+        var request = LeaveRequest(
+            sessionID: ClassSessionID(),
+            studentID: StudentID(),
+            source: .administrator,
+            submittedAt: Date(),
+            note: "Called front desk"
+        )
+
+        await store.save(leaveRequest: request)
+        #expect(await store.listLeaveRequests(sessionID: nil, studentID: nil) == [request])
+
+        request.sessionID = ClassSessionID()
+        request.studentID = StudentID()
+        request.status = .approved
+        request.resolvedAt = Date()
+        request.note = "Approved by administrator"
+        await store.save(leaveRequest: request)
+
+        let updated = await store.listLeaveRequests(
+            sessionID: request.sessionID,
+            studentID: request.studentID
+        )
+        #expect(updated == [request])
+
+        await store.deleteLeaveRequest(id: request.id)
+        #expect(await store.listLeaveRequests(sessionID: nil, studentID: nil).isEmpty)
+    }
+
     @Test("Custom course references persist and sessions override defaults")
     func customCourseReferences() async throws {
         let term = Term(

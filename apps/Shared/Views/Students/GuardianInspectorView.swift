@@ -88,8 +88,8 @@ struct GuardianInspectorView: View {
         .sheet(item: $issuedCode) { code in
             GuardianLinkCodeSheet(code: code)
         }
-        .alert("确认删除监护人", isPresented: $deletingGuardian) {
-            Button("删除", role: .destructive) {
+        .alert("永久删除家庭？", isPresented: $deletingGuardian) {
+            Button("永久删除", role: .destructive) {
                 Task {
                     do {
                         try await model.deleteGuardian(id: guardian.id)
@@ -100,17 +100,17 @@ struct GuardianInspectorView: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("仍有学员档案或已连接帐号时，监护人不会被删除。")
+            Text("“\(guardian.displayName)”的家庭与监护人资料删除后无法恢复。仅当帐号尚未连接、名下没有学员档案时才能删除；有关联数据时系统会阻止操作。")
         }
         .alert(
-            "确认删除学员",
+            "永久删除学员？",
             isPresented: Binding(
                 get: { deletingStudent != nil },
                 set: { if !$0 { deletingStudent = nil } }
             ),
             presenting: deletingStudent
         ) { student in
-            Button("删除", role: .destructive) {
+            Button("永久删除", role: .destructive) {
                 deletingStudent = nil
                 Task {
                     do {
@@ -122,8 +122,8 @@ struct GuardianInspectorView: View {
                 }
             }
             Button("取消", role: .cancel) {}
-        } message: { _ in
-            Text("已有报名、签到或请假记录时，学员不会被删除，可以改为停用档案。")
+        } message: { student in
+            Text("“\(student.displayName)”的学员档案删除后无法恢复。已有报名、签到或请假记录时系统会阻止操作；这类档案请改为停用。")
         }
     }
 

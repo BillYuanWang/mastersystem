@@ -476,6 +476,10 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         ).execute()
     }
 
+    func deleteLeaveRequest(id: LeaveRequestID) async throws {
+        try await client.from("leave_requests").delete().eq("id", value: id.rawValue).execute()
+    }
+
     func listContractDocuments(termID: TermID?) async throws -> [ContractDocument] {
         let rows: [ContractDocumentRow]
         if let termID {
@@ -591,11 +595,31 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
             .value
         let versions = Dictionary(uniqueKeysWithValues: documentRows.map { ($0.id, $0.version) })
 
+        let signatureRows: [ContractConsentSignatureRow]
+        if consentRows.isEmpty {
+            signatureRows = []
+        } else {
+            signatureRows = try await client
+                .from("contract_consent_signatures")
+                .select("contract_consent_id, signature_png")
+                .in("contract_consent_id", values: consentRows.map(\.id))
+                .execute()
+                .value
+        }
+        let signatures = Dictionary(
+            uniqueKeysWithValues: signatureRows.compactMap { row in
+                row.decodedPNG.map { (row.contractConsentID, $0) }
+            }
+        )
+
         return try consentRows.map { row in
             guard let version = versions[row.contractDocumentID] else {
                 throw SupabaseRepositoryError.missingContractDocument(row.contractDocumentID)
             }
-            return try row.domain(contractVersion: version)
+            return try row.domain(
+                contractVersion: version,
+                signaturePNG: signatures[row.id]
+            )
         }
     }
 

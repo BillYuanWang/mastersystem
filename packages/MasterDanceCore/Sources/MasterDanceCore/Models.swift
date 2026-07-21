@@ -383,8 +383,8 @@ public enum LeaveRequestStatus: String, Codable, CaseIterable, Sendable {
 
 public struct LeaveRequest: Identifiable, Codable, Equatable, Sendable {
     public let id: LeaveRequestID
-    public let sessionID: ClassSessionID
-    public let studentID: StudentID
+    public var sessionID: ClassSessionID
+    public var studentID: StudentID
     public var enrollmentID: EnrollmentID?
     public var source: LeaveRequestSource
     public var status: LeaveRequestStatus
@@ -398,7 +398,7 @@ public struct LeaveRequest: Identifiable, Codable, Equatable, Sendable {
         studentID: StudentID,
         enrollmentID: EnrollmentID? = nil,
         source: LeaveRequestSource,
-        status: LeaveRequestStatus = .pending,
+        status: LeaveRequestStatus = .approved,
         submittedAt: Date,
         resolvedAt: Date? = nil,
         note: String? = nil
@@ -527,6 +527,7 @@ public struct ContractConsent: Identifiable, Codable, Equatable, Sendable {
     public var signerKind: ConsentSignerKind
     public var signerDisplayName: String
     public var consentedAt: Date
+    public var signaturePNG: Data?
 
     public init(
         id: ContractConsentID = ContractConsentID(),
@@ -536,7 +537,8 @@ public struct ContractConsent: Identifiable, Codable, Equatable, Sendable {
         contractVersion: String,
         signerKind: ConsentSignerKind,
         signerDisplayName: String,
-        consentedAt: Date
+        consentedAt: Date,
+        signaturePNG: Data? = nil
     ) {
         self.id = id
         self.contractDocumentID = contractDocumentID
@@ -546,6 +548,7 @@ public struct ContractConsent: Identifiable, Codable, Equatable, Sendable {
         self.signerKind = signerKind
         self.signerDisplayName = signerDisplayName
         self.consentedAt = consentedAt
+        self.signaturePNG = signaturePNG
     }
 }
 

@@ -57,7 +57,7 @@ struct ScheduleGridView: View {
                 .foregroundStyle(theme.secondaryText)
                 .frame(width: timeColumnWidth, height: headerHeight)
 
-            ForEach(Array(days.enumerated()), id: \.offset) { _, day in
+            ForEach(Array(days.enumerated()), id: \.offset) { dayIndex, day in
                 VStack(spacing: 0) {
                     HStack(spacing: 5) {
                         Text(day.formatted(.dateTime.weekday(.abbreviated)).uppercased())
@@ -94,6 +94,11 @@ struct ScheduleGridView: View {
                     }
                 }
                 .frame(width: laneWidth * CGFloat(rooms.count), height: headerHeight)
+                .background(
+                    dayIndex.isMultiple(of: 2)
+                        ? theme.scheduleAlternatingDayHeaderBackground
+                        : theme.surface
+                )
                 .overlay(alignment: .leading) {
                     Rectangle()
                         .fill(theme.separator)
@@ -105,11 +110,23 @@ struct ScheduleGridView: View {
     }
 
     private func timelineBody(width: CGFloat, height: CGFloat, theme: MDTheme) -> some View {
-        let laneCount = days.count * max(1, rooms.count)
+        let roomCount = max(1, rooms.count)
+        let laneCount = days.count * roomCount
         let laneWidth = max(1, (width - timeColumnWidth) / CGFloat(laneCount))
+        let dayWidth = laneWidth * CGFloat(roomCount)
         let blockInset: CGFloat = laneWidth < 84 ? 1.5 : 2.5
         return ZStack(alignment: .topLeading) {
             theme.background
+
+            ForEach(days.indices, id: \.self) { dayIndex in
+                if dayIndex.isMultiple(of: 2) {
+                    Rectangle()
+                        .fill(theme.scheduleAlternatingDayBackground)
+                        .frame(width: dayWidth, height: height)
+                        .offset(x: timeColumnWidth + CGFloat(dayIndex) * dayWidth)
+                        .accessibilityHidden(true)
+                }
+            }
 
             ForEach(0...22, id: \.self) { index in
                 let minute = timelineStart + index * 30
@@ -134,8 +151,8 @@ struct ScheduleGridView: View {
 
             ForEach(0...laneCount, id: \.self) { index in
                 Rectangle()
-                    .fill(index.isMultiple(of: max(1, rooms.count)) ? theme.separator : theme.faintSeparator)
-                    .frame(width: index.isMultiple(of: max(1, rooms.count)) ? 0.8 : 0.45, height: height)
+                    .fill(index.isMultiple(of: roomCount) ? theme.separator : theme.faintSeparator)
+                    .frame(width: index.isMultiple(of: roomCount) ? 0.8 : 0.45, height: height)
                     .offset(x: timeColumnWidth + CGFloat(index) * laneWidth)
             }
 

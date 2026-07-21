@@ -6,126 +6,146 @@ import SwiftUI
 struct RequestsWorkspaceView: View {
     let model: AppModel
 
-    @State private var section = RequestSection.leave
+    @SceneStorage("md-desk.requests.selected-date") private var selectedDateStorage = Calendar.masterDance
+        .startOfDay(for: Date())
+        .timeIntervalSinceReferenceDate
+    @SceneStorage("md-desk.requests.date-filter-enabled") private var dateFilterEnabled = false
+    @State private var showingNewRequest = false
+    @State private var editingRequest: LeaveRequest?
+    @State private var deletingRequest: LeaveRequest?
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                MDSectionTitle(chinese: "请假与通知")
-                Picker("申请", selection: $section) {
-                    ForEach(RequestSection.allCases) { item in
-                        Text(item.title).tag(item)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 220)
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 54)
-
+            toolbar(theme: theme)
             Rectangle().fill(theme.separator).frame(height: 1)
-
-            switch section {
-            case .leave:
-                leaveList(theme: theme)
-            case .notifications:
-                notificationList(theme: theme)
-            }
+            leaveList(theme: theme)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(theme.background)
         .foregroundStyle(theme.primaryText)
+        .sheet(isPresented: $showingNewRequest) {
+            LeaveRequestEditorView(
+                model: model,
+                request: nil,
+                initialDate: dateFilterEnabled ? selectedDate : Date()
+            )
+        }
+        .sheet(item: $editingRequest) { request in
+            LeaveRequestEditorView(
+                model: model,
+                request: request,
+                initialDate: model.session(id: request.sessionID)?.startsAt ?? selectedDate
+            )
+        }
+        .alert(
+            "删除请假记录",
+            isPresented: Binding(
+                get: { deletingRequest != nil },
+                set: { if !$0 { deletingRequest = nil } }
+            ),
+            presenting: deletingRequest
+        ) { request in
+            Button("删除", role: .destructive) { delete(request) }
+            Button("取消", role: .cancel) {}
+        } message: { request in
+            let student = model.student(id: request.studentID)?.displayName ?? "该学员"
+            let session = model.session(id: request.sessionID)
+            let date = session?.startsAt.formatted(date: .abbreviated, time: .shortened) ?? "该课次"
+            Text("确定删除 \(student) 在 \(date) 的请假记录吗？")
+        }
+    }
+
+    private func toolbar(theme: MDTheme) -> some View {
+        HStack(spacing: 10) {
+            MDSectionTitle(chinese: "请假")
+            Spacer()
+
+            Button {
+                toggleTodayFilter()
+            } label: {
+                Label("仅今天", systemImage: "calendar")
+            }
+            .buttonStyle(MDHeaderActionButtonStyle(isActive: isFilteringToday))
+            .help(isFilteringToday ? "再次点击显示全部日期" : "仅显示今天上课的请假")
+
+            DatePicker("选择日期", selection: selectedDateSelection, displayedComponents: .date)
+                .labelsHidden()
+                .fixedSize()
+                .opacity(dateFilterEnabled ? 1 : 0.72)
+                .help("选择某一天的请假记录")
+
+            Button {
+                dateFilterEnabled = false
+            } label: {
+                Image(systemName: "xmark.circle")
+            }
+            .buttonStyle(MDIconButtonStyle())
+            .opacity(dateFilterEnabled ? 1 : 0)
+            .disabled(!dateFilterEnabled)
+            .accessibilityHidden(!dateFilterEnabled)
+            .help("清除日期筛选，显示全部")
+
+            Button {
+                showingNewRequest = true
+            } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(MDIconButtonStyle())
+            .help("新增请假")
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 54)
     }
 
     private func leaveList(theme: MDTheme) -> some View {
         VStack(spacing: 0) {
-            requestHeader([("学生", 140), ("课程", 190), ("课次", 180), ("来源", 90), ("状态", 90), ("备注", 180), ("处理", 126)], theme: theme)
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(model.leaveRequests) { request in
-                        let session = model.session(id: request.sessionID)
-                        let course = session.flatMap { model.course(id: $0.courseID) }
-                        HStack(spacing: 0) {
-                            requestCell(model.student(id: request.studentID)?.displayName ?? "—", width: 140, strong: true)
-                            requestCell(course?.name ?? "—", width: 190)
-                            requestCell(session?.startsAt.formatted(date: .abbreviated, time: .shortened) ?? "—", width: 180, mono: true)
-                            requestCell(request.source == .app ? "手机端" : "教务代办", width: 90)
-                            requestCell(leaveStatus(request.status), width: 90)
-                            requestCell(request.note ?? "—", width: 180)
-                            leaveActions(request)
-                                .frame(width: 126, alignment: .leading)
-                                .padding(.leading, 8)
-                            Spacer()
-                        }
-                        .frame(minHeight: 42)
-                        Divider()
-                    }
-                }
-            }
-        }
-    }
+            requestHeader(
+                [
+                    ("学员", 140), ("课程", 210), ("课次", 180),
+                    ("来源", 90), ("备注", 260), ("操作", 100),
+                ],
+                theme: theme
+            )
 
-    @ViewBuilder
-    private func leaveActions(_ request: LeaveRequest) -> some View {
-        if request.status == .pending || request.status == .late {
-            HStack(spacing: 5) {
-                Button {
-                    resolve(request, as: .approved)
-                } label: {
-                    Image(systemName: "checkmark")
-                }
-                .buttonStyle(.borderless)
-                .help("同意")
-
-                Button {
-                    resolve(request, as: .denied)
-                } label: {
-                    Image(systemName: "xmark")
-                }
-                .buttonStyle(.borderless)
-                .help("拒绝")
-            }
-        } else {
-            Text("—")
-                .mdFont(.body)
-        }
-    }
-
-    private func resolve(_ request: LeaveRequest, as status: LeaveRequestStatus) {
-        Task {
-            do {
-                try await model.resolveLeaveRequest(id: request.id, status: status)
-            } catch {
-                model.errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func contractList(theme: MDTheme) -> some View {
-        VStack(spacing: 0) {
-            requestHeader([("签署人", 180), ("版本", 150), ("范围", 160), ("同意时间", 200)], theme: theme)
-            if model.contractConsents.isEmpty {
+            if visibleLeaveRequests.isEmpty {
                 ContentUnavailableView(
-                    "暂无合同同意记录",
-                    systemImage: "signature",
-                    description: Text("合同范围规则尚待产品确认，因此这里不做默认推断。")
+                    emptyTitle,
+                    systemImage: "calendar.badge.checkmark",
+                    description: Text("可以用右上角加号替家长录入请假。")
                 )
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(model.contractConsents) { consent in
+                        ForEach(visibleLeaveRequests) { request in
+                            let session = model.session(id: request.sessionID)
+                            let course = session.flatMap { model.course(id: $0.courseID) }
                             HStack(spacing: 0) {
-                                requestCell(consent.signerDisplayName, width: 180, strong: true)
-                                requestCell(consent.contractVersion, width: 150, mono: true)
-                                requestCell(consent.enrollmentID == nil ? "学期" : "报名", width: 160)
-                                requestCell(consent.consentedAt.formatted(date: .abbreviated, time: .shortened), width: 200, mono: true)
-                                Spacer()
+                                requestCell(
+                                    model.student(id: request.studentID)?.displayName ?? "—",
+                                    width: 140,
+                                    strong: true
+                                )
+                                requestCell(course?.name ?? "—", width: 210)
+                                requestCell(
+                                    session?.startsAt.formatted(date: .abbreviated, time: .shortened) ?? "—",
+                                    width: 180,
+                                    mono: true
+                                )
+                                requestCell(leaveRequestSourceLabel(request.source), width: 90)
+                                requestCell(request.note ?? "—", width: 260)
+                                leaveActions(request)
+                                    .frame(width: 100, alignment: .leading)
+                                Spacer(minLength: 0)
                             }
-                            .frame(minHeight: 42)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                            .contextMenu {
+                                Button("编辑") { editingRequest = request }
+                                Button("删除", role: .destructive) { deletingRequest = request }
+                            }
                             Divider()
                         }
                     }
@@ -134,25 +154,89 @@ struct RequestsWorkspaceView: View {
         }
     }
 
-    private func notificationList(theme: MDTheme) -> some View {
-        VStack(spacing: 0) {
-            requestHeader([("标题", 220), ("内容", 360), ("渠道", 120), ("状态", 120), ("计划时间", 180)], theme: theme)
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(model.notifications) { notification in
-                        HStack(spacing: 0) {
-                            requestCell(notification.title, width: 220, strong: true)
-                            requestCell(notification.body, width: 360)
-                            requestCell(notification.channel == .applePush ? "苹果推送" : "应用内", width: 120)
-                            requestCell(notificationStatus(notification.status), width: 120)
-                            requestCell(notification.scheduledAt?.formatted(date: .abbreviated, time: .shortened) ?? "—", width: 180, mono: true)
-                            Spacer()
-                        }
-                        .frame(minHeight: 42)
-                        Divider()
-                    }
-                }
+    private var visibleLeaveRequests: [LeaveRequest] {
+        let filtered = dateFilterEnabled
+            ? model.leaveRequests.filter { request in
+                guard let session = model.session(id: request.sessionID) else { return false }
+                return Calendar.masterDance.isDate(session.startsAt, inSameDayAs: selectedDate)
             }
+            : model.leaveRequests
+
+        return filtered.sorted { left, right in
+            let leftDate = model.session(id: left.sessionID)?.startsAt ?? left.submittedAt
+            let rightDate = model.session(id: right.sessionID)?.startsAt ?? right.submittedAt
+            if leftDate == rightDate { return left.submittedAt > right.submittedAt }
+            return dateFilterEnabled ? leftDate < rightDate : leftDate > rightDate
+        }
+    }
+
+    private var emptyTitle: String {
+        guard dateFilterEnabled else { return "暂无请假记录" }
+        if isFilteringToday { return "今天没有请假记录" }
+        return "\(selectedDate.formatted(.dateTime.month().day())) 没有请假记录"
+    }
+
+    private var selectedDate: Date {
+        get { Date(timeIntervalSinceReferenceDate: selectedDateStorage) }
+        nonmutating set {
+            selectedDateStorage = Calendar.masterDance
+                .startOfDay(for: newValue)
+                .timeIntervalSinceReferenceDate
+        }
+    }
+
+    private var selectedDateSelection: Binding<Date> {
+        Binding(
+            get: { selectedDate },
+            set: { value in
+                selectedDate = value
+                dateFilterEnabled = true
+            }
+        )
+    }
+
+    private var isFilteringToday: Bool {
+        dateFilterEnabled && Calendar.masterDance.isDateInToday(selectedDate)
+    }
+
+    private func toggleTodayFilter() {
+        if isFilteringToday {
+            dateFilterEnabled = false
+        } else {
+            selectedDate = Date()
+            dateFilterEnabled = true
+        }
+    }
+
+    @ViewBuilder
+    private func leaveActions(_ request: LeaveRequest) -> some View {
+        HStack(spacing: 2) {
+            Button {
+                editingRequest = request
+            } label: {
+                Image(systemName: "pencil")
+            }
+            .buttonStyle(MDIconButtonStyle())
+            .help("编辑请假")
+
+            Button {
+                deletingRequest = request
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(MDIconButtonStyle())
+            .help("删除请假")
+        }
+        .padding(.horizontal, 2)
+    }
+
+    private func delete(_ request: LeaveRequest) {
+        deletingRequest = nil
+        model.performBackgroundOperation(
+            label: "删除请假",
+            successMessage: "请假已删除"
+        ) {
+            try await model.deleteLeaveRequest(id: request.id)
         }
     }
 
@@ -162,42 +246,268 @@ struct RequestsWorkspaceView: View {
                 requestCell(column.0, width: column.1, strong: true)
                     .foregroundStyle(theme.secondaryText)
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
         .frame(height: 34)
         .background(theme.subtleSurface)
     }
+}
 
-    private func leaveStatus(_ status: LeaveRequestStatus) -> String {
-        switch status {
-        case .pending: "待处理"
-        case .approved: "已同意"
-        case .denied: "已拒绝"
-        case .late: "逾期"
+private struct LeaveRequestEditorView: View {
+    let model: AppModel
+    let original: LeaveRequest?
+
+    @State private var selectedDate: Date
+    @State private var sessionID: ClassSessionID?
+    @State private var studentID: StudentID?
+    @State private var note: String
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+
+    init(model: AppModel, request: LeaveRequest?, initialDate: Date) {
+        self.model = model
+        original = request
+        let requestDate = request.flatMap { model.session(id: $0.sessionID)?.startsAt }
+        _selectedDate = State(
+            initialValue: Calendar.masterDance.startOfDay(for: requestDate ?? initialDate)
+        )
+        _sessionID = State(initialValue: request?.sessionID)
+        _studentID = State(initialValue: request?.studentID)
+        _note = State(initialValue: request?.note ?? "")
+    }
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        VStack(spacing: 0) {
+            HStack {
+                MDSectionTitle(chinese: original == nil ? "新增请假" : "编辑请假")
+                Spacer()
+                Text(leaveRequestSourceLabel(original?.source ?? .administrator))
+                    .mdFont(.compactStrong)
+                    .foregroundStyle(theme.secondaryText)
+            }
+            .padding(16)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    editorSection("课次与学员") {
+                        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
+                            GridRow {
+                                fieldLabel("上课日期")
+                                DatePicker("", selection: $selectedDate, displayedComponents: .date)
+                                    .labelsHidden()
+                            }
+
+                            GridRow {
+                                fieldLabel("具体课次")
+                                Picker("", selection: $sessionID) {
+                                    Text("请选择").tag(Optional<ClassSessionID>.none)
+                                    ForEach(sessionsForDate) { session in
+                                        Text(sessionLabel(session)).tag(Optional(session.id))
+                                    }
+                                }
+                                .labelsHidden()
+                                .frame(minWidth: 430, alignment: .leading)
+                            }
+
+                            GridRow {
+                                fieldLabel("请假学员")
+                                Picker("", selection: $studentID) {
+                                    Text("请选择").tag(Optional<StudentID>.none)
+                                    ForEach(candidateStudents) { student in
+                                        Text(studentLabel(student)).tag(Optional(student.id))
+                                    }
+                                }
+                                .labelsHidden()
+                                .frame(minWidth: 430, alignment: .leading)
+                            }
+                        }
+
+                        if let validationMessage {
+                            Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
+                                .mdFont(.compact)
+                                .foregroundStyle(theme.danger)
+                        }
+                    }
+
+                    editorSection("备注") {
+                        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
+                            GridRow(alignment: .top) {
+                                fieldLabel("备注")
+                                TextField("选填，例如家长来电说明", text: $note, axis: .vertical)
+                                    .lineLimit(3...6)
+                                    .frame(minWidth: 430)
+                            }
+                        }
+                    }
+                }
+                .padding(18)
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("取消") { dismiss() }
+                Button(original == nil ? "新增请假" : "保存修改") { save() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canSave)
+            }
+            .padding(14)
+        }
+        .frame(width: 680, height: 520)
+        .background(theme.background)
+        .onAppear(perform: synchronizeSelections)
+        .onChange(of: selectedDate) { _, _ in
+            sessionID = sessionsForDate.first?.id
+            studentID = nil
+            synchronizeStudentSelection()
+        }
+        .onChange(of: sessionID) { _, _ in
+            synchronizeStudentSelection()
         }
     }
 
-    private func notificationStatus(_ status: NotificationDeliveryStatus) -> String {
-        switch status {
-        case .pending: "待发送"
-        case .sent: "已发送"
-        case .failed: "失败"
-        case .read: "已读"
+    private var sessionsForDate: [ClassSession] {
+        model.sessions
+            .filter { session in
+                Calendar.masterDance.isDate(session.startsAt, inSameDayAs: selectedDate)
+                    && (session.status != .cancelled || session.id == original?.sessionID)
+            }
+            .sorted { $0.startsAt < $1.startsAt }
+    }
+
+    private var candidateEnrollments: [Enrollment] {
+        guard let sessionID, let session = model.session(id: sessionID) else { return [] }
+        return model.enrollments
+            .filter { enrollment in
+                enrollment.courseID == session.courseID
+                    && (enrollment.status != .withdrawn || enrollment.id == original?.enrollmentID)
+            }
+            .sorted { left, right in
+                let leftName = model.student(id: left.studentID)?.displayName ?? ""
+                let rightName = model.student(id: right.studentID)?.displayName ?? ""
+                return leftName.localizedCompare(rightName) == .orderedAscending
+            }
+    }
+
+    private var candidateStudents: [Student] {
+        var seen = Set<StudentID>()
+        var students = candidateEnrollments.compactMap { enrollment -> Student? in
+            guard seen.insert(enrollment.studentID).inserted else { return nil }
+            return model.student(id: enrollment.studentID)
         }
+        if let original,
+           seen.insert(original.studentID).inserted,
+           let originalStudent = model.student(id: original.studentID) {
+            students.append(originalStudent)
+        }
+        return students.sorted {
+            $0.displayName.localizedCompare($1.displayName) == .orderedAscending
+        }
+    }
+
+    private var selectedEnrollmentID: EnrollmentID? {
+        guard let studentID else { return nil }
+        return candidateEnrollments.first { $0.studentID == studentID }?.id
+            ?? (studentID == original?.studentID ? original?.enrollmentID : nil)
+    }
+
+    private var hasDuplicate: Bool {
+        guard let sessionID, let studentID else { return false }
+        return model.leaveRequests.contains {
+            $0.id != original?.id && $0.sessionID == sessionID && $0.studentID == studentID
+        }
+    }
+
+    private var validationMessage: String? {
+        if sessionsForDate.isEmpty { return "这一天没有可请假的课次。" }
+        if sessionID != nil && candidateStudents.isEmpty { return "这门课没有可请假的报名学员。" }
+        if hasDuplicate { return "该学员在这个课次已有请假记录。" }
+        return nil
+    }
+
+    private var canSave: Bool {
+        sessionID != nil && studentID != nil && !hasDuplicate
+    }
+
+    private func sessionLabel(_ session: ClassSession) -> String {
+        let course = model.course(id: session.courseID)?.name ?? "课程"
+        let room = model.effectiveRoom(for: session)?.name ?? "未定教室"
+        let time = session.startsAt.formatted(date: .omitted, time: .shortened)
+        return "\(time) · \(course) · \(room)"
+    }
+
+    private func studentLabel(_ student: Student) -> String {
+        let family = model.guardian(id: student.guardianID)?.displayName ?? "未知家庭"
+        return "\(student.displayName) · \(family)"
+    }
+
+    private func synchronizeSelections() {
+        if sessionID == nil || !sessionsForDate.contains(where: { $0.id == sessionID }) {
+            sessionID = sessionsForDate.first?.id
+        }
+        synchronizeStudentSelection()
+    }
+
+    private func synchronizeStudentSelection() {
+        if studentID == nil || !candidateStudents.contains(where: { $0.id == studentID }) {
+            studentID = candidateStudents.first?.id
+        }
+    }
+
+    @ViewBuilder
+    private func editorSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .mdFont(.bodyStrong)
+            content()
+        }
+    }
+
+    private func fieldLabel(_ text: String) -> some View {
+        Text(text)
+            .mdFont(.compact)
+            .foregroundStyle(.secondary)
+            .frame(width: 82, alignment: .leading)
+    }
+
+    private func save() {
+        guard let sessionID, let studentID else { return }
+        let now = Date()
+        let normalizedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let request = LeaveRequest(
+            id: original?.id ?? LeaveRequestID(),
+            sessionID: sessionID,
+            studentID: studentID,
+            enrollmentID: selectedEnrollmentID,
+            source: original?.source ?? .administrator,
+            status: .approved,
+            submittedAt: original?.submittedAt ?? now,
+            resolvedAt: nil,
+            note: normalizedNote.isEmpty ? nil : normalizedNote
+        )
+
+        model.performBackgroundOperation(
+            label: original == nil ? "新增请假" : "更新请假",
+            successMessage: original == nil ? "请假已新增" : "请假已更新"
+        ) {
+            try await model.saveLeaveRequest(request)
+        }
+        dismiss()
     }
 }
 
-private enum RequestSection: String, CaseIterable, Identifiable {
-    case leave
-    case notifications
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .leave: "请假"
-        case .notifications: "通知"
-        }
+private func leaveRequestSourceLabel(_ source: LeaveRequestSource) -> String {
+    switch source {
+    case .app: "手机端"
+    case .administrator: "教务代办"
     }
 }
 

@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import MasterDanceCore
 import SwiftUI
 
@@ -151,7 +152,7 @@ struct ContractsWorkspaceView: View {
     private func consentList(theme: MDTheme) -> some View {
         VStack(spacing: 0) {
             contractHeader(
-                [("签署人", 200), ("合同版本", 130), ("范围", 120), ("同意时间", 190)],
+                [("签署人", 190), ("签字", 130), ("合同版本", 120), ("范围", 110), ("同意时间", 190)],
                 theme: theme
             )
             if filteredConsents.isEmpty {
@@ -161,9 +162,11 @@ struct ContractsWorkspaceView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(filteredConsents) { consent in
                             HStack(spacing: 0) {
-                                contractCell(consent.signerDisplayName, width: 200, strong: true)
-                                contractCell(consent.contractVersion, width: 130, mono: true)
-                                contractCell(consent.enrollmentID == nil ? "整个学期" : "单门报名", width: 120)
+                                contractCell(consent.signerDisplayName, width: 190, strong: true)
+                                ContractSignatureThumbnail(signaturePNG: consent.signaturePNG)
+                                    .frame(width: 130)
+                                contractCell(consent.contractVersion, width: 120, mono: true)
+                                contractCell(consent.enrollmentID == nil ? "整个学期" : "单门报名", width: 110)
                                 contractCell(
                                     consent.consentedAt.formatted(date: .abbreviated, time: .shortened),
                                     width: 190,
@@ -171,7 +174,7 @@ struct ContractsWorkspaceView: View {
                                 )
                                 Spacer(minLength: 0)
                             }
-                            .frame(minHeight: 42)
+                            .frame(minHeight: 54)
                             Divider()
                         }
                     }
@@ -244,6 +247,61 @@ struct ContractsWorkspaceView: View {
 private enum ContractSection {
     case documents
     case consents
+}
+
+private struct ContractSignatureThumbnail: View {
+    let signaturePNG: Data?
+
+    @State private var isHovering = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        if let image = signaturePNG.flatMap(NSImage.init(data:)) {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .padding(4)
+                .frame(width: 108, height: 36)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 4))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(isHovering ? theme.accent : theme.separator, lineWidth: 1)
+                }
+                .scaleEffect(isHovering ? 1.04 : 1)
+                .animation(.easeOut(duration: 0.12), value: isHovering)
+                .contentShape(Rectangle())
+                .onHover { isHovering = $0 }
+                .popover(isPresented: $isHovering, arrowEdge: .trailing) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("签字原图")
+                            .mdFont(.compactStrong)
+                            .foregroundStyle(theme.primaryText)
+
+                        Image(nsImage: image)
+                            .resizable()
+                            .interpolation(.high)
+                            .scaledToFit()
+                            .padding(14)
+                            .frame(width: 340, height: 160)
+                            .background(Color.white, in: RoundedRectangle(cornerRadius: 6))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(theme.separator, lineWidth: 1)
+                            }
+                    }
+                    .padding(12)
+                }
+                .help("悬停查看大图")
+                .accessibilityLabel("签字缩略图")
+        } else {
+            Text("未存档")
+                .mdFont(.compact)
+                .foregroundStyle(theme.secondaryText)
+                .frame(width: 108, height: 36)
+        }
+    }
 }
 
 private struct ContractDocumentEditorView: View {

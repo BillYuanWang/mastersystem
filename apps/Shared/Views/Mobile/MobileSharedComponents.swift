@@ -215,32 +215,4 @@ extension AttendanceStatus {
     }
 }
 
-extension LeaveRequestStatus {
-    var mobileTitle: String {
-        switch self {
-        case .pending: "待处理"
-        case .approved: "已批准"
-        case .denied: "未批准"
-        case .late: "逾期"
-        }
-    }
-
-    var mobileSystemImage: String {
-        switch self {
-        case .pending: "clock.fill"
-        case .approved: "checkmark.circle.fill"
-        case .denied: "xmark.circle.fill"
-        case .late: "exclamationmark.triangle.fill"
-        }
-    }
-
-    @MainActor
-    func mobileColor(theme: MDTheme) -> Color {
-        switch self {
-        case .pending: theme.warning
-        case .approved: theme.success
-        case .denied, .late: theme.danger
-        }
-    }
-}
 #endif

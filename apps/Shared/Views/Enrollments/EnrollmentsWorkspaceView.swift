@@ -6,8 +6,8 @@ import SwiftUI
 struct EnrollmentsWorkspaceView: View {
     let model: AppModel
 
-    @State private var selectedTermID: TermID?
-    @State private var searchText = ""
+    @SceneStorage("md-desk.enrollments.selected-term-id") private var selectedTermIDStorage = ""
+    @SceneStorage("md-desk.enrollments.search") private var searchText = ""
     @State private var draftStudentID: StudentID?
     @State private var draftCourseID: CourseID?
     @State private var showingStudentPicker = false
@@ -25,9 +25,14 @@ struct EnrollmentsWorkspaceView: View {
             enrollmentTable(theme: theme)
         }
         .background(theme.background)
-        .task(id: model.terms.count) {
-            if selectedTermID == nil {
-                selectedTermID = model.terms.first?.id
+        .task(id: model.terms.map(\.id)) {
+            guard !model.terms.isEmpty else { return }
+            let preservesAllTerms = selectedTermIDStorage == "all"
+            let hasValidTerm = selectedTermID.map { selectedID in
+                model.terms.contains { $0.id == selectedID }
+            } ?? false
+            if selectedTermIDStorage.isEmpty || (!preservesAllTerms && !hasValidTerm) {
+                selectedTermID = model.currentEnrollmentTerm?.id ?? model.terms.first?.id
             }
         }
         .onChange(of: selectedTermID) { _, termID in
@@ -37,13 +42,16 @@ struct EnrollmentsWorkspaceView: View {
     }
 
     private func header(theme: MDTheme) -> some View {
-        HStack(spacing: 12) {
-            MDSectionTitle(chinese: "总报名", english: "ENROLLMENT")
-            Text("\(filteredEnrollments.count)")
-                .mdFont(.mono)
-                .foregroundStyle(theme.secondaryText)
+        let summary = enrollmentSummary
+        return HStack(spacing: 10) {
+            MDSectionTitle(chinese: "报名", english: "ENROLLMENT")
+            headerMetric("总报名", value: summary.totalEnrollmentCount, color: theme.accent, theme: theme)
+            headerDivider(theme: theme)
+            headerMetric("大课报名", value: summary.groupEnrollmentCount, color: theme.success, theme: theme)
+            headerDivider(theme: theme)
+            headerMetric("私课报名", value: summary.privateEnrollmentCount, color: theme.warning, theme: theme)
             Spacer()
-            Picker("学期", selection: $selectedTermID) {
+            Picker("学期", selection: selectedTermSelection) {
                 Text("全部学期").tag(Optional<TermID>.none)
                 ForEach(model.terms) { term in
                     Text(term.name).tag(Optional(term.id))
@@ -58,6 +66,29 @@ struct EnrollmentsWorkspaceView: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 54)
+    }
+
+    private func headerMetric(
+        _ title: String,
+        value: Int,
+        color: Color,
+        theme: MDTheme
+    ) -> some View {
+        HStack(spacing: 5) {
+            Text(title)
+                .mdFont(.compact)
+                .foregroundStyle(theme.secondaryText)
+                .lineLimit(1)
+            Text("\(value)")
+                .mdFont(.monoStrong)
+                .foregroundStyle(color)
+        }
+    }
+
+    private func headerDivider(theme: MDTheme) -> some View {
+        Rectangle()
+            .fill(theme.separator)
+            .frame(width: 1, height: 16)
     }
 
     private func enrollmentTable(theme: MDTheme) -> some View {
@@ -308,6 +339,27 @@ struct EnrollmentsWorkspaceView: View {
             ]
             return searchableValues.contains { $0.localizedCaseInsensitiveContains(query) }
         }
+    }
+
+    private var selectedTermID: TermID? {
+        get {
+            guard selectedTermIDStorage != "all" else { return nil }
+            return try? TermID(uuidString: selectedTermIDStorage)
+        }
+        nonmutating set {
+            selectedTermIDStorage = newValue?.description ?? "all"
+        }
+    }
+
+    private var selectedTermSelection: Binding<TermID?> {
+        Binding(
+            get: { selectedTermID },
+            set: { selectedTermID = $0 }
+        )
+    }
+
+    private var enrollmentSummary: EnrollmentSummary {
+        model.enrollmentSummary(termID: selectedTermID)
     }
 
     private var draftStudent: Student? {

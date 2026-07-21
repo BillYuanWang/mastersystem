@@ -8,6 +8,8 @@ struct MDTheme {
     var surface: Color { scheme == .dark ? hex(0x0F1419) : .white }
     var raisedSurface: Color { scheme == .dark ? hex(0x151B22) : hex(0xFFFFFF) }
     var subtleSurface: Color { scheme == .dark ? hex(0x131920) : hex(0xF1F1F3) }
+    var scheduleAlternatingDayBackground: Color { scheme == .dark ? hex(0x10161D) : hex(0xF0F0F2) }
+    var scheduleAlternatingDayHeaderBackground: Color { scheme == .dark ? hex(0x131920) : hex(0xF4F4F6) }
     var separator: Color { scheme == .dark ? hex(0x2A3139) : hex(0xD9D9DE) }
     var faintSeparator: Color { separator.opacity(scheme == .dark ? 0.48 : 0.58) }
     var primaryText: Color { scheme == .dark ? hex(0xE6E1CF) : hex(0x202124) }
@@ -201,6 +203,7 @@ extension View {
 enum MDMetrics {
     static let railWidth: CGFloat = 58
     static let inspectorWidth: CGFloat = 294
+    static let statusBarHeight: CGFloat = 34
     static let radius: CGFloat = 7
     static let controlHeight: CGFloat = 30
     static let compactSpacing: CGFloat = 8
@@ -221,6 +224,34 @@ struct MDIconButtonStyle: ButtonStyle {
                 theme.subtleSurface.opacity(configuration.isPressed ? 1 : 0),
                 in: RoundedRectangle(cornerRadius: MDMetrics.radius)
             )
+            .contentShape(Rectangle())
+    }
+}
+
+struct MDHeaderActionButtonStyle: ButtonStyle {
+    let isActive: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let theme = MDTheme(scheme: colorScheme)
+        configuration.label
+            .mdFont(.compactStrong)
+            .foregroundStyle(isActive ? theme.accent : theme.primaryText)
+            .padding(.horizontal, 9)
+            .frame(height: 28)
+            .background(
+                isActive
+                    ? theme.accent.opacity(colorScheme == .dark ? 0.2 : 0.1)
+                    : theme.raisedSurface,
+                in: RoundedRectangle(cornerRadius: MDMetrics.radius)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: MDMetrics.radius)
+                    .stroke(isActive ? theme.accent.opacity(0.58) : theme.separator, lineWidth: 1)
+            }
+            .opacity(isEnabled ? (configuration.isPressed ? 0.72 : 1) : 0.45)
             .contentShape(Rectangle())
     }
 }

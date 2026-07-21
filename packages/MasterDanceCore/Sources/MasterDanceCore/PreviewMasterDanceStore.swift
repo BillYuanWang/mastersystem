@@ -334,6 +334,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
     }
 
     public func save(leaveRequest: LeaveRequest) { upsert(leaveRequest, in: &data.leaveRequests) }
+    public func deleteLeaveRequest(id: LeaveRequestID) { remove(id: id, from: &data.leaveRequests) }
 
     public func listContractDocuments(termID: TermID? = nil) -> [ContractDocument] {
         data.contractDocuments.filter { termID == nil || $0.termID == termID }

@@ -167,7 +167,7 @@ public extension PreviewData {
                     studentID: student.id,
                     enrollmentID: enrollment?.id,
                     source: .app,
-                    status: .pending,
+                    status: .approved,
                     submittedAt: now,
                     note: "家庭安排"
                 )

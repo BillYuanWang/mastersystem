@@ -191,7 +191,7 @@ struct StudentsWorkspaceView: View {
     private func familyTable(theme: MDTheme) -> some View {
         GeometryReader { proxy in
             ScrollView([.horizontal, .vertical]) {
-                LazyVStack(spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     tableHeader(theme: theme)
                     tableFilters(theme: theme)
 
@@ -246,6 +246,7 @@ struct StudentsWorkspaceView: View {
                 theme: theme
             )
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: FamilyTableMetrics.headerHeight)
         .background(theme.subtleSurface)
         .overlay(alignment: .bottom) {
@@ -278,6 +279,7 @@ struct StudentsWorkspaceView: View {
                 theme: theme
             )
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: FamilyTableMetrics.filterHeight)
         .overlay(alignment: .bottom) {
             Rectangle().fill(theme.separator).frame(height: 1)
@@ -344,6 +346,7 @@ struct StudentsWorkspaceView: View {
                 }
             }
             .frame(width: FamilyTableMetrics.totalWidth, height: FamilyTableMetrics.rowHeight)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .foregroundStyle(theme.primaryText)
             .background(rowBackground(for: guardian, theme: theme))
             .contentShape(Rectangle())

@@ -787,7 +787,7 @@ struct ContractConsentRow: Codable, Sendable {
         case consentedAt = "consented_at"
     }
 
-    func domain(contractVersion: String) throws -> ContractConsent {
+    func domain(contractVersion: String, signaturePNG: Data? = nil) throws -> ContractConsent {
         let signer: ConsentSignerKind
         switch signerKind {
         case "guardian": signer = .guardian
@@ -802,8 +802,47 @@ struct ContractConsentRow: Codable, Sendable {
             contractVersion: contractVersion,
             signerKind: signer,
             signerDisplayName: signerDisplayName,
-            consentedAt: SupabaseDateCodec.timestamp(from: consentedAt)
+            consentedAt: SupabaseDateCodec.timestamp(from: consentedAt),
+            signaturePNG: signaturePNG
         )
+    }
+}
+
+struct ContractConsentSignatureRow: Codable, Sendable {
+    let contractConsentID: UUID
+    let signaturePNG: String
+
+    enum CodingKeys: String, CodingKey {
+        case contractConsentID = "contract_consent_id"
+        case signaturePNG = "signature_png"
+    }
+
+    var decodedPNG: Data? {
+        let data: Data?
+        if signaturePNG.hasPrefix("\\x") {
+            data = Self.decodeHex(signaturePNG.dropFirst(2))
+        } else {
+            data = Data(base64Encoded: signaturePNG)
+        }
+
+        let pngHeader: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+        guard let data, data.prefix(pngHeader.count).elementsEqual(pngHeader) else {
+            return nil
+        }
+        return data
+    }
+
+    private static func decodeHex(_ hex: Substring) -> Data? {
+        guard hex.count.isMultiple(of: 2) else { return nil }
+        var data = Data(capacity: hex.count / 2)
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let nextIndex = hex.index(index, offsetBy: 2)
+            guard let byte = UInt8(hex[index..<nextIndex], radix: 16) else { return nil }
+            data.append(byte)
+            index = nextIndex
+        }
+        return data
     }
 }
 

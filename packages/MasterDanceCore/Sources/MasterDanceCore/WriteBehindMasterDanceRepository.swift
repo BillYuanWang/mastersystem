@@ -371,6 +371,12 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
         try await enqueue(.saveLeaveRequest(leaveRequest))
     }
 
+    public func deleteLeaveRequest(id: LeaveRequestID) async throws {
+        try await ensureSnapshot()
+        await local.deleteLeaveRequest(id: id)
+        try await enqueue(.deleteLeaveRequest(id))
+    }
+
     public func listContractDocuments(termID: TermID?) async throws -> [ContractDocument] {
         try await ensureSnapshot()
         return await local.listContractDocuments(termID: termID)
@@ -620,6 +626,7 @@ private enum PendingMutation: Codable, Sendable {
     case saveAttendance(Attendance)
     case deleteAttendance(AttendanceID)
     case saveLeaveRequest(LeaveRequest)
+    case deleteLeaveRequest(LeaveRequestID)
     case deleteContractDocument(ContractDocumentID, String)
     case saveContractConsent(ContractConsent)
     case saveNotification(NotificationRecord)
@@ -655,6 +662,7 @@ private enum PendingMutation: Codable, Sendable {
         case .saveAttendance(let value): "attendance:\(value.id)"
         case .deleteAttendance(let id): "attendance:\(id)"
         case .saveLeaveRequest(let value): "leave-request:\(value.id)"
+        case .deleteLeaveRequest(let id): "leave-request:\(id)"
         case .deleteContractDocument(let id, _): "contract-document:\(id)"
         case .saveContractConsent(let value): "contract-consent:\(value.id)"
         case .saveNotification(let value): "notification:\(value.id)"
@@ -694,6 +702,7 @@ private enum PendingMutation: Codable, Sendable {
         case .saveAttendance(let value): try await repository.save(attendance: value)
         case .deleteAttendance(let id): try await repository.deleteAttendance(id: id)
         case .saveLeaveRequest(let value): try await repository.save(leaveRequest: value)
+        case .deleteLeaveRequest(let id): try await repository.deleteLeaveRequest(id: id)
         case .deleteContractDocument(let id, let storagePath):
             try await repository.deleteContractDocument(id: id, storagePath: storagePath)
         case .saveContractConsent(let value): try await repository.save(contractConsent: value)

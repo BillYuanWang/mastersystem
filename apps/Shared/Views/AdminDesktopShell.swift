@@ -17,23 +17,33 @@ struct AdminDesktopShell: View {
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
-        HStack(spacing: 0) {
-            CompactRailView(
-                selection: $selection,
-                appearanceRawValue: $appearanceRawValue,
-                accountDisplayName: accountDisplayName,
-                onManageAccount: onManageAccount,
-                onSignOut: onSignOut
-            )
-            .frame(width: MDMetrics.railWidth)
-            .zIndex(20)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                CompactRailView(
+                    selection: $selection,
+                    appearanceRawValue: $appearanceRawValue,
+                    accountDisplayName: accountDisplayName,
+                    onManageAccount: onManageAccount,
+                    onSignOut: onSignOut
+                )
+                .frame(width: MDMetrics.railWidth)
+                .zIndex(20)
+
+                Rectangle()
+                    .fill(theme.separator)
+                    .frame(width: 1)
+
+                workspace
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Rectangle()
                 .fill(theme.separator)
-                .frame(width: 1)
+                .frame(height: 1)
 
-            workspace
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            SchoolEnrollmentStatusBar(model: model)
+                .frame(maxWidth: .infinity)
         }
         .background(theme.background)
         .overlay(alignment: .bottomTrailing) {
@@ -44,7 +54,8 @@ struct AdminDesktopShell: View {
                     showGuardianLinkCode: { showingGuardianLinkCode = true },
                     dismissNotice: model.dismissBackgroundSyncNotice
                 )
-                .padding(14)
+                .padding(.trailing, 14)
+                .padding(.bottom, MDMetrics.statusBarHeight + 14)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
                 .zIndex(50)
             }
@@ -80,6 +91,115 @@ struct AdminDesktopShell: View {
         case .dataCenter:
             DataCenterWorkspaceView(model: model)
         }
+    }
+}
+
+@MainActor
+private struct SchoolEnrollmentStatusBar: View {
+    let model: AppModel
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        let term = model.currentEnrollmentTerm
+        let summary = term.map { model.enrollmentSummary(termID: $0.id) } ?? .empty
+
+        HStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar")
+                    .foregroundStyle(theme.accent)
+                Text(term?.name ?? "暂无当前学期")
+                    .mdFont(.compactStrong)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .frame(minWidth: 150, maxWidth: 235, alignment: .leading)
+
+            statusDivider(theme: theme)
+            statusMetric("活跃学员", value: summary.activeStudentCount, color: theme.success, theme: theme)
+            statusDivider(theme: theme)
+            statusMetric("活跃家庭", value: summary.activeFamilyCount, color: theme.warning, theme: theme)
+            statusDivider(theme: theme)
+            statusMetric("总报名", value: summary.totalEnrollmentCount, color: theme.accent, theme: theme)
+
+            Spacer(minLength: 12)
+
+            HStack(spacing: 7) {
+                Text("目标")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+                EnrollmentGoalProgress(
+                    count: summary.totalEnrollmentCount,
+                    color: summary.totalEnrollmentCount >= 220 ? theme.success : theme.accent,
+                    trackColor: theme.separator
+                )
+                Text("保 220 · 争 240")
+                    .mdFont(.monoStrong)
+                    .lineLimit(1)
+            }
+            .help(goalHelp(total: summary.totalEnrollmentCount))
+        }
+        .padding(.horizontal, 12)
+        .frame(height: MDMetrics.statusBarHeight)
+        .foregroundStyle(theme.primaryText)
+        .background(theme.subtleSurface)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func statusMetric(
+        _ title: String,
+        value: Int,
+        color: Color,
+        theme: MDTheme
+    ) -> some View {
+        HStack(spacing: 5) {
+            Text(title)
+                .mdFont(.compact)
+                .foregroundStyle(theme.secondaryText)
+                .lineLimit(1)
+            Text("\(value)")
+                .mdFont(.monoStrong)
+                .foregroundStyle(color)
+        }
+    }
+
+    private func statusDivider(theme: MDTheme) -> some View {
+        Rectangle()
+            .fill(theme.separator)
+            .frame(width: 1, height: 16)
+            .padding(.horizontal, 10)
+    }
+
+    private func goalHelp(total: Int) -> String {
+        if total >= 240 { return "已达到 240 个报名的冲刺目标" }
+        if total >= 220 { return "已达到 220 个报名的基本目标，距离 240 还差 \(240 - total)" }
+        return "距离 220 个报名的基本目标还差 \(220 - total)"
+    }
+}
+
+private struct EnrollmentGoalProgress: View {
+    let count: Int
+    let color: Color
+    let trackColor: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            let progress = min(1, max(0, CGFloat(count) / 240))
+            let baseline = proxy.size.width * CGFloat(220.0 / 240.0)
+            ZStack(alignment: .leading) {
+                Capsule().fill(trackColor.opacity(0.72))
+                Capsule()
+                    .fill(color)
+                    .frame(width: proxy.size.width * progress)
+                Rectangle()
+                    .fill(Color.primary.opacity(0.55))
+                    .frame(width: 1, height: 8)
+                    .offset(x: baseline)
+            }
+        }
+        .frame(width: 96, height: 8)
+        .accessibilityHidden(true)
     }
 }
 

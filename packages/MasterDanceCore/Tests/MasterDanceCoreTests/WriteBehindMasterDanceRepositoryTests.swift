@@ -100,6 +100,43 @@ struct WriteBehindMasterDanceRepositoryTests {
         #expect(await remote.listAttendance(sessionID: nil, studentID: nil).isEmpty)
     }
 
+    @Test("Deleting an administrator leave request is immediate and synchronizes later")
+    func deletingLeaveRequestBeforeSync() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let request = LeaveRequest(
+            sessionID: ClassSessionID(),
+            studentID: StudentID(),
+            source: .administrator,
+            submittedAt: Date(timeIntervalSince1970: 1_000)
+        )
+        let remote = PreviewMasterDanceStore(data: PreviewData(leaveRequests: [request]))
+        let repository = WriteBehindMasterDanceRepository(
+            remote: remote,
+            cacheDirectory: directory,
+            cacheKey: "leave-request-deletion"
+        )
+        _ = try await repository.listTerms()
+
+        try await repository.deleteLeaveRequest(id: request.id)
+
+        #expect(await repository.pendingMutationCount() == 1)
+        #expect(try await repository.listLeaveRequests(sessionID: nil, studentID: nil).isEmpty)
+        #expect(await remote.listLeaveRequests(sessionID: nil, studentID: nil) == [request])
+
+        let restored = WriteBehindMasterDanceRepository(
+            remote: remote,
+            cacheDirectory: directory,
+            cacheKey: "leave-request-deletion"
+        )
+        #expect(await restored.pendingMutationCount() == 1)
+        #expect(try await restored.listLeaveRequests(sessionID: nil, studentID: nil).isEmpty)
+
+        #expect(try await restored.synchronizeIfNeeded() == 1)
+        #expect(await remote.listLeaveRequests(sessionID: nil, studentID: nil).isEmpty)
+    }
+
     @Test("Remote changes refresh the local snapshot only after the sequence advances")
     func remoteChangeSequenceControlsRefresh() async throws {
         let directory = temporaryDirectory()

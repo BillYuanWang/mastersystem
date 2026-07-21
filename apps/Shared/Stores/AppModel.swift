@@ -230,8 +230,7 @@ final class AppModel {
         if let index = leaveRequests.firstIndex(where: {
             $0.sessionID == sessionID && $0.studentID == studentID
         }) {
-            leaveRequests[index].status = .pending
-            leaveRequests[index].submittedAt = now
+            leaveRequests[index].status = .approved
             leaveRequests[index].resolvedAt = nil
             leaveRequests[index].note = normalizedNote
             return
@@ -250,6 +249,7 @@ final class AppModel {
                 studentID: studentID,
                 enrollmentID: enrollmentID,
                 source: .app,
+                status: .approved,
                 submittedAt: now,
                 note: normalizedNote
             )
@@ -766,12 +766,14 @@ final class AppModel {
         return (normalizedEmail, formattedPhone)
     }
 
+    #if os(macOS)
     func deleteGuardian(id: GuardianID) async throws {
         try await withCloudActivity(label: "删除监护人") {
             try await repository.deleteGuardian(id: id)
             await reload()
         }
     }
+    #endif
 
     func saveStudent(_ student: Student) async throws {
         let name = student.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -785,12 +787,14 @@ final class AppModel {
         }
     }
 
+    #if os(macOS)
     func deleteStudent(id: StudentID) async throws {
         try await withCloudActivity(label: "删除学员") {
             try await repository.deleteStudent(id: id)
             await reload()
         }
     }
+    #endif
 
     func saveContractDocument(_ document: ContractDocument, fileData: Data?) async throws {
         try await withImmediateCloudActivity(label: "保存合同") {
@@ -901,13 +905,19 @@ final class AppModel {
         }
     }
 
-    func resolveLeaveRequest(id: LeaveRequestID, status: LeaveRequestStatus) async throws {
-        guard status == .approved || status == .denied else { return }
-        guard var request = leaveRequests.first(where: { $0.id == id }) else { return }
-        request.status = status
-        request.resolvedAt = Date()
-        try await withCloudActivity(label: "处理请假") {
-            try await repository.save(leaveRequest: request)
+    func saveLeaveRequest(_ request: LeaveRequest) async throws {
+        var normalizedRequest = request
+        normalizedRequest.status = .approved
+        normalizedRequest.resolvedAt = nil
+        try await withCloudActivity(label: request.source == .administrator ? "保存请假" : "更新请假") {
+            try await repository.save(leaveRequest: normalizedRequest)
+            await reload()
+        }
+    }
+
+    func deleteLeaveRequest(id: LeaveRequestID) async throws {
+        try await withCloudActivity(label: "删除请假") {
+            try await repository.deleteLeaveRequest(id: id)
             await reload()
         }
     }

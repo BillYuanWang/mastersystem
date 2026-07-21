@@ -123,9 +123,9 @@ struct MobileMemberHomeView: View {
             )
             Divider().frame(height: 42)
             summaryItem(
-                value: "\(pendingLeaveCount)",
-                label: "待处理请假",
-                color: theme.warning
+                value: "\(leaveRequestCount)",
+                label: "请假记录",
+                color: theme.success
             )
             Divider().frame(height: 42)
             summaryItem(
@@ -185,11 +185,9 @@ struct MobileMemberHomeView: View {
         return model.activeEnrollments(forStudent: selectedStudentID).count
     }
 
-    private var pendingLeaveCount: Int {
+    private var leaveRequestCount: Int {
         guard let selectedStudentID else { return 0 }
-        return model.leaveRequests.filter {
-            $0.studentID == selectedStudentID && $0.status == .pending
-        }.count
+        return model.leaveRequests.filter { $0.studentID == selectedStudentID }.count
     }
 
     private var unreadCount: Int {

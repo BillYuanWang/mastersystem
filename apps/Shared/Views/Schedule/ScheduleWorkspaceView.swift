@@ -8,13 +8,12 @@ struct ScheduleWorkspaceView: View {
     let model: AppModel
     let navigate: (AdminSection) -> Void
 
-    @State private var selectedTermID: TermID?
-    @State private var weekStart = Date().startOfWeek()
-    @State private var selectedRoomIDs: Set<RoomID> = []
-    @State private var selectedSessionID: ClassSessionID?
-    @State private var searchText = ""
-    @State private var zoom = 1.0
-    @State private var fontScale = 1.0
+    @SceneStorage("md-desk.schedule.selected-term-id") private var selectedTermIDStorage = ""
+    @SceneStorage("md-desk.schedule.week-start") private var weekStartStorage = Date().startOfWeek().timeIntervalSinceReferenceDate
+    @SceneStorage("md-desk.schedule.selected-room-ids") private var selectedRoomIDsStorage = ""
+    @SceneStorage("md-desk.schedule.selected-session-id") private var selectedSessionIDStorage = ""
+    @SceneStorage("md-desk.schedule.zoom") private var zoom = 1.0
+    @SceneStorage("md-desk.schedule.font-scale") private var fontScale = 1.0
     @State private var showingWeekPicker = false
     @State private var showingRoomPicker = false
     @State private var showingPrintPreview = false
@@ -43,7 +42,7 @@ struct ScheduleWorkspaceView: View {
                         weekStart: weekStart,
                         rooms: visibleRooms,
                         sessions: filteredSessions,
-                        selectedSessionID: $selectedSessionID,
+                        selectedSessionID: selectedSessionSelection,
                         zoom: zoom,
                         fontScale: fontScale
                     )
@@ -67,9 +66,12 @@ struct ScheduleWorkspaceView: View {
             .frame(width: MDMetrics.inspectorWidth)
         }
         .background(theme.background)
-        .task(id: model.terms.count) {
-            if selectedTermID == nil {
+        .task(id: model.terms.map(\.id)) {
+            if selectedTermID == nil || !model.terms.contains(where: { $0.id == selectedTermID }) {
                 selectedTermID = model.terms.first?.id
+            }
+            if let selectedSessionID, !filteredSessions.contains(where: { $0.id == selectedSessionID }) {
+                self.selectedSessionID = nil
             }
             if selectedSessionID == nil {
                 selectedSessionID = filteredSessions.first(where: {
@@ -98,7 +100,10 @@ struct ScheduleWorkspaceView: View {
 
             Spacer(minLength: 6)
 
-            Picker("学期", selection: $selectedTermID) {
+            Picker("学期", selection: selectedTermSelection) {
+                if model.terms.isEmpty {
+                    Text("暂无学期").tag(Optional<TermID>.none)
+                }
                 ForEach(model.terms) { term in
                     Text(term.name).tag(Optional(term.id))
                 }
@@ -106,53 +111,17 @@ struct ScheduleWorkspaceView: View {
             .labelsHidden()
             .frame(width: 190)
 
-            Button {
-                shiftWeek(-1)
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .buttonStyle(MDIconButtonStyle())
-            .help("上一周")
+            weekNavigator(theme: theme)
 
             Button {
-                showingWeekPicker.toggle()
+                selectWeek(containing: Date())
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 11, weight: .medium))
-                    Text(weekLabel)
-                        .mdFont(.monoStrong)
-                        .lineLimit(1)
-                }
-                .foregroundStyle(theme.primaryText)
-                .padding(.horizontal, 9)
-                .frame(width: 148, height: 28)
-                .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
-                .overlay {
-                    RoundedRectangle(cornerRadius: MDMetrics.radius)
-                        .stroke(theme.separator, lineWidth: 1)
-                }
+                Label("本周", systemImage: "calendar.badge.clock")
             }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showingWeekPicker, arrowEdge: .bottom) {
-                weekPicker(theme: theme)
-            }
-            .help("选择日期")
-
-            Button {
-                shiftWeek(1)
-            } label: {
-                Image(systemName: "chevron.right")
-            }
-            .buttonStyle(MDIconButtonStyle())
-            .help("下一周")
+            .buttonStyle(MDHeaderActionButtonStyle(isActive: isShowingCurrentWeek))
+            .help(isShowingCurrentWeek ? "当前正在显示本周" : "返回本周")
 
             roomSelector(theme: theme)
-
-            TextField("搜索", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .mdFont(.compact)
-                .frame(width: 100)
 
             Button {
                 showingPrintPreview = true
@@ -189,6 +158,67 @@ struct ScheduleWorkspaceView: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 54)
+    }
+
+    private func weekNavigator(theme: MDTheme) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                shiftWeek(-1)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: 26, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("上一周")
+
+            weekNavigatorDivider(theme: theme)
+
+            Button {
+                showingWeekPicker.toggle()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 10, weight: .medium))
+                    Text(weekLabel)
+                        .mdFont(.monoStrong)
+                        .lineLimit(1)
+                }
+                .frame(width: 122, height: 28)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingWeekPicker, arrowEdge: .bottom) {
+                weekPicker(theme: theme)
+            }
+            .help("选择日期")
+
+            weekNavigatorDivider(theme: theme)
+
+            Button {
+                shiftWeek(1)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: 26, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("下一周")
+        }
+        .foregroundStyle(theme.primaryText)
+        .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
+        .overlay {
+            RoundedRectangle(cornerRadius: MDMetrics.radius)
+                .stroke(theme.separator, lineWidth: 1)
+        }
+    }
+
+    private func weekNavigatorDivider(theme: MDTheme) -> some View {
+        Rectangle()
+            .fill(theme.separator)
+            .frame(width: 1, height: 16)
     }
 
     private func weekPicker(theme: MDTheme) -> some View {
@@ -327,6 +357,49 @@ struct ScheduleWorkspaceView: View {
         model.rooms.filter(\.isActive)
     }
 
+    private var selectedTermID: TermID? {
+        get { try? TermID(uuidString: selectedTermIDStorage) }
+        nonmutating set { selectedTermIDStorage = newValue?.description ?? "" }
+    }
+
+    private var selectedTermSelection: Binding<TermID?> {
+        Binding(
+            get: { selectedTermID },
+            set: { selectedTermID = $0 }
+        )
+    }
+
+    private var weekStart: Date {
+        get { Date(timeIntervalSinceReferenceDate: weekStartStorage) }
+        nonmutating set { weekStartStorage = newValue.timeIntervalSinceReferenceDate }
+    }
+
+    private var selectedRoomIDs: Set<RoomID> {
+        get {
+            Set(selectedRoomIDsStorage.split(separator: "|").compactMap {
+                try? RoomID(uuidString: String($0))
+            })
+        }
+        nonmutating set {
+            selectedRoomIDsStorage = newValue
+                .map(\.description)
+                .sorted()
+                .joined(separator: "|")
+        }
+    }
+
+    private var selectedSessionID: ClassSessionID? {
+        get { try? ClassSessionID(uuidString: selectedSessionIDStorage) }
+        nonmutating set { selectedSessionIDStorage = newValue?.description ?? "" }
+    }
+
+    private var selectedSessionSelection: Binding<ClassSessionID?> {
+        Binding(
+            get: { selectedSessionID },
+            set: { selectedSessionID = $0 }
+        )
+    }
+
     private var visibleRooms: [Room] {
         Array(activeRooms.filter { currentRoomSelection.contains($0.id) }.prefix(2))
     }
@@ -354,6 +427,10 @@ struct ScheduleWorkspaceView: View {
         return "\(visibleRooms.count)/\(min(2, activeRooms.count))"
     }
 
+    private var isShowingCurrentWeek: Bool {
+        Calendar.masterDance.isDate(weekStart, inSameDayAs: Date().startOfWeek())
+    }
+
     private var weekDateSelection: Binding<Date> {
         Binding(
             get: { weekStart },
@@ -367,7 +444,6 @@ struct ScheduleWorkspaceView: View {
             return []
         }
         let visibleRoomIDs = Set(visibleRooms.map(\.id))
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return model.sessions.filter { session in
             guard
@@ -381,13 +457,6 @@ struct ScheduleWorkspaceView: View {
                 return false
             }
 
-            if !query.isEmpty {
-                let courseType = model.courseType(id: course.courseTypeID)?.name ?? ""
-                let instructor = model.effectiveInstructor(for: session)?.displayName ?? ""
-                return [course.name, courseType, instructor].contains {
-                    $0.localizedCaseInsensitiveContains(query)
-                }
-            }
             return true
         }
     }

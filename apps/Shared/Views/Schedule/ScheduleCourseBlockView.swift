@@ -20,6 +20,7 @@ struct CourseBlockView: View {
         let theme = MDTheme(scheme: colorScheme)
         let course = model.course(id: session.courseID)
         let courseType = course.flatMap { model.courseType(id: $0.courseTypeID) }
+        let ageGroup = course.flatMap { model.ageGroup(id: $0.ageGroupID) }
         let instructor = model.effectiveInstructor(for: session)
         let instructorIndex = instructor.flatMap { selectedInstructor in
             model.instructors.firstIndex(where: { $0.id == selectedInstructor.id })
@@ -35,6 +36,7 @@ struct CourseBlockView: View {
                     verticalContent(
                         courseName: course?.name ?? "课程",
                         courseTypeName: courseType?.name ?? "课程种类",
+                        ageGroupName: ageGroup?.name ?? "年龄未设置",
                         instructorName: instructor?.displayName ?? "老师",
                         isPrivateLesson: course?.format == .privateLesson,
                         textColor: textColor
@@ -43,6 +45,7 @@ struct CourseBlockView: View {
                     wideContent(
                         courseName: course?.name ?? "课程",
                         courseTypeName: courseType?.name ?? "课程种类",
+                        ageGroupName: ageGroup?.name ?? "年龄未设置",
                         instructorName: instructor?.displayName ?? "老师",
                         isPrivateLesson: course?.format == .privateLesson,
                         textColor: textColor
@@ -87,17 +90,18 @@ struct CourseBlockView: View {
     private func verticalContent(
         courseName: String,
         courseTypeName: String,
+        ageGroupName: String,
         instructorName: String,
         isPrivateLesson: Bool,
         textColor: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: height < 62 ? 0 : 1) {
             HStack(spacing: 2) {
-                Text(courseTypeName.uppercased())
+                Text(verticalMetadata(courseTypeName: courseTypeName, ageGroupName: ageGroupName))
                     .mdFont(size: labelFontSize, weight: .semibold, design: .monospaced)
                     .foregroundStyle(textColor.opacity(0.78))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.76)
+                    .minimumScaleFactor(0.58)
                     .layoutPriority(1)
 
                 Spacer(minLength: 1)
@@ -119,6 +123,11 @@ struct CourseBlockView: View {
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(2)
+
+            if height >= 62 {
+                ageBadge(ageGroupName, textColor: textColor)
+                    .layoutPriority(1)
+            }
 
             Spacer(minLength: 0)
 
@@ -148,6 +157,7 @@ struct CourseBlockView: View {
     private func wideContent(
         courseName: String,
         courseTypeName: String,
+        ageGroupName: String,
         instructorName: String,
         isPrivateLesson: Bool,
         textColor: Color
@@ -170,11 +180,19 @@ struct CourseBlockView: View {
                 )
             }
 
-            Text(courseTypeName.uppercased())
-                .mdFont(size: labelFontSize, weight: .semibold, design: .monospaced)
-                .foregroundStyle(textColor.opacity(0.78))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            HStack(spacing: 4) {
+                Text(courseTypeName.uppercased())
+                    .mdFont(size: labelFontSize, weight: .semibold, design: .monospaced)
+                    .foregroundStyle(textColor.opacity(0.78))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+                    .layoutPriority(1)
+
+                ageBadge(ageGroupName, textColor: textColor)
+                    .layoutPriority(2)
+
+                Spacer(minLength: 0)
+            }
 
             Spacer(minLength: height < 58 ? 0 : 2)
 
@@ -212,6 +230,31 @@ struct CourseBlockView: View {
             .frame(width: size, height: size)
             .overlay(Circle().stroke(textColor.opacity(0.78), lineWidth: 1))
             .accessibilityLabel(isPrivateLesson ? "私课" : "组课")
+    }
+
+    private func ageBadge(_ ageGroupName: String, textColor: Color) -> some View {
+        Text(ageGroupName)
+            .mdFont(size: labelFontSize, weight: .semibold)
+            .foregroundStyle(textColor.opacity(0.9))
+            .lineLimit(1)
+            .minimumScaleFactor(0.62)
+            .padding(.horizontal, 3)
+            .frame(height: 13)
+            .background(
+                textColor.opacity(colorScheme == .dark ? 0.14 : 0.1),
+                in: RoundedRectangle(cornerRadius: 3)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 3)
+                    .stroke(textColor.opacity(0.18), lineWidth: 0.5)
+            )
+            .accessibilityLabel("年龄段，\(ageGroupName)")
+    }
+
+    private func verticalMetadata(courseTypeName: String, ageGroupName: String) -> String {
+        height >= 62
+            ? courseTypeName.uppercased()
+            : "\(courseTypeName.uppercased()) · \(ageGroupName)"
     }
 
     private var usesVerticalLayout: Bool {

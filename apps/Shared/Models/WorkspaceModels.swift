@@ -20,7 +20,7 @@ enum AdminSection: String, CaseIterable, Identifiable {
         case .families: "家庭/学员"
         case .enrollments: "报名"
         case .attendance: "签到"
-        case .requests: "请假/通知"
+        case .requests: "请假"
         case .contracts: "合同"
         case .dataCenter: "数据中心"
         }
@@ -33,7 +33,7 @@ enum AdminSection: String, CaseIterable, Identifiable {
         case .families: "person.2"
         case .enrollments: "list.bullet.rectangle"
         case .attendance: "checkmark.circle"
-        case .requests: "envelope"
+        case .requests: "calendar.badge.minus"
         case .contracts: "doc.text"
         case .dataCenter: "cylinder.split.1x2"
         }
@@ -118,6 +118,107 @@ struct CloudActivityPresentation: Equatable {
 
     var isActive: Bool {
         activeCount > 0
+    }
+}
+
+struct EnrollmentSummary: Equatable {
+    let termID: TermID?
+    let activeStudentCount: Int
+    let activeFamilyCount: Int
+    let totalEnrollmentCount: Int
+    let groupEnrollmentCount: Int
+    let privateEnrollmentCount: Int
+
+    static let empty = EnrollmentSummary(
+        termID: nil,
+        courses: [],
+        students: [],
+        enrollments: []
+    )
+
+    init(
+        termID: TermID?,
+        courses: [Course],
+        students: [Student],
+        enrollments: [Enrollment]
+    ) {
+        self.termID = termID
+
+        let activeEnrollments = enrollments.filter {
+            $0.status == .active && (termID == nil || $0.termID == termID)
+        }
+        let privateCourseIDs = Set(
+            courses.lazy
+                .filter { $0.format == .privateLesson }
+                .map(\.id)
+        )
+        let studentsByID = Dictionary(uniqueKeysWithValues: students.map { ($0.id, $0) })
+        let studentIDs = Set(activeEnrollments.map(\.studentID))
+        let familyIDs = Set(studentIDs.compactMap { studentsByID[$0]?.guardianID })
+        let privateCount = activeEnrollments.reduce(into: 0) { count, enrollment in
+            if privateCourseIDs.contains(enrollment.courseID) {
+                count += 1
+            }
+        }
+
+        activeStudentCount = studentIDs.count
+        activeFamilyCount = familyIDs.count
+        totalEnrollmentCount = activeEnrollments.count
+        privateEnrollmentCount = privateCount
+        groupEnrollmentCount = activeEnrollments.count - privateCount
+    }
+
+    static func currentTerm(
+        in terms: [Term],
+        on date: Date = Date(),
+        calendar: Calendar = .masterDance
+    ) -> Term? {
+        let openTerms = terms.filter { $0.status == .open }
+        return preferredTerm(in: openTerms, on: date, calendar: calendar)
+            ?? preferredTerm(in: terms, on: date, calendar: calendar)
+    }
+
+    private static func preferredTerm(
+        in terms: [Term],
+        on date: Date,
+        calendar: Calendar
+    ) -> Term? {
+        let day = calendar.startOfDay(for: date)
+        return terms.min { lhs, rhs in
+            let lhsDistance = distance(from: day, to: lhs, calendar: calendar)
+            let rhsDistance = distance(from: day, to: rhs, calendar: calendar)
+            if lhsDistance == rhsDistance {
+                return lhs.startsOn > rhs.startsOn
+            }
+            return lhsDistance < rhsDistance
+        }
+    }
+
+    private static func distance(
+        from day: Date,
+        to term: Term,
+        calendar: Calendar
+    ) -> TimeInterval {
+        let startsOn = calendar.startOfDay(for: term.startsOn)
+        let endsOn = calendar.startOfDay(for: term.endsOn)
+        if day < startsOn { return startsOn.timeIntervalSince(day) }
+        if day > endsOn { return day.timeIntervalSince(endsOn) }
+        return 0
+    }
+}
+
+extension AppModel {
+    var currentEnrollmentTerm: Term? {
+        EnrollmentSummary.currentTerm(in: terms)
+    }
+
+    func enrollmentSummary(termID: TermID?) -> EnrollmentSummary {
+        EnrollmentSummary(
+            termID: termID,
+            courses: courses,
+            students: students,
+            enrollments: enrollments
+        )
     }
 }
 

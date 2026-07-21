@@ -1,6 +1,6 @@
 # Master Dance
 
-Current local test release: `v0.1.11`.
+Current local test release: `v0.1.12` (macOS build 47, iOS build 22).
 
 Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
 
@@ -83,6 +83,8 @@ See `supabase/README.md` and `docs/backend-operations.md` for deployment and rec
 The MVP supports term enrollment, scheduling, guardian-first learner profiles,
 one-time account linking, course enrollment, attendance, leave handling,
 contract-consent records, and notification records.
+Guardian leave must be recorded at least 12 hours before class; administrators
+can record it at any time, and leave records do not use an approval workflow.
 Course categories, age groups, rooms, instructors, and course names are
 user-managed data. Pricing, per-class enrollment, credits, exceptional rule
 engines, parent course selection, and teacher login are intentionally absent.
