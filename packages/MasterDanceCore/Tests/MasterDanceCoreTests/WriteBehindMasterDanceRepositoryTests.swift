@@ -163,6 +163,77 @@ struct WriteBehindMasterDanceRepositoryTests {
         #expect(try await remote.listStudents().isEmpty)
     }
 
+    @Test("Orphaned session writes are discarded instead of blocking synchronization")
+    func orphanedSessionWritesAreDiscarded() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let remote = PreviewMasterDanceStore()
+        let repository = WriteBehindMasterDanceRepository(
+            remote: remote,
+            cacheDirectory: directory,
+            cacheKey: "orphaned-session"
+        )
+        _ = try await repository.listTerms()
+
+        let orphanedSession = ClassSession(
+            courseID: CourseID(),
+            startsAt: Date(timeIntervalSince1970: 1_000),
+            endsAt: Date(timeIntervalSince1970: 4_600)
+        )
+        try await repository.save(session: orphanedSession)
+
+        #expect(await repository.pendingMutationCount() == 0)
+        #expect(try await repository.synchronizeIfNeeded() == 0)
+        #expect(await remote.listSessions(courseID: nil).isEmpty)
+    }
+
+    @Test("Deleting a course removes queued writes for its sessions")
+    func deletingCourseRemovesSessionWrites() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let term = Term(
+            name: "2026 Fall",
+            startsOn: Date(timeIntervalSince1970: 1_000),
+            endsOn: Date(timeIntervalSince1970: 1_000_000),
+            status: .open
+        )
+        let course = Course(
+            termID: term.id,
+            name: "Ballet",
+            categoryID: CourseCategoryID(),
+            ageGroupID: AgeGroupID(),
+            defaultRoomID: RoomID(),
+            defaultInstructorID: InstructorID(),
+            courseTypeID: CourseTypeID(),
+            format: .group
+        )
+        var session = ClassSession(
+            courseID: course.id,
+            startsAt: Date(timeIntervalSince1970: 10_000),
+            endsAt: Date(timeIntervalSince1970: 13_600)
+        )
+        let remote = PreviewMasterDanceStore(
+            data: PreviewData(terms: [term], courses: [course], sessions: [session])
+        )
+        let repository = WriteBehindMasterDanceRepository(
+            remote: remote,
+            cacheDirectory: directory,
+            cacheKey: "course-session-deletion"
+        )
+        _ = try await repository.listTerms()
+
+        session.endsAt = Date(timeIntervalSince1970: 14_200)
+        try await repository.save(session: session)
+        try await repository.deleteCourse(id: course.id)
+
+        #expect(await repository.pendingMutationCount() == 1)
+        #expect(try await repository.synchronizeIfNeeded() == 1)
+        #expect(await remote.listCourses(termID: nil).isEmpty)
+        #expect(await remote.listSessions(courseID: nil).isEmpty)
+    }
+
     @Test("Remote changes refresh the local snapshot only after the sequence advances")
     func remoteChangeSequenceControlsRefresh() async throws {
         let directory = temporaryDirectory()

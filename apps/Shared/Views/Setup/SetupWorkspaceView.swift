@@ -6,9 +6,11 @@ import SwiftUI
 struct SetupWorkspaceView: View {
     let model: AppModel
 
+    @SceneStorage("md-desk.courses.selected-term-id") private var selectedTermIDStorage = ""
     @State private var searchText = ""
     @State private var showingCourseEditor = false
     @State private var editingCourse: Course?
+    @State private var duplicatingCourse: Course?
     @State private var deletingCourse: Course?
     @State private var errorMessage: String?
 
@@ -28,6 +30,17 @@ struct SetupWorkspaceView: View {
                         .foregroundStyle(theme.danger)
                         .lineLimit(1)
                 }
+
+                Picker("学期", selection: selectedTermSelection) {
+                    Text("全部学期").tag(Optional<TermID>.none)
+                    ForEach(model.terms) { term in
+                        Text(term.name).tag(Optional(term.id))
+                    }
+                }
+                .labelsHidden()
+                .mdFont(.body)
+                .frame(width: 220)
+                .help("选择要查看的学期；全部学期适合查找和复制历史课程")
 
                 TextField("搜索", text: $searchText)
                     .textFieldStyle(.roundedBorder)
@@ -49,18 +62,26 @@ struct SetupWorkspaceView: View {
 
             CourseSheetView(
                 model: model,
+                selectedTermID: selectedTermID,
                 searchText: searchText,
                 edit: { editingCourse = $0 },
+                duplicate: { duplicatingCourse = $0 },
                 delete: { deletingCourse = $0 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(theme.background)
+        .task(id: model.terms.map(\.id)) {
+            chooseInitialTerm()
+        }
         .sheet(isPresented: $showingCourseEditor) {
-            CourseEditorView(model: model)
+            CourseEditorView(model: model, initialTermID: selectedTermID)
         }
         .sheet(item: $editingCourse) { course in
             CourseEditorView(model: model, course: course)
+        }
+        .sheet(item: $duplicatingCourse) { course in
+            CourseEditorView(model: model, duplicateOf: course)
         }
         .alert(
             "确认删除",
@@ -83,6 +104,33 @@ struct SetupWorkspaceView: View {
             Button("取消", role: .cancel) {}
         } message: { course in
             Text("确定删除“\(course.name)”吗？已有课次或报名的课程不会被删除，可以改为停用。")
+        }
+    }
+
+    private var selectedTermID: TermID? {
+        get {
+            guard selectedTermIDStorage != "all" else { return nil }
+            return try? TermID(uuidString: selectedTermIDStorage)
+        }
+        nonmutating set {
+            selectedTermIDStorage = newValue?.description ?? "all"
+        }
+    }
+
+    private var selectedTermSelection: Binding<TermID?> {
+        Binding(
+            get: { selectedTermID },
+            set: { selectedTermID = $0 }
+        )
+    }
+
+    private func chooseInitialTerm() {
+        let preservesAllTerms = selectedTermIDStorage == "all"
+        let hasValidTerm = selectedTermID.map { selectedID in
+            model.terms.contains { $0.id == selectedID }
+        } ?? false
+        if selectedTermIDStorage.isEmpty || (!preservesAllTerms && !hasValidTerm) {
+            selectedTermID = model.currentEnrollmentTerm?.id ?? model.terms.first?.id
         }
     }
 }

@@ -97,12 +97,13 @@ struct BillingCalculatorTests {
     @Test("issued invoices, payments, and correction versions remain append-only")
     func invoiceLifecycle() async throws {
         let guardian = Guardian(displayName: "测试家庭")
+        let termID = TermID()
         let store = PreviewMasterDanceStore(
             data: PreviewData(guardians: [guardian])
         )
         let first = BillingInvoice(
             guardianID: guardian.id,
-            termID: nil,
+            termID: termID,
             invoiceNumber: "INV-2026-0001",
             schoolYearLabel: "2026–2027",
             amountDueCents: 10_000
@@ -144,7 +145,7 @@ struct BillingCalculatorTests {
 
         let second = BillingInvoice(
             guardianID: guardian.id,
-            termID: nil,
+            termID: termID,
             invoiceNumber: first.invoiceNumber,
             version: 2,
             schoolYearLabel: first.schoolYearLabel,
@@ -176,6 +177,53 @@ struct BillingCalculatorTests {
         #expect(first.outstandingCents(payments: [payment]) == 5_000)
         #expect(await store.listBillingPayments().map(\.id) == [payment.id])
         #expect(await store.listBillingArtifacts().count == 3)
+    }
+
+    @Test("a family and term can only start one invoice series")
+    func invoiceSeriesIsUniquePerFamilyAndTerm() async throws {
+        let guardian = Guardian(displayName: "测试家庭")
+        let termID = TermID()
+        let store = PreviewMasterDanceStore(data: PreviewData(guardians: [guardian]))
+        let first = BillingInvoice(
+            guardianID: guardian.id,
+            termID: termID,
+            invoiceNumber: "INV-2026-0001",
+            schoolYearLabel: "2026–2027",
+            amountDueCents: 1_000
+        )
+        let duplicateRoot = BillingInvoice(
+            guardianID: guardian.id,
+            termID: termID,
+            invoiceNumber: "INV-2026-0002",
+            schoolYearLabel: "2026–2027",
+            amountDueCents: 1_000
+        )
+
+        _ = try await store.issueBillingInvoice(
+            invoice: first,
+            lineItems: [invoiceItem(invoiceID: first.id, amountCents: 1_000)],
+            artifact: BillingArtifact(invoiceID: first.id, kind: .invoice),
+            pngData: Data([1])
+        )
+
+        await #expect(throws: PreviewRepositoryError.self) {
+            try await store.issueBillingInvoice(
+                invoice: duplicateRoot,
+                lineItems: [invoiceItem(invoiceID: duplicateRoot.id, amountCents: 1_000)],
+                artifact: BillingArtifact(invoiceID: duplicateRoot.id, kind: .invoice),
+                pngData: Data([2])
+            )
+        }
+    }
+
+    private func invoiceItem(invoiceID: BillingInvoiceID, amountCents: Int) -> BillingInvoiceLineItem {
+        BillingInvoiceLineItem(
+            invoiceID: invoiceID,
+            kind: .manual,
+            title: "收费项目",
+            unitAmountCents: amountCents,
+            amountCents: amountCents
+        )
     }
 }
 

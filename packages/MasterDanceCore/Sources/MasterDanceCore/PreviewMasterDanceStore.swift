@@ -680,6 +680,9 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         guard data.guardians.contains(where: { $0.id == invoice.guardianID }) else {
             throw PreviewRepositoryError.guardianNotFound
         }
+        guard invoice.termID != nil else {
+            throw PreviewRepositoryError.recordInUse("账单必须属于一个学期。")
+        }
         guard !lineItems.isEmpty,
               lineItems.allSatisfy({ $0.invoiceID == invoice.id }),
               artifact.invoiceID == invoice.id,
@@ -693,9 +696,20 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
             throw PreviewRepositoryError.recordInUse("账单合计与收费项目不一致。")
         }
 
-        if let supersededID = invoice.supersedesInvoiceID,
-           let index = data.billingInvoices.firstIndex(where: { $0.id == supersededID }) {
+        if let supersededID = invoice.supersedesInvoiceID {
+            guard let index = data.billingInvoices.firstIndex(where: { $0.id == supersededID }) else {
+                throw PreviewRepositoryError.recordInUse("找不到需要修订的账单版本。")
+            }
             let previous = data.billingInvoices[index]
+            guard
+                previous.supersededByInvoiceID == nil,
+                previous.guardianID == invoice.guardianID,
+                previous.termID == invoice.termID,
+                previous.invoiceNumber == invoice.invoiceNumber,
+                previous.version + 1 == invoice.version
+            else {
+                throw PreviewRepositoryError.recordInUse("账单版本关系不正确，请基于最新版继续。")
+            }
             data.billingInvoices[index] = BillingInvoice(
                 id: previous.id,
                 guardianID: previous.guardianID,
@@ -711,6 +725,18 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
                 supersededByInvoiceID: invoice.id,
                 createdAt: previous.createdAt
             )
+        } else {
+            guard invoice.version == 1 else {
+                throw PreviewRepositoryError.recordInUse("新账单必须从 v1 开始。")
+            }
+            let alreadyExists = data.billingInvoices.contains {
+                $0.guardianID == invoice.guardianID
+                    && $0.termID == invoice.termID
+                    && $0.supersedesInvoiceID == nil
+            }
+            guard !alreadyExists else {
+                throw PreviewRepositoryError.recordInUse("这个家庭在该学期已有账单，请创建新版本。")
+            }
         }
 
         upsert(invoice, in: &data.billingInvoices)

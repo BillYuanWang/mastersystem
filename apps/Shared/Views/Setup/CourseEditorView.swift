@@ -6,6 +6,8 @@ import SwiftUI
 struct CourseEditorView: View {
     let model: AppModel
     let original: Course?
+    let duplicateSource: Course?
+    let initialTermID: TermID?
 
     @State private var draft = CourseCreationDraft()
     @State private var occurrenceCourseID: CourseID
@@ -14,9 +16,16 @@ struct CourseEditorView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
 
-    init(model: AppModel, course: Course? = nil) {
+    init(
+        model: AppModel,
+        course: Course? = nil,
+        duplicateOf duplicateSource: Course? = nil,
+        initialTermID: TermID? = nil
+    ) {
         self.model = model
         original = course
+        self.duplicateSource = duplicateSource
+        self.initialTermID = initialTermID
         _occurrenceCourseID = State(initialValue: course?.id ?? CourseID())
     }
 
@@ -25,8 +34,8 @@ struct CourseEditorView: View {
         VStack(spacing: 0) {
             HStack {
                 MDSectionTitle(
-                    chinese: original == nil ? "添加课程" : "编辑课程",
-                    english: original == nil ? "NEW COURSE" : "EDIT COURSE"
+                    chinese: editorTitle,
+                    english: editorEnglishTitle
                 )
                 Spacer()
                 Text("\(activeOccurrenceCount) 次课")
@@ -272,7 +281,7 @@ struct CourseEditorView: View {
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }
-                Button(original == nil ? "添加课程" : "保存修改") { save() }
+                Button(saveButtonTitle) { save() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave)
             }
@@ -544,25 +553,25 @@ struct CourseEditorView: View {
     private func configureDraft() {
         guard !didConfigure else { return }
         didConfigure = true
-        if let original {
-            draft.name = original.name
-            draft.termID = original.termID
-            draft.ageGroupID = original.ageGroupID
-            draft.roomID = original.defaultRoomID
-            draft.instructorID = original.defaultInstructorID
-            draft.courseTypeID = original.courseTypeID
-            draft.pricingStatus = original.pricingStatus
-            draft.unitPriceText = original.format.requiresPerSessionEnrollment
+        if let source = original ?? duplicateSource {
+            draft.name = duplicateSource == nil ? source.name : source.name + " 副本"
+            draft.termID = source.termID
+            draft.ageGroupID = source.ageGroupID
+            draft.roomID = source.defaultRoomID
+            draft.instructorID = source.defaultInstructorID
+            draft.courseTypeID = source.courseTypeID
+            draft.pricingStatus = source.pricingStatus
+            draft.unitPriceText = source.format.requiresPerSessionEnrollment
                 ? ""
-                : MoneyTextParser.dollars(from: original.unitPriceCents)
+                : MoneyTextParser.dollars(from: source.unitPriceCents)
             draft.dropInUnitPriceText = MoneyTextParser.dollars(
-                from: original.dropInUnitPriceCents
-                    ?? (original.format.requiresPerSessionEnrollment ? original.unitPriceCents : nil)
+                from: source.dropInUnitPriceCents
+                    ?? (source.format.requiresPerSessionEnrollment ? source.unitPriceCents : nil)
             )
-            draft.notes = original.notes ?? ""
-            draft.isActive = original.isActive
+            draft.notes = source.notes ?? ""
+            draft.isActive = source.isActive
 
-            let existingSessions = model.sessions(forCourse: original.id)
+            let existingSessions = model.sessions(forCourse: source.id)
             if let first = existingSessions.first, let last = existingSessions.last {
                 let calendar = Calendar.masterDance
                 draft.startsOn = calendar.startOfDay(for: first.startsAt)
@@ -580,14 +589,17 @@ struct CourseEditorView: View {
                 draft.excludedDates = Set(occurrenceDates.map(calendar.startOfDay(for:)).filter {
                     !existingDates.contains($0)
                 })
-            } else if let term = model.term(id: original.termID) {
+            } else if let term = model.term(id: source.termID) {
                 draft.startsOn = term.startsOn
                 draft.endsOn = term.endsOn
             }
         } else {
-            let initialTerm = model.terms.first { term in
-                model.termHolidays.contains { $0.termID == term.id }
-            } ?? model.terms.first
+            let initialTerm = initialTermID.flatMap(model.term(id:))
+                ?? model.currentEnrollmentTerm
+                ?? model.terms.first { term in
+                    model.termHolidays.contains { $0.termID == term.id }
+                }
+                ?? model.terms.first
             draft.termID = initialTerm?.id
             draft.ageGroupID = model.ageGroups.first?.id
             draft.roomID = model.rooms.first?.id
@@ -599,6 +611,24 @@ struct CourseEditorView: View {
             }
         }
         alignPricingFieldsForCourseType()
+    }
+
+    private var editorTitle: String {
+        if original != nil { return "编辑课程" }
+        if duplicateSource != nil { return "复制课程" }
+        return "添加课程"
+    }
+
+    private var editorEnglishTitle: String {
+        if original != nil { return "EDIT COURSE" }
+        if duplicateSource != nil { return "DUPLICATE COURSE" }
+        return "NEW COURSE"
+    }
+
+    private var saveButtonTitle: String {
+        if original != nil { return "保存修改" }
+        if duplicateSource != nil { return "创建副本" }
+        return "添加课程"
     }
 
     private func alignPricingFieldsForCourseType() {

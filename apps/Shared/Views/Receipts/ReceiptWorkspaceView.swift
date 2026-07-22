@@ -20,6 +20,7 @@ private enum BillingWorkspaceError: LocalizedError {
     case invalidAmount(String)
     case negativeTotal
     case invalidPayment
+    case invoiceSeriesChanged
 
     var errorDescription: String? {
         switch self {
@@ -31,6 +32,7 @@ private enum BillingWorkspaceError: LocalizedError {
         case .invalidAmount(let value): "金额“\(value)”格式不正确。"
         case .negativeTotal: "本次应付合计不能小于 0。"
         case .invalidPayment: "付款金额必须大于 0，且不能超过待付金额。"
+        case .invoiceSeriesChanged: "这份账单已经出现更新版本，请返回账单记录后基于最新版继续。"
         }
     }
 }
@@ -168,6 +170,7 @@ private struct BillingComposerView: View {
 
     @State private var selectedGuardianID: GuardianID?
     @State private var selectedTermID: TermID?
+    @State private var revisionBaseInvoice: BillingInvoice?
     @State private var invoiceNumber = ""
     @State private var version = 1
     @State private var schoolYearLabel = ""
@@ -198,14 +201,17 @@ private struct BillingComposerView: View {
         }
         .task { configureIfNeeded() }
         .onChange(of: selectedGuardianID) { _, _ in
-            generatedFile = nil
-            statusMessage = nil
-            if correctionInvoice == nil { lines.removeAll() }
+            guard correctionInvoice == nil else { return }
+            configureForSelectedSeries()
         }
         .onChange(of: selectedTermID) { _, termID in
             guard correctionInvoice == nil else { return }
             schoolYearLabel = termID.flatMap { model.term(id: $0) }.map(defaultSchoolYearLabel) ?? ""
-            lines.removeAll()
+            configureForSelectedSeries()
+        }
+        .onChange(of: model.billingInvoices.map(\.id)) { _, _ in
+            guard correctionInvoice == nil else { return }
+            configureForSelectedSeries()
         }
         .alert(
             "无法签发",
@@ -228,8 +234,8 @@ private struct BillingComposerView: View {
                         .mdFont(.compact)
                         .foregroundStyle(theme.success)
                         .lineLimit(1)
-                } else if correctionInvoice != nil {
-                    Label("正在创建修订版本", systemImage: "clock.arrow.circlepath")
+                } else if revisionBaseInvoice != nil {
+                    Label("正在创建账单新版本", systemImage: "clock.arrow.circlepath")
                         .mdFont(.compact)
                         .foregroundStyle(theme.warning)
                 }
@@ -254,7 +260,7 @@ private struct BillingComposerView: View {
                 }
 
                 Button(action: issueInvoice) {
-                    Label(correctionInvoice == nil ? "签发账单" : "签发 v\(version)", systemImage: "paperplane")
+                    Label(revisionBaseInvoice == nil ? "签发账单" : "签发 v\(version)", systemImage: "paperplane")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -315,6 +321,8 @@ private struct BillingComposerView: View {
                 HStack(spacing: 8) {
                     TextField("账单编号", text: $invoiceNumber)
                         .textFieldStyle(.roundedBorder)
+                        .disabled(revisionBaseInvoice != nil)
+                        .help(revisionBaseInvoice == nil ? "新账单主线编号" : "同一家庭与学期沿用原账单编号")
                     Text("v\(version)")
                         .mdFont(.monoStrong)
                         .foregroundStyle(theme.accent)
@@ -456,6 +464,15 @@ private struct BillingComposerView: View {
         return model.students(for: selectedGuardianID)
     }
 
+    private var selectedInvoiceSeries: BillingInvoiceSeries? {
+        guard let selectedGuardianID, let selectedTermID else { return nil }
+        return BillingInvoiceSeriesResolver.series(
+            guardianID: selectedGuardianID,
+            termID: selectedTermID,
+            in: model.billingInvoices
+        )
+    }
+
     private var amountDueCents: Int {
         lines.reduce(0) { result, line in
             guard line.includedInAmountDue,
@@ -475,6 +492,7 @@ private struct BillingComposerView: View {
                     && MoneyTextParser.cents(from: $0.amountText) != nil
             }
             && amountDueCents >= 0
+            && revisionBaseInvoice?.id == selectedInvoiceSeries?.latestInvoice.id
     }
 
     private var previewDocument: ReceiptDocument {
@@ -511,21 +529,51 @@ private struct BillingComposerView: View {
         guard !didConfigure else { return }
         didConfigure = true
         if let correctionInvoice {
-            selectedGuardianID = correctionInvoice.guardianID
-            selectedTermID = correctionInvoice.termID
-            invoiceNumber = correctionInvoice.invoiceNumber
-            version = correctionInvoice.version + 1
-            schoolYearLabel = correctionInvoice.schoolYearLabel
-            note = correctionInvoice.notes ?? ""
-            lines = model.billingItems(for: correctionInvoice.id).map(draftLine)
+            let latest = BillingInvoiceSeriesResolver.series(
+                containing: correctionInvoice,
+                in: model.billingInvoices
+            )?.latestInvoice ?? correctionInvoice
+            applyRevision(from: latest)
         } else {
             selectedGuardianID = sortedGuardians.first?.id
             selectedTermID = model.currentEnrollmentTerm?.id ?? model.terms.first?.id
-            invoiceNumber = Self.nextInvoiceNumber(from: model.billingInvoices)
-            if let term = selectedTermID.flatMap({ model.term(id: $0) }) {
-                schoolYearLabel = defaultSchoolYearLabel(term)
-            }
+            configureForSelectedSeries()
         }
+    }
+
+    private func configureForSelectedSeries() {
+        generatedFile = nil
+        statusMessage = nil
+        errorMessage = nil
+
+        if let latest = selectedInvoiceSeries?.latestInvoice {
+            applyRevision(from: latest, updateSelection: false)
+            return
+        }
+
+        revisionBaseInvoice = nil
+        invoiceNumber = Self.nextInvoiceNumber(from: model.billingInvoices)
+        version = 1
+        note = ""
+        lines.removeAll()
+        if let term = selectedTermID.flatMap({ model.term(id: $0) }) {
+            schoolYearLabel = defaultSchoolYearLabel(term)
+        } else {
+            schoolYearLabel = ""
+        }
+    }
+
+    private func applyRevision(from invoice: BillingInvoice, updateSelection: Bool = true) {
+        revisionBaseInvoice = invoice
+        if updateSelection {
+            selectedGuardianID = invoice.guardianID
+            selectedTermID = invoice.termID
+        }
+        invoiceNumber = invoice.invoiceNumber
+        version = invoice.version + 1
+        schoolYearLabel = invoice.schoolYearLabel
+        note = invoice.notes ?? ""
+        lines = model.billingItems(for: invoice.id).map(draftLine)
     }
 
     private func generateFromEnrollments() {
@@ -698,8 +746,23 @@ private struct BillingComposerView: View {
     ) {
         guard let guardian = selectedGuardian else { throw BillingWorkspaceError.missingFamily }
         guard let selectedTermID else { throw BillingWorkspaceError.missingTerm }
+        guard revisionBaseInvoice?.id == selectedInvoiceSeries?.latestInvoice.id else {
+            throw BillingWorkspaceError.invoiceSeriesChanged
+        }
         let number = invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !number.isEmpty else { throw BillingWorkspaceError.missingInvoiceNumber }
+        if let revisionBaseInvoice {
+            guard
+                number == revisionBaseInvoice.invoiceNumber,
+                version == revisionBaseInvoice.version + 1,
+                revisionBaseInvoice.guardianID == guardian.id,
+                revisionBaseInvoice.termID == selectedTermID
+            else { throw BillingWorkspaceError.invoiceSeriesChanged }
+        } else {
+            guard version == 1, selectedInvoiceSeries == nil else {
+                throw BillingWorkspaceError.invoiceSeriesChanged
+            }
+        }
         guard !lines.isEmpty else { throw BillingWorkspaceError.missingItems }
         guard amountDueCents >= 0 else { throw BillingWorkspaceError.negativeTotal }
 
@@ -734,7 +797,7 @@ private struct BillingComposerView: View {
             issuedAt: issuedOn,
             amountDueCents: amountDueCents,
             notes: note.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-            supersedesInvoiceID: correctionInvoice?.id
+            supersedesInvoiceID: revisionBaseInvoice?.id
         )
         return (
             invoice,
@@ -811,6 +874,7 @@ private struct BillingHistoryView: View {
     let model: AppModel
     let createNewVersion: (BillingInvoice) -> Void
 
+    @SceneStorage("md-desk.billing.history.selected-term-id") private var selectedTermIDStorage = ""
     @State private var selectedInvoiceID: BillingInvoiceID?
     @State private var searchText = ""
     @State private var paymentInvoice: BillingInvoice?
@@ -824,9 +888,18 @@ private struct BillingHistoryView: View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
+                    Picker("学期", selection: selectedTermSelection) {
+                        Text("全部学期").tag(Optional<TermID>.none)
+                        ForEach(model.terms) { term in
+                            Text(term.name).tag(Optional(term.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 145)
+
                     TextField("搜索家庭或账单编号", text: $searchText)
                         .textFieldStyle(.roundedBorder)
-                    Text("\(filteredInvoices.count)")
+                    Text("\(filteredSeries.count)")
                         .mdFont(.mono)
                         .foregroundStyle(theme.secondaryText)
                 }
@@ -836,8 +909,8 @@ private struct BillingHistoryView: View {
 
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(filteredInvoices) { invoice in
-                            invoiceRow(invoice, theme: theme)
+                        ForEach(filteredSeries) { series in
+                            invoiceRow(series.latestInvoice, theme: theme)
                             Divider()
                         }
                     }
@@ -855,8 +928,13 @@ private struct BillingHistoryView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .task { chooseInitialInvoice() }
+        .task(id: model.terms.map(\.id)) {
+            chooseInitialTerm()
+            chooseInitialInvoice()
+        }
         .onChange(of: model.billingInvoices.map(\.id)) { _, _ in chooseInitialInvoice() }
+        .onChange(of: selectedTermID) { _, _ in chooseInitialInvoice() }
+        .onChange(of: searchText) { _, _ in chooseInitialInvoice() }
         .sheet(item: $paymentInvoice) { invoice in
             BillingPaymentSheet(model: model, invoice: invoice)
         }
@@ -873,19 +951,30 @@ private struct BillingHistoryView: View {
         }
     }
 
-    private var filteredInvoices: [BillingInvoice] {
+    private var filteredSeries: [BillingInvoiceSeries] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return model.billingInvoices.filter { invoice in
+        return BillingInvoiceSeriesResolver.series(from: model.billingInvoices).filter { series in
+            guard selectedTermID == nil || series.key.termID == selectedTermID else { return false }
             guard !query.isEmpty else { return true }
-            let family = model.guardian(id: invoice.guardianID)?.displayName ?? ""
+            let family = model.guardian(id: series.key.guardianID)?.displayName ?? ""
+            let term = series.key.termID.flatMap(model.term(id:))?.name ?? ""
             return family.localizedCaseInsensitiveContains(query)
-                || invoice.invoiceNumber.localizedCaseInsensitiveContains(query)
-                || invoice.schoolYearLabel.localizedCaseInsensitiveContains(query)
+                || term.localizedCaseInsensitiveContains(query)
+                || series.invoices.contains {
+                    $0.invoiceNumber.localizedCaseInsensitiveContains(query)
+                        || $0.schoolYearLabel.localizedCaseInsensitiveContains(query)
+                }
         }
     }
 
     private var selectedInvoice: BillingInvoice? {
         selectedInvoiceID.flatMap { id in model.billingInvoices.first { $0.id == id } }
+    }
+
+    private var selectedSeries: BillingInvoiceSeries? {
+        selectedInvoice.flatMap {
+            BillingInvoiceSeriesResolver.series(containing: $0, in: model.billingInvoices)
+        }
     }
 
     private func invoiceRow(_ invoice: BillingInvoice, theme: MDTheme) -> some View {
@@ -910,7 +999,8 @@ private struct BillingHistoryView: View {
                     HStack(spacing: 6) {
                         Text(invoice.invoiceNumber + " · v\(invoice.version)")
                         Spacer()
-                        Text(billingDateText(invoice.issuedAt))
+                        Text(invoice.termID.flatMap(model.term(id:))?.name ?? "未分学期")
+                            .lineLimit(1)
                     }
                     .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
@@ -929,6 +1019,7 @@ private struct BillingHistoryView: View {
         let status = invoice.displayStatus(payments: payments)
         let outstanding = invoice.outstandingCents(payments: payments)
         let items = model.billingItems(for: invoice.id)
+        let latestInvoice = selectedSeries?.latestInvoice ?? invoice
         return VStack(spacing: 0) {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -942,14 +1033,27 @@ private struct BillingHistoryView: View {
                 Text(statusTitle(status))
                     .mdFont(.compactStrong)
                     .foregroundStyle(statusColor(status, theme: theme))
+
+                Picker("历史版本", selection: selectedInvoiceBinding(fallback: invoice.id)) {
+                    ForEach(selectedSeries?.invoices ?? [invoice]) { versionInvoice in
+                        Text("v\(versionInvoice.version) · \(billingDateText(versionInvoice.issuedAt))")
+                            .tag(versionInvoice.id)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 150)
+                .help("查看这份账单的历史版本")
+
                 Button {
-                    createNewVersion(invoice)
+                    createNewVersion(latestInvoice)
                 } label: {
                     Label("新版本", systemImage: "doc.badge.plus")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .disabled(status == .superseded)
+                .help(invoice.id == latestInvoice.id
+                    ? "基于当前版本继续修改"
+                    : "将基于最新版 v\(latestInvoice.version) 继续修改")
 
                 Button {
                     paymentInvoice = invoice
@@ -1053,8 +1157,46 @@ private struct BillingHistoryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var selectedTermID: TermID? {
+        get {
+            guard selectedTermIDStorage != "all" else { return nil }
+            return try? TermID(uuidString: selectedTermIDStorage)
+        }
+        nonmutating set {
+            selectedTermIDStorage = newValue?.description ?? "all"
+        }
+    }
+
+    private var selectedTermSelection: Binding<TermID?> {
+        Binding(
+            get: { selectedTermID },
+            set: { selectedTermID = $0 }
+        )
+    }
+
+    private func selectedInvoiceBinding(fallback: BillingInvoiceID) -> Binding<BillingInvoiceID> {
+        Binding(
+            get: { selectedInvoiceID ?? fallback },
+            set: { selectedInvoiceID = $0 }
+        )
+    }
+
+    private func chooseInitialTerm() {
+        let preservesAllTerms = selectedTermIDStorage == "all"
+        let hasValidTerm = selectedTermID.map { selectedID in
+            model.terms.contains { $0.id == selectedID }
+        } ?? false
+        if selectedTermIDStorage.isEmpty || (!preservesAllTerms && !hasValidTerm) {
+            selectedTermID = model.currentEnrollmentTerm?.id ?? model.terms.first?.id
+        }
+    }
+
     private func chooseInitialInvoice() {
-        if selectedInvoice == nil { selectedInvoiceID = filteredInvoices.first?.id }
+        if let selectedSeries,
+           filteredSeries.contains(where: { $0.id == selectedSeries.id }) {
+            return
+        }
+        selectedInvoiceID = filteredSeries.first?.latestInvoice.id
     }
 
     private func copyArtifact(_ artifact: BillingArtifact) {

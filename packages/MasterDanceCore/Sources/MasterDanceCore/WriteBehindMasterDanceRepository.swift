@@ -40,12 +40,14 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 
     public func pendingMutationCount() async -> Int {
         await loadCacheIfNeeded()
+        try? await pruneStaleSessionMutations()
         return pendingMutations.count
     }
 
     @discardableResult
     public func synchronizeIfNeeded() async throws -> Int {
         await loadCacheIfNeeded()
+        try await pruneStaleSessionMutations()
         guard !isSynchronizing, !pendingMutations.isEmpty else { return 0 }
         isSynchronizing = true
         defer { isSynchronizing = false }
@@ -233,7 +235,9 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 
     public func deleteCourse(id: CourseID) async throws {
         try await ensureSnapshot()
+        let sessionIDs = Set(await local.listSessions(courseID: id).map(\.id))
         try await local.deleteCourse(id: id)
+        pendingMutations.removeAll { $0.mutation.concernsSession(in: sessionIDs) }
         try await enqueue(.deleteCourse(id))
     }
 
@@ -723,6 +727,22 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
         try await persist()
     }
 
+    private func pruneStaleSessionMutations() async throws {
+        guard !pendingMutations.isEmpty else { return }
+        let courseIDs = Set(await local.listCourses(termID: nil).map(\.id))
+        let sessionIDs = Set(await local.listSessions(courseID: nil).map(\.id))
+        let originalCount = pendingMutations.count
+
+        pendingMutations.removeAll { queued in
+            guard case .saveSession(let session) = queued.mutation else { return false }
+            return !courseIDs.contains(session.courseID) || !sessionIDs.contains(session.id)
+        }
+
+        if pendingMutations.count != originalCount {
+            try await persist()
+        }
+    }
+
     private func persist() async throws {
         let snapshot = await local.snapshot()
         let envelope = CacheEnvelope(
@@ -845,6 +865,14 @@ private enum PendingMutation: Codable, Sendable {
         case .deleteContractDocument(let id, _): "contract-document:\(id)"
         case .saveContractConsent(let value): "contract-consent:\(value.id)"
         case .saveNotification(let value): "notification:\(value.id)"
+        }
+    }
+
+    func concernsSession(in sessionIDs: Set<ClassSessionID>) -> Bool {
+        switch self {
+        case .saveSession(let value): sessionIDs.contains(value.id)
+        case .deleteSession(let id): sessionIDs.contains(id)
+        default: false
         }
     }
 

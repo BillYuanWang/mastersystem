@@ -7,8 +7,10 @@ import SwiftUI
 @MainActor
 struct CourseSheetView: View {
     let model: AppModel
+    let selectedTermID: TermID?
     let searchText: String
     let edit: (Course) -> Void
+    let duplicate: (Course) -> Void
     let delete: (Course) -> Void
 
     @State private var sortColumn: CourseTableColumn?
@@ -271,6 +273,7 @@ struct CourseSheetView: View {
     ) -> some View {
         HStack(spacing: 0) {
             dataCell(entry.course.name, width: layout[.name], strong: true)
+            dataCell(entry.termName, width: layout[.term])
             dataCell(entry.ageGroupName, width: layout[.ageGroup])
             dataCell(entry.roomName, width: layout[.room])
             dataCell(entry.instructorName, width: layout[.instructor])
@@ -278,6 +281,7 @@ struct CourseSheetView: View {
             dataCell("\(entry.sessionCount)", width: layout[.sessions], monospaced: true)
             dataCell(entry.pricingLabel, width: layout[.pricing], monospaced: true)
             courseTypeCell(entry, width: layout[.courseType], theme: theme)
+            conflictCell(entry, width: layout[.conflict], theme: theme)
             dataCell(entry.statusLabel, width: layout[.status])
             HStack(spacing: 3) {
                 Button {
@@ -287,6 +291,13 @@ struct CourseSheetView: View {
                 }
                 .buttonStyle(MDIconButtonStyle())
                 .help("编辑")
+                Button {
+                    duplicate(entry.course)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(MDIconButtonStyle())
+                .help("复制并编辑")
                 Button {
                     delete(entry.course)
                 } label: {
@@ -298,8 +309,48 @@ struct CourseSheetView: View {
             .frame(width: layout.operationWidth)
         }
         .frame(minHeight: 38)
+        .background(
+            entry.hasConflict
+                ? theme.danger.opacity(colorScheme == .dark ? 0.10 : 0.055)
+                : Color.clear
+        )
         .contentShape(Rectangle())
         .help(entry.course.notes ?? "")
+        .contextMenu {
+            Button("编辑课程") { edit(entry.course) }
+            Button("复制并编辑") { duplicate(entry.course) }
+            Divider()
+            Button("删除课程", role: .destructive) { delete(entry.course) }
+        }
+    }
+
+    private func conflictCell(
+        _ entry: CourseTableEntry,
+        width: CGFloat,
+        theme: MDTheme
+    ) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: entry.hasConflict ? "exclamationmark.triangle.fill" : "checkmark.circle")
+            Text(entry.conflictLabel)
+                .lineLimit(1)
+        }
+        .mdFont(.compactStrong)
+        .foregroundStyle(entry.hasConflict ? theme.danger : theme.secondaryText)
+        .padding(.horizontal, 10)
+        .frame(width: width, alignment: .leading)
+        .help(conflictHelp(for: entry))
+    }
+
+    private func conflictHelp(for entry: CourseTableEntry) -> String {
+        guard entry.hasConflict else { return "没有发现教室或老师的时间冲突" }
+        let details = entry.conflicts.map { conflict in
+            let courseName = model.course(id: conflict.conflictingCourseID)?.name ?? "其他课程"
+            var reasons: [String] = []
+            if conflict.resources.contains(.room) { reasons.append("教室") }
+            if conflict.resources.contains(.instructor) { reasons.append("老师") }
+            return "与“\(courseName)”重叠 \(conflict.overlappingSessionCount) 次（\(reasons.joined(separator: "、"))）"
+        }
+        return (["课程时间冲突"] + details).joined(separator: "\n")
     }
 
     private func courseTypeCell(
@@ -353,7 +404,7 @@ struct CourseSheetView: View {
             }
         }
 
-        let operationWidth = max(70, ceil(70 * interfaceFontScale))
+        let operationWidth = max(102, ceil(102 * interfaceFontScale))
         let measuredWidth = widths.values.reduce(0, +) + operationWidth
         let extraWidth = max(0, availableWidth - measuredWidth)
         let stretchWeight = CourseTableColumn.allCases.reduce(0) { $0 + $1.stretchWeight }
@@ -374,6 +425,8 @@ struct CourseSheetView: View {
         switch column {
         case .name:
             measuredTextWidth(entry.course.name, size: 13, weight: .semibold) + 17
+        case .term:
+            measuredTextWidth(entry.termName, size: 13) + 17
         case .ageGroup:
             measuredTextWidth(entry.ageGroupName, size: 13) + 17
         case .room:
@@ -388,6 +441,8 @@ struct CourseSheetView: View {
             measuredTextWidth(entry.pricingLabel, size: 11, monospaced: true) + 17
         case .courseType:
             measuredTextWidth(entry.courseTypeName, size: 11) + 44
+        case .conflict:
+            measuredTextWidth(entry.conflictLabel, size: 11, weight: .semibold) + 34
         case .status:
             measuredTextWidth(entry.statusLabel, size: 13) + 17
         }
@@ -408,7 +463,13 @@ struct CourseSheetView: View {
 
     private var entries: [CourseTableEntry] {
         let sessionsByCourse = Dictionary(grouping: model.sessions, by: \.courseID)
-        return model.courses.map { course in
+        let conflictsByCourse = CourseScheduleConflictDetector.conflicts(
+            courses: model.courses,
+            sessions: model.sessions
+        )
+        return model.courses
+            .filter { selectedTermID == nil || $0.termID == selectedTermID }
+            .map { course in
             let courseSessions = (sessionsByCourse[course.id] ?? []).sorted { $0.startsAt < $1.startsAt }
             let schedule = courseSessions.first.map(scheduleDetails)
             let typeName = model.courseType(id: course.courseTypeID)?.name ?? "—"
@@ -432,6 +493,7 @@ struct CourseSheetView: View {
                 courseTypeName: typeName,
                 courseTypeKey: "\(course.courseTypeID.description)|\(course.format.rawValue)",
                 courseTypeFilterLabel: "\(formatToken) · \(typeName)",
+                conflicts: conflictsByCourse[course.id] ?? [],
                 statusLabel: course.isActive ? "启用" : "停用",
                 statusKey: course.isActive ? "active" : "inactive"
             )
@@ -668,6 +730,7 @@ struct CourseSheetView: View {
 
 private enum CourseTableColumn: String, CaseIterable, Identifiable {
     case name
+    case term
     case ageGroup
     case room
     case instructor
@@ -675,6 +738,7 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
     case sessions
     case pricing
     case courseType
+    case conflict
     case status
 
     var id: String { rawValue }
@@ -682,6 +746,7 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .name: "课程名称"
+        case .term: "学期"
         case .ageGroup: "年龄段"
         case .room: "教室"
         case .instructor: "老师"
@@ -689,6 +754,7 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
         case .sessions: "课次"
         case .pricing: "课程费用"
         case .courseType: "课程种类"
+        case .conflict: "排课检查"
         case .status: "状态"
         }
     }
@@ -696,6 +762,7 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
     var minimumWidth: CGFloat {
         switch self {
         case .name: 140
+        case .term: 120
         case .ageGroup: 90
         case .room: 75
         case .instructor: 85
@@ -703,6 +770,7 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
         case .sessions: 68
         case .pricing: 120
         case .courseType: 100
+        case .conflict: 105
         case .status: 68
         }
     }
@@ -710,10 +778,11 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
     var stretchWeight: CGFloat {
         switch self {
         case .name: 1.4
+        case .term: 0.7
         case .schedule: 1
         case .pricing: 1.5
         case .courseType: 0.8
-        case .ageGroup, .room, .instructor, .sessions, .status: 0
+        case .ageGroup, .room, .instructor, .sessions, .conflict, .status: 0
         }
     }
 }
@@ -750,10 +819,21 @@ private struct CourseTableEntry: Identifiable {
     let courseTypeName: String
     let courseTypeKey: String
     let courseTypeFilterLabel: String
+    let conflicts: [CourseScheduleConflict]
     let statusLabel: String
     let statusKey: String
 
     var id: CourseID { course.id }
+
+    var hasConflict: Bool { !conflicts.isEmpty }
+
+    var conflictOccurrenceCount: Int {
+        conflicts.reduce(0) { $0 + $1.overlappingSessionCount }
+    }
+
+    var conflictLabel: String {
+        hasConflict ? "冲突 \(conflictOccurrenceCount) 次" : "正常"
+    }
 
     var searchValues: [String] {
         [
@@ -765,6 +845,7 @@ private struct CourseTableEntry: Identifiable {
             scheduleLabel,
             pricingLabel,
             courseTypeFilterLabel,
+            conflictLabel,
             statusLabel
         ]
     }
@@ -772,6 +853,7 @@ private struct CourseTableEntry: Identifiable {
     func filterKey(for column: CourseTableColumn) -> String {
         switch column {
         case .name: course.name
+        case .term: course.termID.description
         case .ageGroup: ageGroupKey
         case .room: roomKey
         case .instructor: instructorKey
@@ -779,6 +861,7 @@ private struct CourseTableEntry: Identifiable {
         case .sessions: String(sessionCount)
         case .pricing: pricingKey
         case .courseType: courseTypeKey
+        case .conflict: hasConflict ? "conflict" : "clear"
         case .status: statusKey
         }
     }
@@ -786,6 +869,7 @@ private struct CourseTableEntry: Identifiable {
     func filterLabel(for column: CourseTableColumn) -> String {
         switch column {
         case .name: course.name
+        case .term: termName
         case .ageGroup: ageGroupName
         case .room: roomName
         case .instructor: instructorName
@@ -793,6 +877,7 @@ private struct CourseTableEntry: Identifiable {
         case .sessions: "\(sessionCount) 节"
         case .pricing: pricingLabel
         case .courseType: courseTypeFilterLabel
+        case .conflict: hasConflict ? "有冲突" : "正常"
         case .status: statusLabel
         }
     }
@@ -800,6 +885,7 @@ private struct CourseTableEntry: Identifiable {
     func sortValue(for column: CourseTableColumn) -> String {
         switch column {
         case .name: course.name
+        case .term: termName
         case .ageGroup: ageGroupName
         case .room: roomName
         case .instructor: instructorName
@@ -807,6 +893,7 @@ private struct CourseTableEntry: Identifiable {
         case .sessions: String(sessionCount)
         case .pricing: pricingSortValue
         case .courseType: courseTypeFilterLabel
+        case .conflict: String(format: "%08d", conflictOccurrenceCount)
         case .status: statusLabel
         }
     }

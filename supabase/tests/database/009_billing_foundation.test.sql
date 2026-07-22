@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(18);
+select plan(20);
 
 select has_column('public', 'courses', 'unit_price_cents', 'courses have a per-session price');
 select has_column('public', 'courses', 'pricing_status', 'courses have a pricing status');
@@ -96,6 +96,22 @@ select ok(
       and policyname = 'billing_storage_admin_update'
   ),
   'issued billing PNGs cannot be overwritten'
+);
+
+select ok(
+  to_regclass('public.billing_invoices_one_root_per_family_term_idx') is not null,
+  'a family and term can start only one invoice series'
+);
+
+select ok(
+  exists (
+    select 1
+    from pg_catalog.pg_trigger
+    where tgrelid = 'public.billing_invoices'::regclass
+      and tgname = 'billing_invoice_series_insert_guard'
+      and not tgisinternal
+  ),
+  'invoice versions remain in the same family and term series'
 );
 
 select * from finish();
