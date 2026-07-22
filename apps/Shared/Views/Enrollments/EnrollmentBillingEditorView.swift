@@ -72,7 +72,17 @@ struct EnrollmentBillingEditorView: View {
         }
         .frame(width: 780, height: 780)
         .background(theme.background)
+        .onAppear {
+            if isPrivateLesson, draft.registrationMode != .perSession {
+                draft.registrationMode = .perSession
+                applyCoursePrice(for: .perSession)
+            }
+        }
         .onChange(of: draft.registrationMode) { _, mode in
+            if isPrivateLesson, mode != .perSession {
+                draft.registrationMode = .perSession
+                return
+            }
             applyCoursePrice(for: mode)
             if mode == .fullTerm {
                 draft.selectedSessionIDs.removeAll()
@@ -86,13 +96,19 @@ struct EnrollmentBillingEditorView: View {
 
     private func registrationSection(theme: MDTheme) -> some View {
         section("报名方式", theme: theme) {
-            Picker("报名方式", selection: $draft.registrationMode) {
-                Text("整期报名").tag(EnrollmentRegistrationMode.fullTerm)
-                Text("按次报名").tag(EnrollmentRegistrationMode.perSession)
+            if isPrivateLesson {
+                Label("私课仅支持按次报名", systemImage: "calendar.badge.clock")
+                    .mdFont(.compactStrong)
+                    .foregroundStyle(theme.accent)
+            } else {
+                Picker("报名方式", selection: $draft.registrationMode) {
+                    Text("整期报名").tag(EnrollmentRegistrationMode.fullTerm)
+                    Text("按次报名").tag(EnrollmentRegistrationMode.perSession)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 300)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 300)
 
             if draft.registrationMode == .perSession {
                 VStack(alignment: .leading, spacing: 8) {
@@ -309,12 +325,19 @@ struct EnrollmentBillingEditorView: View {
 
     private var selectedCoursePrice: Int? {
         guard let course = model.course(id: original.courseID) else { return nil }
-        return draft.registrationMode == .fullTerm
+        return !course.format.requiresPerSessionEnrollment && draft.registrationMode == .fullTerm
             ? course.unitPriceCents
             : course.dropInUnitPriceCents
     }
 
+    private var isPrivateLesson: Bool {
+        model.course(id: original.courseID)?.format.requiresPerSessionEnrollment == true
+    }
+
     private var isValid: Bool {
+        if isPrivateLesson, draft.registrationMode != .perSession {
+            return false
+        }
         if draft.registrationMode == .perSession, draft.selectedSessionIDs.isEmpty {
             return false
         }

@@ -127,12 +127,18 @@ public extension PreviewData {
                 courseIndices.append(rotatingCourseIndex)
             }
             for courseIndex in courseIndices {
+                let course = courses[courseIndex]
+                let selectedSessionIDs = course.format.requiresPerSessionEnrollment
+                    ? Set(sessions.filter { $0.courseID == course.id }.map(\.id))
+                    : []
                 enrollments.append(
                     Enrollment(
                         termID: term.id,
-                        courseID: courses[courseIndex].id,
+                        courseID: course.id,
                         studentID: student.id,
-                        enrolledAt: termStart
+                        enrolledAt: termStart,
+                        registrationMode: course.format.requiresPerSessionEnrollment ? .perSession : .fullTerm,
+                        selectedSessionIDs: selectedSessionIDs
                     )
                 )
             }

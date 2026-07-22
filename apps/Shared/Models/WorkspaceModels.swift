@@ -245,6 +245,7 @@ enum AppModelError: LocalizedError {
     case invalidCourseUnitPrice
     case missingEnrollmentFields
     case missingPerSessionSelection
+    case privateLessonRequiresPerSessionEnrollment
     case invalidEnrollmentBilling
     case missingBillingTerm
     case missingBillingItems
@@ -285,6 +286,7 @@ enum AppModelError: LocalizedError {
         case .invalidCourseUnitPrice: "请输入正确的每节单价，金额最多保留两位小数。"
         case .missingEnrollmentFields: "请选择学生和课程。"
         case .missingPerSessionSelection: "按次报名至少需要选择一个具体课次。"
+        case .privateLessonRequiresPerSessionEnrollment: "私课仅支持按次报名，请选择具体课次。"
         case .invalidEnrollmentBilling: "请检查报名计费起始日、单价、试课费和折扣。"
         case .missingBillingTerm: "请选择账单所属学期。"
         case .missingBillingItems: "账单至少需要一个收费项目。"

@@ -29,7 +29,7 @@ Course reference data is user-managed. `AgeGroup`, `Room`, `Instructor`, and `Co
 
 Contract consent records contract version, scope, signer identity, and timestamp.
 
-Billing uses immutable invoice, line-item, payment, and PNG artifact records. Courses store separate full-term and per-session rates as integer USD cents; each enrollment snapshots its selected rate and either covers the full term or references specific class sessions. An issued invoice is never edited: a correction supersedes it with a new version while preserving the complete history. Billing and enrollment writes use controlled administrator RPCs, and guardian access is limited to the linked family's private records.
+Billing uses immutable invoice, line-item, payment, and PNG artifact records. Group courses may store separate full-term and per-session rates as integer USD cents; private lessons store only a per-session rate and can reference only explicitly selected class sessions. Each enrollment snapshots its selected rate. An issued invoice is never edited: a correction supersedes it with a new version while preserving the complete history. Billing and enrollment writes use controlled administrator RPCs, and guardian access is limited to the linked family's private records.
 
 Guardian registration is invitation-first. A signed-out iPhone validates the high-entropy code to obtain the guardian display name and read-only email, without access to student or course data. It creates an Auth password for that email, then consumes the code only after the authenticated email matches. Pending codes survive email confirmation in the iOS Keychain; passwords are never stored by the app.
 

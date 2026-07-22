@@ -8,13 +8,13 @@
 - Mark courses as group or private while keeping the rest of course classification user-defined.
 - Assign default instructors and rooms per course, with per-session overrides.
 - Maintain students, guardians, and adult students.
-- Enroll students for a complete term through the administration experience.
+- Enroll students in group courses for a complete term or selected class dates.
+- Enroll private-lesson students only for explicitly selected class dates.
 - Record attendance after a session; trial attendance does not create enrollment.
 - Submit leave from iOS or on behalf of a user from administration.
 - Record versioned contract consent.
 - Record reminders and workflow notifications.
-- Set separate full-term and per-session course rates, then calculate from actual covered sessions.
-- Register a learner for the full term or explicitly selected class dates.
+- Set separate full-term and per-session rates for group courses and a per-session-only rate for private lessons.
 - Adjust one enrollment discount, trial fee, billing start date, and price snapshot.
 - Issue immutable, versioned family invoices and record partial or full payments.
 - Produce private invoice and receipt PNGs while keeping all billing controls on macOS.
@@ -30,10 +30,9 @@ An instructor is course data, not an authentication role in the MVP. The authori
 
 ## Deferred
 
-- Per-class enrollment or charging.
 - Tax calculation, refunds, and automated payment reminders.
 - Automated credit, carry-over, injury-transfer, or exceptional settlement rules.
-- Flexible class packages and per-class enrollment.
+- Flexible multi-class packages.
 - Exceptional pricing, attendance, leave, or settlement rule engines.
 - Parent or adult-student course selection.
 - Independent instructor accounts.

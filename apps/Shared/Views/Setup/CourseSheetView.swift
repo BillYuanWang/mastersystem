@@ -439,6 +439,22 @@ struct CourseSheetView: View {
     }
 
     private func pricingLabel(_ course: Course, sessionCount: Int) -> String {
+        if course.format.requiresPerSessionEnrollment {
+            return switch course.pricingStatus {
+            case .pending:
+                "私课 · 按次待定"
+            case .free:
+                "私课 · 按次免费"
+            case .reviewRequired:
+                course.dropInUnitPriceCents.map {
+                    "私课 · 按次 $\(MoneyTextParser.dollars(from: $0))/节 · 需复核"
+                } ?? "私课 · 按次待复核"
+            case .priced:
+                course.dropInUnitPriceCents.map {
+                    "私课 · 按次 $\(MoneyTextParser.dollars(from: $0))/节"
+                } ?? "私课 · 按次待定"
+            }
+        }
         let dropIn = course.dropInUnitPriceCents.map {
             "按次 $\(MoneyTextParser.dollars(from: $0))"
         } ?? "按次待定"
