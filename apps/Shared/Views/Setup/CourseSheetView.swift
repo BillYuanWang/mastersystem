@@ -255,6 +255,7 @@ struct CourseSheetView: View {
             dataCell(entry.instructorName, width: CourseTableColumn.instructor.width)
             dataCell(entry.scheduleLabel, width: CourseTableColumn.schedule.width)
             dataCell("\(entry.sessionCount)", width: CourseTableColumn.sessions.width, monospaced: true)
+            dataCell(entry.pricingLabel, width: CourseTableColumn.pricing.width, monospaced: true)
             courseTypeCell(entry, theme: theme)
             dataCell(entry.statusLabel, width: CourseTableColumn.status.width)
             HStack(spacing: 3) {
@@ -332,12 +333,33 @@ struct CourseSheetView: View {
                 scheduleKey: schedule?.key ?? "none",
                 scheduleSortKey: schedule?.sortKey,
                 sessionCount: courseSessions.count,
+                pricingLabel: pricingLabel(course, sessionCount: courseSessions.count),
+                pricingKey: course.pricingStatus.rawValue,
+                pricingSortValue: String(format: "%012d", course.unitPriceCents ?? -1),
                 courseTypeName: typeName,
                 courseTypeKey: "\(course.courseTypeID.description)|\(course.format.rawValue)",
                 courseTypeFilterLabel: "\(formatToken) · \(typeName)",
                 statusLabel: course.isActive ? "启用" : "停用",
                 statusKey: course.isActive ? "active" : "inactive"
             )
+        }
+    }
+
+    private func pricingLabel(_ course: Course, sessionCount: Int) -> String {
+        switch course.pricingStatus {
+        case .pending:
+            return "待定价"
+        case .free:
+            return "免费"
+        case .reviewRequired:
+            return course.unitPriceCents.map { "需复核 · $\(MoneyTextParser.dollars(from: $0))" } ?? "需复核"
+        case .priced:
+            guard let unit = course.unitPriceCents else { return "待定价" }
+            let total = BillingCalculator.courseTotalCents(
+                unitPriceCents: unit,
+                scheduledSessionCount: sessionCount
+            ) ?? 0
+            return "$\(MoneyTextParser.dollars(from: unit))/节 · $\(MoneyTextParser.dollars(from: total))"
         }
     }
 
@@ -537,6 +559,7 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
     case instructor
     case schedule
     case sessions
+    case pricing
     case courseType
     case status
 
@@ -550,6 +573,7 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
         case .instructor: "老师"
         case .schedule: "每周时间"
         case .sessions: "课次"
+        case .pricing: "课程费用"
         case .courseType: "课程种类"
         case .status: "状态"
         }
@@ -557,12 +581,13 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
 
     var width: CGFloat {
         switch self {
-        case .name: 230
+        case .name: 205
         case .ageGroup: 115
         case .room: 100
         case .instructor: 110
         case .schedule: 180
         case .sessions: 70
+        case .pricing: 175
         case .courseType: 120
         case .status: 70
         }
@@ -582,6 +607,9 @@ private struct CourseTableEntry: Identifiable {
     let scheduleKey: String
     let scheduleSortKey: Int?
     let sessionCount: Int
+    let pricingLabel: String
+    let pricingKey: String
+    let pricingSortValue: String
     let courseTypeName: String
     let courseTypeKey: String
     let courseTypeFilterLabel: String
@@ -598,6 +626,7 @@ private struct CourseTableEntry: Identifiable {
             roomName,
             instructorName,
             scheduleLabel,
+            pricingLabel,
             courseTypeFilterLabel,
             statusLabel
         ]
@@ -611,6 +640,7 @@ private struct CourseTableEntry: Identifiable {
         case .instructor: instructorKey
         case .schedule: scheduleKey
         case .sessions: String(sessionCount)
+        case .pricing: pricingKey
         case .courseType: courseTypeKey
         case .status: statusKey
         }
@@ -624,6 +654,7 @@ private struct CourseTableEntry: Identifiable {
         case .instructor: instructorName
         case .schedule: scheduleLabel
         case .sessions: "\(sessionCount) 节"
+        case .pricing: pricingLabel
         case .courseType: courseTypeFilterLabel
         case .status: statusLabel
         }
@@ -637,6 +668,7 @@ private struct CourseTableEntry: Identifiable {
         case .instructor: instructorName
         case .schedule: scheduleLabel
         case .sessions: String(sessionCount)
+        case .pricing: pricingSortValue
         case .courseType: courseTypeFilterLabel
         case .status: statusLabel
         }

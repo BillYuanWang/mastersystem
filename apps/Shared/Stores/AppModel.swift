@@ -16,6 +16,7 @@ final class AppModel {
     @ObservationIgnored private var pendingCloudOperations: [PendingCloudOperation] = []
     @ObservationIgnored private var newsMediaCache: [String: Data] = [:]
     @ObservationIgnored private var advertisementMediaCache: [String: Data] = [:]
+    @ObservationIgnored private var billingArtifactCache: [String: Data] = [:]
     @ObservationIgnored private var syncNoticeGeneration = UUID()
 
     var terms: [Term] = []
@@ -38,6 +39,10 @@ final class AppModel {
     var newsArticleImages: [NewsArticleImage] = []
     var advertisements: [Advertisement] = []
     var notifications: [NotificationRecord] = []
+    var billingInvoices: [BillingInvoice] = []
+    var billingInvoiceLineItems: [BillingInvoiceLineItem] = []
+    var billingPayments: [BillingPayment] = []
+    var billingArtifacts: [BillingArtifact] = []
     var backgroundSync = BackgroundSyncPresentation()
     var cloudActivity = CloudActivityPresentation()
     var availableGuardianLinkCodes: [GuardianLinkCode] = []
@@ -161,6 +166,24 @@ final class AppModel {
             advertisementMediaCache = advertisementMediaCache.filter {
                 validAdvertisementPaths.contains($0.key)
             }
+            billingInvoices = try await repository.listBillingInvoices(guardianID: nil).sorted {
+                $0.issuedAt > $1.issuedAt
+            }
+            billingInvoiceLineItems = try await repository.listBillingInvoiceLineItems(invoiceID: nil)
+                .sorted {
+                    if $0.invoiceID != $1.invoiceID {
+                        return $0.invoiceID.description < $1.invoiceID.description
+                    }
+                    return $0.sortOrder < $1.sortOrder
+                }
+            billingPayments = try await repository.listBillingPayments(invoiceID: nil).sorted {
+                $0.receivedAt < $1.receivedAt
+            }
+            billingArtifacts = try await repository.listBillingArtifacts(invoiceID: nil).sorted {
+                $0.generatedAt > $1.generatedAt
+            }
+            let validBillingPaths = Set(billingArtifacts.map(\.storagePath))
+            billingArtifactCache = billingArtifactCache.filter { validBillingPaths.contains($0.key) }
             if let deferred = repository as? any DeferredSyncMasterDanceRepository {
                 pendingSyncCount = await deferred.pendingMutationCount()
             } else {
@@ -421,6 +444,66 @@ final class AppModel {
         sessions.filter { $0.courseID == courseID }.sorted { $0.startsAt < $1.startsAt }
     }
 
+    func trialSessionIDs(for enrollment: Enrollment) -> Set<ClassSessionID> {
+        let courseSessionIDs = Set(sessions(forCourse: enrollment.courseID).map(\.id))
+        return Set(
+            attendance.lazy
+                .filter {
+                    $0.studentID == enrollment.studentID
+                        && $0.status == .trial
+                        && courseSessionIDs.contains($0.sessionID)
+                }
+                .map(\.sessionID)
+        )
+    }
+
+    func billingEstimate(for enrollment: Enrollment) -> EnrollmentChargeEstimate {
+        BillingCalculator.estimate(
+            enrollment: enrollment,
+            sessions: sessions(forCourse: enrollment.courseID),
+            trialSessionIDs: trialSessionIDs(for: enrollment),
+            calendar: .masterDance
+        )
+    }
+
+    func suggestedBillingStart(
+        courseID: CourseID,
+        studentID: StudentID
+    ) -> Date? {
+        let courseSessions = sessions(forCourse: courseID)
+            .filter { $0.status != .cancelled }
+        let trialIDs = Set(
+            attendance.lazy
+                .filter { $0.studentID == studentID && $0.status == .trial }
+                .map(\.sessionID)
+        )
+        let trialDates = courseSessions
+            .filter { trialIDs.contains($0.id) }
+            .map(\.startsAt)
+        guard let lastTrial = trialDates.max() else {
+            return courseSessions.first?.startsAt
+        }
+        return courseSessions.first { $0.startsAt > lastTrial }?.startsAt
+    }
+
+    func billingItems(for invoiceID: BillingInvoiceID) -> [BillingInvoiceLineItem] {
+        billingInvoiceLineItems
+            .filter { $0.invoiceID == invoiceID }
+            .sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    func payments(for invoiceID: BillingInvoiceID) -> [BillingPayment] {
+        billingPayments
+            .filter { $0.invoiceID == invoiceID }
+            .sorted { $0.receivedAt < $1.receivedAt }
+    }
+
+    func artifacts(for invoiceID: BillingInvoiceID) -> [BillingArtifact] {
+        billingArtifacts
+            .filter { $0.invoiceID == invoiceID }
+            .sorted { $0.generatedAt > $1.generatedAt }
+    }
+
     func remainingSessionCount(
         forStudent studentID: StudentID,
         asOf date: Date = Date()
@@ -663,6 +746,7 @@ final class AppModel {
             throw AppModelError.missingCourseFields
         }
         try validateCourseTermReady(termID: termID)
+        let pricing = try normalizedCoursePricing(from: draft)
         try await withCloudActivity(label: "创建课程") {
             let categoryID = try await hiddenCourseCategoryID()
 
@@ -675,6 +759,8 @@ final class AppModel {
                 defaultInstructorID: instructorID,
                 courseTypeID: courseTypeID,
                 format: selectedCourseType.isPrivate ? .privateLesson : .group,
+                pricingStatus: pricing.status,
+                unitPriceCents: pricing.unitPriceCents,
                 notes: draft.notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                 isActive: draft.isActive
             )
@@ -702,6 +788,7 @@ final class AppModel {
             throw AppModelError.missingCourseFields
         }
         try validateCourseTermReady(termID: termID, existingCourseID: original.id)
+        let pricing = try normalizedCoursePricing(from: draft)
 
         if original.termID != termID, enrollments.contains(where: { $0.courseID == original.id }) {
             throw AppModelError.courseTermHasEnrollments
@@ -715,12 +802,21 @@ final class AppModel {
         updated.defaultInstructorID = instructorID
         updated.courseTypeID = courseTypeID
         updated.format = selectedCourseType.isPrivate ? .privateLesson : .group
+        updated.pricingStatus = pricing.status
+        updated.unitPriceCents = pricing.unitPriceCents
         updated.notes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         updated.isActive = draft.isActive
 
         let existingSessions = sessions(forCourse: original.id)
         let replacementSessions = try generatedSessions(for: original.id, termID: termID, draft: draft)
         let scheduleChanged = !sameSchedule(existingSessions, replacementSessions)
+        let pricingWasExplicitlyChanged = original.pricingStatus != pricing.status
+            || original.unitPriceCents != pricing.unitPriceCents
+        if scheduleChanged,
+           !pricingWasExplicitlyChanged,
+           updated.pricingStatus == .priced || updated.pricingStatus == .free {
+            updated.pricingStatus = .reviewRequired
+        }
         if scheduleChanged {
             let existingSessionIDs = Set(existingSessions.map(\.id))
             let hasAttendance = attendance.contains { existingSessionIDs.contains($0.sessionID) }
@@ -770,6 +866,29 @@ final class AppModel {
         try await repository.save(courseCategory: fallback)
         courseCategories.append(fallback)
         return fallback.id
+    }
+
+    private func normalizedCoursePricing(
+        from draft: CourseCreationDraft
+    ) throws -> (status: CoursePricingStatus, unitPriceCents: Int?) {
+        let priceText = draft.unitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch draft.pricingStatus {
+        case .pending:
+            return (.pending, nil)
+        case .free:
+            return (.free, 0)
+        case .priced:
+            guard let cents = MoneyTextParser.cents(from: priceText), cents > 0 else {
+                throw AppModelError.invalidCourseUnitPrice
+            }
+            return (.priced, cents)
+        case .reviewRequired:
+            guard !priceText.isEmpty else { return (.reviewRequired, nil) }
+            guard let cents = MoneyTextParser.cents(from: priceText), cents >= 0 else {
+                throw AppModelError.invalidCourseUnitPrice
+            }
+            return (.reviewRequired, cents)
+        }
     }
 
     private func validateCourseTermReady(
@@ -1182,10 +1301,25 @@ final class AppModel {
         guard let course = course(id: courseID) else {
             throw AppModelError.missingEnrollmentFields
         }
+        let suggestedStart = suggestedBillingStart(courseID: courseID, studentID: studentID)
+        let initialPricingStatus: EnrollmentPricingStatus
+        switch course.pricingStatus {
+        case .priced, .free:
+            initialPricingStatus = suggestedStart == nil ? .pending : .ready
+        case .reviewRequired:
+            initialPricingStatus = .reviewRequired
+        case .pending:
+            initialPricingStatus = .pending
+        }
         try await withCloudActivity(label: "添加报名") {
             if let existing = enrollments.first(where: { $0.studentID == studentID && $0.courseID == courseID }) {
                 var restored = existing
                 restored.status = .active
+                if restored.unitPriceCents == nil {
+                    restored.unitPriceCents = course.unitPriceCents
+                    restored.billingStartsOn = restored.billingStartsOn ?? suggestedStart
+                    restored.pricingStatus = initialPricingStatus
+                }
                 try await repository.save(enrollment: restored)
             } else {
                 try await repository.save(
@@ -1193,7 +1327,10 @@ final class AppModel {
                         termID: course.termID,
                         courseID: courseID,
                         studentID: studentID,
-                        enrolledAt: Date()
+                        enrolledAt: Date(),
+                        pricingStatus: initialPricingStatus,
+                        billingStartsOn: suggestedStart,
+                        unitPriceCents: course.unitPriceCents
                     )
                 )
             }
@@ -1206,6 +1343,77 @@ final class AppModel {
             try await repository.deleteEnrollment(id: id)
             await reload()
         }
+    }
+
+    func saveEnrollmentBilling(_ enrollment: Enrollment) async throws {
+        guard enrollment.trialFeeCents >= 0,
+              enrollment.unitPriceCents.map({ $0 >= 0 }) ?? true else {
+            throw AppModelError.invalidEnrollmentBilling
+        }
+        switch (enrollment.discountKind, enrollment.discountValue, enrollment.discountName) {
+        case (nil, nil, nil): break
+        case let (.percentage?, value?, name?)
+            where (1...10_000).contains(value)
+                && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+            break
+        case let (.fixedAmount?, value?, name?)
+            where value > 0
+                && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+            break
+        default:
+            throw AppModelError.invalidEnrollmentBilling
+        }
+        if enrollment.pricingStatus == .ready,
+           (enrollment.billingStartsOn == nil || enrollment.unitPriceCents == nil) {
+            throw AppModelError.invalidEnrollmentBilling
+        }
+        try await withCloudActivity(label: "保存报名计费") {
+            try await repository.save(enrollment: enrollment)
+            await reload()
+        }
+    }
+
+    func issueBillingInvoice(
+        _ invoice: BillingInvoice,
+        lineItems: [BillingInvoiceLineItem],
+        artifact: BillingArtifact,
+        pngData: Data
+    ) async throws -> BillingInvoice {
+        guard invoice.termID != nil else { throw AppModelError.missingBillingTerm }
+        guard !lineItems.isEmpty else { throw AppModelError.missingBillingItems }
+        return try await withImmediateCloudActivity(label: "签发账单") {
+            let saved = try await repository.issueBillingInvoice(
+                invoice: invoice,
+                lineItems: lineItems,
+                artifact: artifact,
+                pngData: pngData
+            )
+            await reload()
+            return saved
+        }
+    }
+
+    func recordBillingPayment(
+        _ payment: BillingPayment,
+        artifact: BillingArtifact,
+        pngData: Data
+    ) async throws -> BillingPayment {
+        try await withImmediateCloudActivity(label: "记录付款") {
+            let saved = try await repository.recordBillingPayment(
+                payment: payment,
+                artifact: artifact,
+                pngData: pngData
+            )
+            await reload()
+            return saved
+        }
+    }
+
+    func billingArtifactData(storagePath: String) async throws -> Data {
+        if let cached = billingArtifactCache[storagePath] { return cached }
+        let data = try await repository.billingArtifactData(storagePath: storagePath)
+        billingArtifactCache[storagePath] = data
+        return data
     }
 
     func recordAttendance(

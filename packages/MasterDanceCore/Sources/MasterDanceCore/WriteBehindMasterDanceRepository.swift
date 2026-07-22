@@ -544,6 +544,66 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
         try await enqueue(.saveNotification(notification))
     }
 
+    public func listBillingInvoices(guardianID: GuardianID?) async throws -> [BillingInvoice] {
+        try await ensureSnapshot()
+        return await local.listBillingInvoices(guardianID: guardianID)
+    }
+
+    public func listBillingInvoiceLineItems(
+        invoiceID: BillingInvoiceID?
+    ) async throws -> [BillingInvoiceLineItem] {
+        try await ensureSnapshot()
+        return await local.listBillingInvoiceLineItems(invoiceID: invoiceID)
+    }
+
+    public func listBillingPayments(invoiceID: BillingInvoiceID?) async throws -> [BillingPayment] {
+        try await ensureSnapshot()
+        return await local.listBillingPayments(invoiceID: invoiceID)
+    }
+
+    public func listBillingArtifacts(invoiceID: BillingInvoiceID?) async throws -> [BillingArtifact] {
+        try await ensureSnapshot()
+        return await local.listBillingArtifacts(invoiceID: invoiceID)
+    }
+
+    public func issueBillingInvoice(
+        invoice: BillingInvoice,
+        lineItems: [BillingInvoiceLineItem],
+        artifact: BillingArtifact,
+        pngData: Data
+    ) async throws -> BillingInvoice {
+        try await ensureSnapshot()
+        _ = try await synchronizeIfNeeded()
+        let saved = try await remote.issueBillingInvoice(
+            invoice: invoice,
+            lineItems: lineItems,
+            artifact: artifact,
+            pngData: pngData
+        )
+        try await replaceWithRemoteSnapshot()
+        return saved
+    }
+
+    public func recordBillingPayment(
+        payment: BillingPayment,
+        artifact: BillingArtifact,
+        pngData: Data
+    ) async throws -> BillingPayment {
+        try await ensureSnapshot()
+        _ = try await synchronizeIfNeeded()
+        let saved = try await remote.recordBillingPayment(
+            payment: payment,
+            artifact: artifact,
+            pngData: pngData
+        )
+        try await replaceWithRemoteSnapshot()
+        return saved
+    }
+
+    public func billingArtifactData(storagePath: String) async throws -> Data {
+        try await remote.billingArtifactData(storagePath: storagePath)
+    }
+
     private func ensureSnapshot() async throws {
         await loadCacheIfNeeded()
         guard !hasSnapshot else { return }
@@ -608,6 +668,10 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
         let newsArticleImages = try await remote.listNewsArticleImages(articleID: nil)
         let advertisements = try await remote.listAdvertisements()
         let notifications = try await remote.listNotifications(recipientReference: nil)
+        let billingInvoices = try await remote.listBillingInvoices(guardianID: nil)
+        let billingInvoiceLineItems = try await remote.listBillingInvoiceLineItems(invoiceID: nil)
+        let billingPayments = try await remote.listBillingPayments(invoiceID: nil)
+        let billingArtifacts = try await remote.listBillingArtifacts(invoiceID: nil)
 
         return PreviewData(
             terms: terms,
@@ -629,8 +693,21 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
             newsArticles: newsArticles,
             newsArticleImages: newsArticleImages,
             advertisements: advertisements,
-            notifications: notifications
+            notifications: notifications,
+            billingInvoices: billingInvoices,
+            billingInvoiceLineItems: billingInvoiceLineItems,
+            billingPayments: billingPayments,
+            billingArtifacts: billingArtifacts
         )
+    }
+
+    private func replaceWithRemoteSnapshot() async throws {
+        let snapshot = try await fetchRemoteSnapshot()
+        await local.replace(with: snapshot)
+        hasSnapshot = true
+        lastRemoteRefreshAt = Date()
+        lastRemoteChangeSequence = try await currentRemoteChangeSequence()
+        try await persist()
     }
 
     private func enqueue(_ mutation: PendingMutation) async throws {
@@ -669,7 +746,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 }
 
 private struct CacheEnvelope: Codable {
-    static let currentVersion = 3
+    static let currentVersion = 4
 
     let version: Int
     let snapshot: PreviewData

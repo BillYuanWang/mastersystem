@@ -22,7 +22,7 @@ enum AdminSection: String, CaseIterable, Identifiable {
         case .courses: "课程"
         case .families: "家庭/学员"
         case .enrollments: "报名"
-        case .receipts: "收据"
+        case .receipts: "账单/收据"
         case .attendance: "签到"
         case .requests: "请假"
         case .news: "新闻"
@@ -102,6 +102,8 @@ struct CourseCreationDraft {
     var startTime = SessionClockTime(hour: 16, minute: 0)
     var endTime = SessionClockTime(hour: 17, minute: 0)
     var excludedDates: Set<Date> = []
+    var pricingStatus = CoursePricingStatus.pending
+    var unitPriceText = ""
     var notes = ""
     var isActive = true
 }
@@ -239,7 +241,11 @@ extension AppModel {
 enum AppModelError: LocalizedError {
     case missingCourseFields
     case courseTermRequiresHoliday
+    case invalidCourseUnitPrice
     case missingEnrollmentFields
+    case invalidEnrollmentBilling
+    case missingBillingTerm
+    case missingBillingItems
     case holidayOutsideTerm
     case invalidTermRange
     case missingGuardianName
@@ -274,7 +280,11 @@ enum AppModelError: LocalizedError {
         switch self {
         case .missingCourseFields: "请完成课程名称、学期、课程种类、年龄段、教室和老师。"
         case .courseTermRequiresHoliday: "请先为这个学期创建至少一个假期，再创建课程。"
+        case .invalidCourseUnitPrice: "请输入正确的每节单价，金额最多保留两位小数。"
         case .missingEnrollmentFields: "请选择学生和课程。"
+        case .invalidEnrollmentBilling: "请检查报名计费起始日、单价、试课费和折扣。"
+        case .missingBillingTerm: "请选择账单所属学期。"
+        case .missingBillingItems: "账单至少需要一个收费项目。"
         case .invalidTermRange: "结束日期必须晚于开始日期。"
         case .holidayOutsideTerm: "假期日期必须位于所选学期内。"
         case .missingGuardianName: "请输入监护人姓名。"

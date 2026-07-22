@@ -25,9 +25,11 @@ flowchart TD
 
 `Enrollment` is the explicit relationship between a student, course, and term. `Attendance` is independent and may omit an enrollment ID for a trial or temporary visit.
 
-Course reference data is user-managed. `CourseCategory`, `AgeGroup`, `Room`, and `Instructor` are entities with stable IDs. `Course.name` is free-form data, while `CourseFormat` is the bounded group/private business attribute. A course points to its default instructor and room; a `ClassSession` may override either for one scheduled meeting. Instructor data does not imply an instructor login role.
+Course reference data is user-managed. `AgeGroup`, `Room`, `Instructor`, and `CourseType` are entities with stable IDs; `CourseCategory` remains a hidden migration-compatibility relation. `Course.name` is free-form data, while `CourseFormat` is the bounded group/private business attribute. A course points to its default instructor and room; a `ClassSession` may override either for one scheduled meeting. Instructor data does not imply an instructor login role.
 
-Contract consent records contract version, scope, signer identity, and timestamp. Financial terms remain outside this model.
+Contract consent records contract version, scope, signer identity, and timestamp.
+
+Billing uses immutable invoice, line-item, payment, and PNG artifact records. Course prices and enrollment overrides are stored as integer USD cents. An issued invoice is never edited: a correction supersedes it with a new version while preserving the complete history. Billing writes use controlled administrator RPCs, and guardian access is limited to the linked family's private records.
 
 Guardian registration is invitation-first. A signed-out iPhone validates the high-entropy code to obtain the guardian display name and read-only email, without access to student or course data. It creates an Auth password for that email, then consumes the code only after the authenticated email matches. Pending codes survive email confirmation in the iOS Keychain; passwords are never stored by the app.
 

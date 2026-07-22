@@ -867,6 +867,226 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         ).execute()
     }
 
+    func listBillingInvoices(guardianID: GuardianID?) async throws -> [BillingInvoice] {
+        let rows: [BillingInvoiceRow]
+        if let guardianID {
+            rows = try await client
+                .from("billing_invoices")
+                .select()
+                .eq("guardian_id", value: guardianID.rawValue)
+                .order("issued_at", ascending: false)
+                .execute()
+                .value
+        } else {
+            rows = try await client
+                .from("billing_invoices")
+                .select()
+                .order("issued_at", ascending: false)
+                .execute()
+                .value
+        }
+        return try rows.map { try $0.domain() }
+    }
+
+    func listBillingInvoiceLineItems(
+        invoiceID: BillingInvoiceID?
+    ) async throws -> [BillingInvoiceLineItem] {
+        let rows: [BillingInvoiceLineItemRow]
+        if let invoiceID {
+            rows = try await client
+                .from("billing_invoice_items")
+                .select()
+                .eq("invoice_id", value: invoiceID.rawValue)
+                .order("sort_order")
+                .execute()
+                .value
+        } else {
+            rows = try await client
+                .from("billing_invoice_items")
+                .select()
+                .order("sort_order")
+                .execute()
+                .value
+        }
+        return try rows.map { try $0.domain() }
+    }
+
+    func listBillingPayments(invoiceID: BillingInvoiceID?) async throws -> [BillingPayment] {
+        let rows: [BillingPaymentRow]
+        if let invoiceID {
+            rows = try await client
+                .from("billing_payments")
+                .select()
+                .eq("invoice_id", value: invoiceID.rawValue)
+                .order("received_at")
+                .execute()
+                .value
+        } else {
+            rows = try await client
+                .from("billing_payments")
+                .select()
+                .order("received_at")
+                .execute()
+                .value
+        }
+        return try rows.map { try $0.domain() }
+    }
+
+    func listBillingArtifacts(invoiceID: BillingInvoiceID?) async throws -> [BillingArtifact] {
+        let rows: [BillingArtifactRow]
+        if let invoiceID {
+            rows = try await client
+                .from("billing_artifacts")
+                .select()
+                .eq("invoice_id", value: invoiceID.rawValue)
+                .order("generated_at", ascending: false)
+                .execute()
+                .value
+        } else {
+            rows = try await client
+                .from("billing_artifacts")
+                .select()
+                .order("generated_at", ascending: false)
+                .execute()
+                .value
+        }
+        return try rows.map { try $0.domain() }
+    }
+
+    func issueBillingInvoice(
+        invoice: BillingInvoice,
+        lineItems: [BillingInvoiceLineItem],
+        artifact: BillingArtifact,
+        pngData: Data
+    ) async throws -> BillingInvoice {
+        guard let termID = invoice.termID else {
+            throw SupabaseRepositoryError.server("请选择账单所属学期。")
+        }
+        guard !lineItems.isEmpty,
+              lineItems.allSatisfy({ $0.invoiceID == invoice.id }),
+              artifact.invoiceID == invoice.id,
+              artifact.kind == .invoice else {
+            throw SupabaseRepositoryError.server("账单资料不完整。")
+        }
+        let storagePath = artifact.storagePath.isEmpty
+            ? billingStoragePath(
+                guardianID: invoice.guardianID,
+                invoiceID: invoice.id,
+                filename: "invoice-v\(invoice.version).png"
+            )
+            : artifact.storagePath
+
+        try await client.storage
+            .from("billing-documents")
+            .upload(
+                storagePath,
+                data: pngData,
+                options: FileOptions(contentType: "image/png", upsert: false)
+            )
+        do {
+            let stored: BillingInvoiceRow = try await client
+                .rpc(
+                    "admin_issue_billing_invoice",
+                    params: IssueBillingInvoiceParameters(
+                        invoiceID: invoice.id.rawValue,
+                        guardianID: invoice.guardianID.rawValue,
+                        termID: termID.rawValue,
+                        invoiceNumber: invoice.invoiceNumber,
+                        version: invoice.version,
+                        schoolYearLabel: invoice.schoolYearLabel,
+                        issuedAt: SupabaseDateCodec.timestampString(from: invoice.issuedAt),
+                        notes: invoice.notes ?? "",
+                        supersedesInvoiceID: invoice.supersedesInvoiceID?.rawValue,
+                        artifactID: artifact.id.rawValue,
+                        storagePath: storagePath,
+                        items: lineItems.map(BillingInvoiceItemPayload.init)
+                    )
+                )
+                .execute()
+                .value
+            return try stored.domain()
+        } catch let originalError {
+            if let recovered: BillingInvoiceRow = try? await client
+                .from("billing_invoices")
+                .select()
+                .eq("id", value: invoice.id.rawValue)
+                .single()
+                .execute()
+                .value {
+                return try recovered.domain()
+            }
+            _ = try? await client.storage.from("billing-documents").remove(paths: [storagePath])
+            throw originalError
+        }
+    }
+
+    func recordBillingPayment(
+        payment: BillingPayment,
+        artifact: BillingArtifact,
+        pngData: Data
+    ) async throws -> BillingPayment {
+        guard artifact.invoiceID == payment.invoiceID,
+              artifact.paymentID == payment.id,
+              artifact.kind == .receipt else {
+            throw SupabaseRepositoryError.server("付款收据资料不完整。")
+        }
+        guard let invoice = try await listBillingInvoices(guardianID: nil)
+            .first(where: { $0.id == payment.invoiceID }) else {
+            throw SupabaseRepositoryError.server("找不到这份账单。")
+        }
+        let storagePath = artifact.storagePath.isEmpty
+            ? billingStoragePath(
+                guardianID: invoice.guardianID,
+                invoiceID: invoice.id,
+                filename: "receipt-\(payment.id.rawValue.uuidString.lowercased()).png"
+            )
+            : artifact.storagePath
+
+        try await client.storage
+            .from("billing-documents")
+            .upload(
+                storagePath,
+                data: pngData,
+                options: FileOptions(contentType: "image/png", upsert: false)
+            )
+        do {
+            let stored: BillingPaymentRow = try await client
+                .rpc(
+                    "admin_record_billing_payment",
+                    params: RecordBillingPaymentParameters(
+                        paymentID: payment.id.rawValue,
+                        invoiceID: payment.invoiceID.rawValue,
+                        amountCents: payment.amountCents,
+                        processingFeeCents: payment.processingFeeCents,
+                        method: payment.method.rawValue,
+                        receivedAt: SupabaseDateCodec.timestampString(from: payment.receivedAt),
+                        note: payment.note ?? "",
+                        artifactID: artifact.id.rawValue,
+                        storagePath: storagePath
+                    )
+                )
+                .execute()
+                .value
+            return try stored.domain()
+        } catch let originalError {
+            if let recovered: BillingPaymentRow = try? await client
+                .from("billing_payments")
+                .select()
+                .eq("id", value: payment.id.rawValue)
+                .single()
+                .execute()
+                .value {
+                return try recovered.domain()
+            }
+            _ = try? await client.storage.from("billing-documents").remove(paths: [storagePath])
+            throw originalError
+        }
+    }
+
+    func billingArtifactData(storagePath: String) async throws -> Data {
+        try await client.storage.from("billing-documents").download(path: storagePath)
+    }
+
     private func deleteRecord(kind: String, id: UUID) async throws {
         try await client
             .rpc(
@@ -877,6 +1097,19 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
                 )
             )
             .execute()
+    }
+
+    private func billingStoragePath(
+        guardianID: GuardianID,
+        invoiceID: BillingInvoiceID,
+        filename: String
+    ) -> String {
+        [
+            organizationID.uuidString.lowercased(),
+            guardianID.rawValue.uuidString.lowercased(),
+            invoiceID.rawValue.uuidString.lowercased(),
+            filename
+        ].joined(separator: "/")
     }
 
     private func currentUserID() async throws -> UUID {

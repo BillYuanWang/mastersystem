@@ -1,6 +1,6 @@
 # Master Dance
 
-Current local test release: `v0.1.19` (app version 0.1.19; macOS build 61, iOS build 37).
+Current local test release: `v0.1.20` (app version 0.1.20; macOS build 63, iOS build 40).
 
 Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
 
@@ -86,11 +86,15 @@ contract-consent records, advertising campaigns, and notification records.
 Administrators can schedule up to five concurrent advertising slots at $99 per
 month with a square thumbnail and a flexible-ratio advertisement poster; guardians see only
 published campaigns active on the current date.
-MD Desk also creates local PNG receipts under
-`~/Documents/MD Desk Docs/<learner>/`; receipt drafts and files are not uploaded
-to Supabase.
+MD Desk calculates tuition from the per-session rate and actual scheduled
+sessions, supports one enrollment discount, trial fees, annual registration
+fees, family credits or balances, and versioned family invoices. Issued invoice
+and receipt PNGs are stored privately in Supabase and also saved under
+`~/Documents/MD Desk Docs/<family>/` for copying into messaging apps. The iPhone
+app has no pricing controls in this release.
 Guardian leave must be recorded at least 12 hours before class; administrators
 can record it at any time, and leave records do not use an approval workflow.
-Course categories, age groups, rooms, instructors, and course names are
-user-managed data. Pricing, per-class enrollment, credits, exceptional rule
-engines, parent course selection, and teacher login are intentionally absent.
+Age groups, rooms, instructors, course types, and course names are user-managed
+data. The legacy course-category field remains hidden for database compatibility.
+Per-class enrollment, tax, refunds, exceptional rule engines, parent course
+selection, and teacher login are intentionally absent.

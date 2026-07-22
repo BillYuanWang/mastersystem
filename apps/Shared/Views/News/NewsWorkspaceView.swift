@@ -167,9 +167,13 @@ struct NewsWorkspaceView: View {
         if let article = selectedArticle {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    NewsMediaView(model: model, image: model.newsCover(for: article.id))
+                    NewsMediaView(
+                        model: model,
+                        image: model.newsCover(for: article.id),
+                        contentMode: .fit
+                    )
                         .frame(maxWidth: .infinity)
-                        .aspectRatio(16 / 10, contentMode: .fit)
+                        .aspectRatio(1, contentMode: .fit)
                         .background(theme.subtleSurface)
                         .clipShape(RoundedRectangle(cornerRadius: MDMetrics.radius))
 
@@ -483,6 +487,9 @@ private struct NewsArticleEditorView: View {
                     Text("发布必填")
                         .mdFont(.compact)
                         .foregroundStyle(theme.danger)
+                    Text("建议 1:1")
+                        .mdFont(.compact)
+                        .foregroundStyle(theme.secondaryText)
                     Spacer()
                     Button {
                         chooseCover()
@@ -493,6 +500,10 @@ private struct NewsArticleEditorView: View {
                 }
 
                 coverPreview(theme: theme)
+
+                Text("封面用于新闻列表缩略图；建议使用 1:1 图片，系统会完整显示，不会裁切。")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
 
                 Divider()
 
@@ -530,9 +541,9 @@ private struct NewsArticleEditorView: View {
     private func coverPreview(theme: MDTheme) -> some View {
         if let coverDraft {
             ZStack(alignment: .topTrailing) {
-                draftImage(coverDraft)
+                draftImage(coverDraft, contentMode: .fit)
                     .frame(maxWidth: .infinity)
-                    .aspectRatio(16 / 10, contentMode: .fit)
+                    .aspectRatio(1, contentMode: .fit)
                     .background(theme.subtleSurface)
                     .clipShape(RoundedRectangle(cornerRadius: MDMetrics.radius))
 
@@ -554,7 +565,7 @@ private struct NewsArticleEditorView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "photo.badge.plus")
                         .font(.system(size: 28, weight: .light))
-                    Text("选择一张横向封面图")
+                    Text("选择封面图")
                         .mdFont(.compactStrong)
                 }
                 .foregroundStyle(theme.secondaryText)
@@ -618,11 +629,14 @@ private struct NewsArticleEditorView: View {
     }
 
     @ViewBuilder
-    private func draftImage(_ draft: NewsImageEditorDraft) -> some View {
+    private func draftImage(
+        _ draft: NewsImageEditorDraft,
+        contentMode: ContentMode = .fill
+    ) -> some View {
         if let data = draft.fileData {
-            NewsDataImage(data: data)
+            NewsDataImage(data: data, contentMode: contentMode)
         } else {
-            NewsMediaView(model: model, image: draft.image)
+            NewsMediaView(model: model, image: draft.image, contentMode: contentMode)
         }
     }
 

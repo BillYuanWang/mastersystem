@@ -27,14 +27,14 @@ The app stores one of three explicit preferences: system, light, or dark.
 
 ## Schedule behavior
 
-- The normal view covers Monday through Friday from 9:30 AM to 8:30 PM.
-- Each day splits into the two active room lanes. Large-only, small-only, and both-room modes are available.
+- The normal view covers all seven days from 9:30 AM to 8:30 PM.
+- Users choose up to two user-managed room lanes at a time.
 - Session placement and height are proportional to start time and duration.
 - The zoom slider changes the timeline scale. The default scale fits the working window without vertical scrolling.
-- Course blocks always show course name, category, instructor, time, and a circled `组` or `私` marker.
-- Age group, roster, session count, room, attendance, and other details remain in hover help or the inspector.
-- Category filtering and search are compact controls; no large filter pool occupies the timetable.
+- Course blocks always show course name, age group, instructor, time, and a circled `组` or `私` marker.
+- Roster, session count, room, attendance, and other details remain in hover help or the inspector.
+- Course-type and age-group filtering use compact controls; no large filter pool occupies the timetable.
 
 ## Scope guardrails
 
-The interface contains no price, balance, credit, invoice, per-session enrollment, parent course selection, teacher login, or AI implementation.
+Pricing, invoice, payment, credit, and receipt controls belong to macOS administration. iOS does not expose course prices or billing controls in this release. Per-class enrollment, parent course selection, teacher login, and AI implementation remain out of scope.

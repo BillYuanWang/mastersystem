@@ -267,6 +267,8 @@ struct CourseRow: Codable, Sendable {
     let defaultInstructorID: UUID
     let courseTypeID: UUID
     let format: String
+    let pricingStatus: String
+    let unitPriceCents: Int?
     let notes: String?
     let isActive: Bool
 
@@ -281,6 +283,8 @@ struct CourseRow: Codable, Sendable {
         case defaultInstructorID = "default_instructor_id"
         case courseTypeID = "course_type_id"
         case format
+        case pricingStatus = "pricing_status"
+        case unitPriceCents = "unit_price_cents"
         case notes
         case isActive = "is_active"
     }
@@ -296,6 +300,8 @@ struct CourseRow: Codable, Sendable {
         defaultInstructorID = course.defaultInstructorID.rawValue
         courseTypeID = course.courseTypeID.rawValue
         format = course.format == .privateLesson ? "private_lesson" : "group"
+        pricingStatus = course.pricingStatus.rawValue
+        unitPriceCents = course.unitPriceCents
         notes = course.notes
         isActive = course.isActive
     }
@@ -306,6 +312,9 @@ struct CourseRow: Codable, Sendable {
         case "group": domainFormat = .group
         case "private_lesson": domainFormat = .privateLesson
         default: throw SupabaseRepositoryError.invalidValue(field: "课程形式", value: format)
+        }
+        guard let domainPricingStatus = CoursePricingStatus(rawValue: pricingStatus) else {
+            throw SupabaseRepositoryError.invalidValue(field: "课程定价状态", value: pricingStatus)
         }
 
         return Course(
@@ -318,6 +327,8 @@ struct CourseRow: Codable, Sendable {
             defaultInstructorID: InstructorID(serverID: defaultInstructorID),
             courseTypeID: CourseTypeID(serverID: courseTypeID),
             format: domainFormat,
+            pricingStatus: domainPricingStatus,
+            unitPriceCents: unitPriceCents,
             notes: notes,
             isActive: isActive
         )
@@ -563,6 +574,14 @@ struct EnrollmentRow: Codable, Sendable {
     let studentID: UUID
     let enrolledAt: String
     let status: String
+    let pricingStatus: String
+    let billingStartsOn: String?
+    let unitPriceCents: Int?
+    let trialFeeCents: Int
+    let discountName: String?
+    let discountKind: String?
+    let discountValue: Int?
+    let billingNotes: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -572,6 +591,14 @@ struct EnrollmentRow: Codable, Sendable {
         case studentID = "student_id"
         case enrolledAt = "enrolled_at"
         case status
+        case pricingStatus = "pricing_status"
+        case billingStartsOn = "billing_starts_on"
+        case unitPriceCents = "unit_price_cents"
+        case trialFeeCents = "trial_fee_cents"
+        case discountName = "discount_name"
+        case discountKind = "discount_kind"
+        case discountValue = "discount_value"
+        case billingNotes = "billing_notes"
     }
 
     init(_ enrollment: Enrollment, organizationID: UUID) {
@@ -582,11 +609,31 @@ struct EnrollmentRow: Codable, Sendable {
         studentID = enrollment.studentID.rawValue
         enrolledAt = SupabaseDateCodec.timestampString(from: enrollment.enrolledAt)
         status = enrollment.status.rawValue
+        pricingStatus = enrollment.pricingStatus.rawValue
+        billingStartsOn = enrollment.billingStartsOn.map(SupabaseDateCodec.dayString(from:))
+        unitPriceCents = enrollment.unitPriceCents
+        trialFeeCents = enrollment.trialFeeCents
+        discountName = enrollment.discountName
+        discountKind = enrollment.discountKind?.rawValue
+        discountValue = enrollment.discountValue
+        billingNotes = enrollment.billingNotes
     }
 
     func domain() throws -> Enrollment {
         guard let status = EnrollmentStatus(rawValue: status) else {
             throw SupabaseRepositoryError.invalidValue(field: "报名状态", value: status)
+        }
+        guard let domainPricingStatus = EnrollmentPricingStatus(rawValue: pricingStatus) else {
+            throw SupabaseRepositoryError.invalidValue(field: "报名定价状态", value: pricingStatus)
+        }
+        let domainDiscountKind: BillingDiscountKind?
+        if let discountKind {
+            guard let value = BillingDiscountKind(rawValue: discountKind) else {
+                throw SupabaseRepositoryError.invalidValue(field: "折扣种类", value: discountKind)
+            }
+            domainDiscountKind = value
+        } else {
+            domainDiscountKind = nil
         }
         return try Enrollment(
             id: EnrollmentID(serverID: id),
@@ -594,7 +641,15 @@ struct EnrollmentRow: Codable, Sendable {
             courseID: CourseID(serverID: courseID),
             studentID: StudentID(serverID: studentID),
             enrolledAt: SupabaseDateCodec.timestamp(from: enrolledAt),
-            status: status
+            status: status,
+            pricingStatus: domainPricingStatus,
+            billingStartsOn: try billingStartsOn.map(SupabaseDateCodec.date(from:)),
+            unitPriceCents: unitPriceCents,
+            trialFeeCents: trialFeeCents,
+            discountName: discountName,
+            discountKind: domainDiscountKind,
+            discountValue: discountValue,
+            billingNotes: billingNotes
         )
     }
 }
@@ -1200,5 +1255,305 @@ struct NotificationRow: Codable, Sendable {
             sentAt: sentAt.map { try SupabaseDateCodec.timestamp(from: $0) },
             status: status
         )
+    }
+}
+
+struct BillingInvoiceRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let guardianID: UUID
+    let termID: UUID?
+    let invoiceNumber: String
+    let version: Int
+    let schoolYearLabel: String
+    let issuedAt: String
+    let currency: String
+    let amountDueCents: Int
+    let notes: String?
+    let supersedesInvoiceID: UUID?
+    let supersededByInvoiceID: UUID?
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case guardianID = "guardian_id"
+        case termID = "term_id"
+        case invoiceNumber = "invoice_number"
+        case version
+        case schoolYearLabel = "school_year_label"
+        case issuedAt = "issued_at"
+        case currency
+        case amountDueCents = "amount_due_cents"
+        case notes
+        case supersedesInvoiceID = "supersedes_invoice_id"
+        case supersededByInvoiceID = "superseded_by_invoice_id"
+        case createdAt = "created_at"
+    }
+
+    func domain() throws -> BillingInvoice {
+        guard let currency = BillingCurrency(rawValue: currency) else {
+            throw SupabaseRepositoryError.invalidValue(field: "账单币种", value: currency)
+        }
+        return try BillingInvoice(
+            id: BillingInvoiceID(serverID: id),
+            guardianID: GuardianID(serverID: guardianID),
+            termID: termID.map(TermID.init(serverID:)),
+            invoiceNumber: invoiceNumber,
+            version: version,
+            schoolYearLabel: schoolYearLabel,
+            issuedAt: SupabaseDateCodec.timestamp(from: issuedAt),
+            currency: currency,
+            amountDueCents: amountDueCents,
+            notes: notes,
+            supersedesInvoiceID: supersedesInvoiceID.map(BillingInvoiceID.init(serverID:)),
+            supersededByInvoiceID: supersededByInvoiceID.map(BillingInvoiceID.init(serverID:)),
+            createdAt: SupabaseDateCodec.timestamp(from: createdAt)
+        )
+    }
+}
+
+struct BillingInvoiceLineItemRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let invoiceID: UUID
+    let studentID: UUID?
+    let enrollmentID: UUID?
+    let kind: String
+    let title: String
+    let detail: String?
+    let quantity: Int
+    let unitAmountCents: Int
+    let amountCents: Int
+    let includedInAmountDue: Bool
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case invoiceID = "invoice_id"
+        case studentID = "student_id"
+        case enrollmentID = "enrollment_id"
+        case kind
+        case title
+        case detail
+        case quantity
+        case unitAmountCents = "unit_amount_cents"
+        case amountCents = "amount_cents"
+        case includedInAmountDue = "included_in_amount_due"
+        case sortOrder = "sort_order"
+    }
+
+    func domain() throws -> BillingInvoiceLineItem {
+        guard let kind = BillingLineItemKind(rawValue: kind) else {
+            throw SupabaseRepositoryError.invalidValue(field: "账单项目种类", value: kind)
+        }
+        return BillingInvoiceLineItem(
+            id: BillingInvoiceLineItemID(serverID: id),
+            invoiceID: BillingInvoiceID(serverID: invoiceID),
+            studentID: studentID.map(StudentID.init(serverID:)),
+            enrollmentID: enrollmentID.map(EnrollmentID.init(serverID:)),
+            kind: kind,
+            title: title,
+            detail: detail,
+            quantity: quantity,
+            unitAmountCents: unitAmountCents,
+            amountCents: amountCents,
+            includedInAmountDue: includedInAmountDue,
+            sortOrder: sortOrder
+        )
+    }
+}
+
+struct BillingPaymentRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let invoiceID: UUID
+    let amountCents: Int
+    let processingFeeCents: Int
+    let method: String
+    let receivedAt: String
+    let note: String?
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case invoiceID = "invoice_id"
+        case amountCents = "amount_cents"
+        case processingFeeCents = "processing_fee_cents"
+        case method
+        case receivedAt = "received_at"
+        case note
+        case createdAt = "created_at"
+    }
+
+    func domain() throws -> BillingPayment {
+        guard let method = BillingPaymentMethod(rawValue: method) else {
+            throw SupabaseRepositoryError.invalidValue(field: "付款方式", value: method)
+        }
+        return try BillingPayment(
+            id: BillingPaymentID(serverID: id),
+            invoiceID: BillingInvoiceID(serverID: invoiceID),
+            amountCents: amountCents,
+            processingFeeCents: processingFeeCents,
+            method: method,
+            receivedAt: SupabaseDateCodec.timestamp(from: receivedAt),
+            note: note,
+            createdAt: SupabaseDateCodec.timestamp(from: createdAt)
+        )
+    }
+}
+
+struct BillingArtifactRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let invoiceID: UUID
+    let paymentID: UUID?
+    let kind: String
+    let storagePath: String
+    let mimeType: String
+    let generatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case invoiceID = "invoice_id"
+        case paymentID = "payment_id"
+        case kind
+        case storagePath = "storage_path"
+        case mimeType = "mime_type"
+        case generatedAt = "generated_at"
+    }
+
+    func domain() throws -> BillingArtifact {
+        guard let kind = BillingArtifactKind(rawValue: kind) else {
+            throw SupabaseRepositoryError.invalidValue(field: "账单文件种类", value: kind)
+        }
+        return try BillingArtifact(
+            id: BillingArtifactID(serverID: id),
+            invoiceID: BillingInvoiceID(serverID: invoiceID),
+            paymentID: paymentID.map(BillingPaymentID.init(serverID:)),
+            kind: kind,
+            storagePath: storagePath,
+            mimeType: mimeType,
+            generatedAt: SupabaseDateCodec.timestamp(from: generatedAt)
+        )
+    }
+}
+
+struct BillingInvoiceItemPayload: Encodable, Sendable {
+    let id: UUID
+    let studentID: UUID?
+    let enrollmentID: UUID?
+    let kind: String
+    let title: String
+    let detail: String?
+    let quantity: Int
+    let unitAmountCents: Int
+    let amountCents: Int
+    let includedInAmountDue: Bool
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case studentID = "student_id"
+        case enrollmentID = "enrollment_id"
+        case kind
+        case title
+        case detail
+        case quantity
+        case unitAmountCents = "unit_amount_cents"
+        case amountCents = "amount_cents"
+        case includedInAmountDue = "included_in_amount_due"
+        case sortOrder = "sort_order"
+    }
+
+    init(_ item: BillingInvoiceLineItem) {
+        id = item.id.rawValue
+        studentID = item.studentID?.rawValue
+        enrollmentID = item.enrollmentID?.rawValue
+        kind = item.kind.rawValue
+        title = item.title
+        detail = item.detail
+        quantity = item.quantity
+        unitAmountCents = item.unitAmountCents
+        amountCents = item.amountCents
+        includedInAmountDue = item.includedInAmountDue
+        sortOrder = item.sortOrder
+    }
+}
+
+struct IssueBillingInvoiceParameters: Encodable, Sendable {
+    let invoiceID: UUID
+    let guardianID: UUID
+    let termID: UUID
+    let invoiceNumber: String
+    let version: Int
+    let schoolYearLabel: String
+    let issuedAt: String
+    let notes: String
+    let supersedesInvoiceID: UUID?
+    let artifactID: UUID
+    let storagePath: String
+    let items: [BillingInvoiceItemPayload]
+
+    enum CodingKeys: String, CodingKey {
+        case invoiceID = "target_invoice_id"
+        case guardianID = "target_guardian_id"
+        case termID = "target_term_id"
+        case invoiceNumber = "target_invoice_number"
+        case version = "target_version"
+        case schoolYearLabel = "target_school_year_label"
+        case issuedAt = "target_issued_at"
+        case notes = "target_notes"
+        case supersedesInvoiceID = "target_supersedes_invoice_id"
+        case artifactID = "target_artifact_id"
+        case storagePath = "target_storage_path"
+        case items = "target_items"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(invoiceID, forKey: .invoiceID)
+        try container.encode(guardianID, forKey: .guardianID)
+        try container.encode(termID, forKey: .termID)
+        try container.encode(invoiceNumber, forKey: .invoiceNumber)
+        try container.encode(version, forKey: .version)
+        try container.encode(schoolYearLabel, forKey: .schoolYearLabel)
+        try container.encode(issuedAt, forKey: .issuedAt)
+        try container.encode(notes, forKey: .notes)
+        if let supersedesInvoiceID {
+            try container.encode(supersedesInvoiceID, forKey: .supersedesInvoiceID)
+        } else {
+            try container.encodeNil(forKey: .supersedesInvoiceID)
+        }
+        try container.encode(artifactID, forKey: .artifactID)
+        try container.encode(storagePath, forKey: .storagePath)
+        try container.encode(items, forKey: .items)
+    }
+}
+
+struct RecordBillingPaymentParameters: Encodable, Sendable {
+    let paymentID: UUID
+    let invoiceID: UUID
+    let amountCents: Int
+    let processingFeeCents: Int
+    let method: String
+    let receivedAt: String
+    let note: String
+    let artifactID: UUID
+    let storagePath: String
+
+    enum CodingKeys: String, CodingKey {
+        case paymentID = "target_payment_id"
+        case invoiceID = "target_invoice_id"
+        case amountCents = "target_amount_cents"
+        case processingFeeCents = "target_processing_fee_cents"
+        case method = "target_method"
+        case receivedAt = "target_received_at"
+        case note = "target_note"
+        case artifactID = "target_artifact_id"
+        case storagePath = "target_storage_path"
     }
 }

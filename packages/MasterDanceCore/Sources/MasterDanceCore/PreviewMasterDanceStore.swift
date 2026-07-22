@@ -21,6 +21,10 @@ public struct PreviewData: Codable, Sendable {
     public var newsArticleImages: [NewsArticleImage]
     public var advertisements: [Advertisement]
     public var notifications: [NotificationRecord]
+    public var billingInvoices: [BillingInvoice]
+    public var billingInvoiceLineItems: [BillingInvoiceLineItem]
+    public var billingPayments: [BillingPayment]
+    public var billingArtifacts: [BillingArtifact]
 
     public init(
         terms: [Term] = [],
@@ -42,7 +46,11 @@ public struct PreviewData: Codable, Sendable {
         newsArticles: [NewsArticle] = [],
         newsArticleImages: [NewsArticleImage] = [],
         advertisements: [Advertisement] = [],
-        notifications: [NotificationRecord] = []
+        notifications: [NotificationRecord] = [],
+        billingInvoices: [BillingInvoice] = [],
+        billingInvoiceLineItems: [BillingInvoiceLineItem] = [],
+        billingPayments: [BillingPayment] = [],
+        billingArtifacts: [BillingArtifact] = []
     ) {
         self.terms = terms
         self.termHolidays = termHolidays
@@ -64,6 +72,10 @@ public struct PreviewData: Codable, Sendable {
         self.newsArticleImages = newsArticleImages
         self.advertisements = advertisements
         self.notifications = notifications
+        self.billingInvoices = billingInvoices
+        self.billingInvoiceLineItems = billingInvoiceLineItems
+        self.billingPayments = billingPayments
+        self.billingArtifacts = billingArtifacts
     }
 }
 
@@ -71,6 +83,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
     private var data: PreviewData
     private var newsMedia: [String: Data] = [:]
     private var advertisementMedia: [String: Data] = [:]
+    private var billingMedia: [String: Data] = [:]
 
     public init(data: PreviewData = PreviewData()) {
         self.data = data
@@ -592,6 +605,108 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
 
     public func save(notification: NotificationRecord) {
         upsert(notification, in: &data.notifications)
+    }
+
+    public func listBillingInvoices(guardianID: GuardianID? = nil) -> [BillingInvoice] {
+        data.billingInvoices.filter { guardianID == nil || $0.guardianID == guardianID }
+    }
+
+    public func listBillingInvoiceLineItems(
+        invoiceID: BillingInvoiceID? = nil
+    ) -> [BillingInvoiceLineItem] {
+        data.billingInvoiceLineItems.filter { invoiceID == nil || $0.invoiceID == invoiceID }
+    }
+
+    public func listBillingPayments(invoiceID: BillingInvoiceID? = nil) -> [BillingPayment] {
+        data.billingPayments.filter { invoiceID == nil || $0.invoiceID == invoiceID }
+    }
+
+    public func listBillingArtifacts(invoiceID: BillingInvoiceID? = nil) -> [BillingArtifact] {
+        data.billingArtifacts.filter { invoiceID == nil || $0.invoiceID == invoiceID }
+    }
+
+    public func issueBillingInvoice(
+        invoice: BillingInvoice,
+        lineItems: [BillingInvoiceLineItem],
+        artifact: BillingArtifact,
+        pngData: Data
+    ) throws -> BillingInvoice {
+        guard data.guardians.contains(where: { $0.id == invoice.guardianID }) else {
+            throw PreviewRepositoryError.guardianNotFound
+        }
+        guard !lineItems.isEmpty,
+              lineItems.allSatisfy({ $0.invoiceID == invoice.id }),
+              artifact.invoiceID == invoice.id,
+              artifact.kind == .invoice else {
+            throw PreviewRepositoryError.recordInUse("账单资料不完整。")
+        }
+        let calculatedTotal = lineItems
+            .filter(\.includedInAmountDue)
+            .reduce(0) { $0 + $1.amountCents }
+        guard calculatedTotal == invoice.amountDueCents, calculatedTotal >= 0 else {
+            throw PreviewRepositoryError.recordInUse("账单合计与收费项目不一致。")
+        }
+
+        if let supersededID = invoice.supersedesInvoiceID,
+           let index = data.billingInvoices.firstIndex(where: { $0.id == supersededID }) {
+            let previous = data.billingInvoices[index]
+            data.billingInvoices[index] = BillingInvoice(
+                id: previous.id,
+                guardianID: previous.guardianID,
+                termID: previous.termID,
+                invoiceNumber: previous.invoiceNumber,
+                version: previous.version,
+                schoolYearLabel: previous.schoolYearLabel,
+                issuedAt: previous.issuedAt,
+                currency: previous.currency,
+                amountDueCents: previous.amountDueCents,
+                notes: previous.notes,
+                supersedesInvoiceID: previous.supersedesInvoiceID,
+                supersededByInvoiceID: invoice.id,
+                createdAt: previous.createdAt
+            )
+        }
+
+        upsert(invoice, in: &data.billingInvoices)
+        data.billingInvoiceLineItems.removeAll { $0.invoiceID == invoice.id }
+        data.billingInvoiceLineItems.append(contentsOf: lineItems)
+        upsert(artifact, in: &data.billingArtifacts)
+        billingMedia[artifact.storagePath] = pngData
+        return invoice
+    }
+
+    public func recordBillingPayment(
+        payment: BillingPayment,
+        artifact: BillingArtifact,
+        pngData: Data
+    ) throws -> BillingPayment {
+        guard let invoice = data.billingInvoices.first(where: { $0.id == payment.invoiceID }) else {
+            throw PreviewRepositoryError.recordInUse("找不到这份账单。")
+        }
+        let outstanding = invoice.outstandingCents(payments: data.billingPayments)
+        guard payment.amountCents > 0, payment.amountCents <= outstanding else {
+            throw PreviewRepositoryError.recordInUse("付款金额必须大于 0 且不能超过待付金额。")
+        }
+        let expectedFee = payment.method == .card
+            ? BillingCalculator.cardFeeCents(for: payment.amountCents)
+            : 0
+        guard payment.processingFeeCents == expectedFee,
+              artifact.invoiceID == payment.invoiceID,
+              artifact.paymentID == payment.id,
+              artifact.kind == .receipt else {
+            throw PreviewRepositoryError.recordInUse("付款或收据资料不正确。")
+        }
+        upsert(payment, in: &data.billingPayments)
+        upsert(artifact, in: &data.billingArtifacts)
+        billingMedia[artifact.storagePath] = pngData
+        return payment
+    }
+
+    public func billingArtifactData(storagePath: String) throws -> Data {
+        guard let data = billingMedia[storagePath] else {
+            throw PreviewRepositoryError.recordInUse("预览账单图片尚未下载。")
+        }
+        return data
     }
 
     public static func sample(now: Date = Date()) -> PreviewMasterDanceStore {

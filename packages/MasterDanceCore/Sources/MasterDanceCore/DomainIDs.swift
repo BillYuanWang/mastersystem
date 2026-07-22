@@ -49,6 +49,10 @@ public enum NewsArticleIDTag: Sendable {}
 public enum NewsArticleImageIDTag: Sendable {}
 public enum AdvertisementIDTag: Sendable {}
 public enum NotificationRecordIDTag: Sendable {}
+public enum BillingInvoiceIDTag: Sendable {}
+public enum BillingInvoiceLineItemIDTag: Sendable {}
+public enum BillingPaymentIDTag: Sendable {}
+public enum BillingArtifactIDTag: Sendable {}
 
 public typealias TermID = EntityID<TermIDTag>
 public typealias TermHolidayID = EntityID<TermHolidayIDTag>
@@ -70,3 +74,7 @@ public typealias NewsArticleID = EntityID<NewsArticleIDTag>
 public typealias NewsArticleImageID = EntityID<NewsArticleImageIDTag>
 public typealias AdvertisementID = EntityID<AdvertisementIDTag>
 public typealias NotificationRecordID = EntityID<NotificationRecordIDTag>
+public typealias BillingInvoiceID = EntityID<BillingInvoiceIDTag>
+public typealias BillingInvoiceLineItemID = EntityID<BillingInvoiceLineItemIDTag>
+public typealias BillingPaymentID = EntityID<BillingPaymentIDTag>
+public typealias BillingArtifactID = EntityID<BillingArtifactIDTag>

@@ -111,6 +111,25 @@ public protocol NotificationRepository: Sendable {
     func save(notification: NotificationRecord) async throws
 }
 
+public protocol BillingRepository: Sendable {
+    func listBillingInvoices(guardianID: GuardianID?) async throws -> [BillingInvoice]
+    func listBillingInvoiceLineItems(invoiceID: BillingInvoiceID?) async throws -> [BillingInvoiceLineItem]
+    func listBillingPayments(invoiceID: BillingInvoiceID?) async throws -> [BillingPayment]
+    func listBillingArtifacts(invoiceID: BillingInvoiceID?) async throws -> [BillingArtifact]
+    func issueBillingInvoice(
+        invoice: BillingInvoice,
+        lineItems: [BillingInvoiceLineItem],
+        artifact: BillingArtifact,
+        pngData: Data
+    ) async throws -> BillingInvoice
+    func recordBillingPayment(
+        payment: BillingPayment,
+        artifact: BillingArtifact,
+        pngData: Data
+    ) async throws -> BillingPayment
+    func billingArtifactData(storagePath: String) async throws -> Data
+}
+
 public typealias MasterDanceRepository = TermRepository
     & CourseReferenceRepository
     & CourseRepository
@@ -124,3 +143,4 @@ public typealias MasterDanceRepository = TermRepository
     & NewsRepository
     & AdvertisementRepository
     & NotificationRepository
+    & BillingRepository

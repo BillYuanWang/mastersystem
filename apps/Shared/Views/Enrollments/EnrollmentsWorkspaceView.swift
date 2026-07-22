@@ -14,6 +14,7 @@ struct EnrollmentsWorkspaceView: View {
     @State private var showingCoursePicker = false
     @State private var pendingEnrollments: [PendingEnrollmentSubmission] = []
     @State private var deletingID: EnrollmentID?
+    @State private var editingEnrollment: Enrollment?
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -38,6 +39,9 @@ struct EnrollmentsWorkspaceView: View {
         .onChange(of: selectedTermID) { _, termID in
             guard let termID, let course = draftCourse, course.termID != termID else { return }
             draftCourseID = nil
+        }
+        .sheet(item: $editingEnrollment) { enrollment in
+            EnrollmentBillingEditorView(model: model, enrollment: enrollment)
         }
     }
 
@@ -121,6 +125,8 @@ struct EnrollmentsWorkspaceView: View {
             enrollmentHeader("学期", width: EnrollmentColumns.term)
             enrollmentHeader("上课时间", width: EnrollmentColumns.schedule)
             enrollmentHeader("老师 / 教室", width: EnrollmentColumns.staff)
+            enrollmentHeader("预计课程费", width: EnrollmentColumns.price)
+            enrollmentHeader("计费", width: EnrollmentColumns.billing)
             enrollmentHeader("状态", width: EnrollmentColumns.status)
             enrollmentHeader("报名日期", width: EnrollmentColumns.date)
             Spacer(minLength: 0)
@@ -182,6 +188,8 @@ struct EnrollmentsWorkspaceView: View {
             enrollmentCell(draftCourse.flatMap { model.term(id: $0.termID) }?.name ?? "—", width: EnrollmentColumns.term)
             enrollmentCell(draftCourse.map(scheduleLabel) ?? "—", width: EnrollmentColumns.schedule, mono: draftCourse != nil)
             enrollmentCell(draftCourse.map(staffAndRoom) ?? "—", width: EnrollmentColumns.staff)
+            enrollmentCell(draftCourse.map(coursePriceLabel) ?? "—", width: EnrollmentColumns.price, mono: true)
+            enrollmentCell(draftCourse.map(coursePricingStatusLabel) ?? "—", width: EnrollmentColumns.billing)
             enrollmentCell("待提交", width: EnrollmentColumns.status)
             enrollmentCell(Date().formatted(date: .abbreviated, time: .omitted), width: EnrollmentColumns.date, mono: true)
             Spacer(minLength: 0)
@@ -244,6 +252,8 @@ struct EnrollmentsWorkspaceView: View {
             enrollmentCell(course.flatMap { model.term(id: $0.termID) }?.name ?? "—", width: EnrollmentColumns.term)
             enrollmentCell(course.map(scheduleLabel) ?? "—", width: EnrollmentColumns.schedule, mono: course != nil)
             enrollmentCell(course.map(staffAndRoom) ?? "—", width: EnrollmentColumns.staff)
+            enrollmentCell(course.map(coursePriceLabel) ?? "—", width: EnrollmentColumns.price, mono: true)
+            enrollmentCell(course.map(coursePricingStatusLabel) ?? "—", width: EnrollmentColumns.billing)
             pendingStatus(submission.status, theme: theme)
             enrollmentCell("刚刚", width: EnrollmentColumns.date, mono: true)
             Spacer(minLength: 0)
@@ -261,17 +271,29 @@ struct EnrollmentsWorkspaceView: View {
             enrollmentCell(model.term(id: enrollment.termID)?.name ?? "—", width: EnrollmentColumns.term)
             enrollmentCell(courseForEnrollment(enrollment).map(scheduleLabel) ?? "未排课", width: EnrollmentColumns.schedule, mono: true)
             enrollmentCell(courseForEnrollment(enrollment).map(staffAndRoom) ?? "—", width: EnrollmentColumns.staff)
+            enrollmentCell(enrollmentPriceLabel(enrollment), width: EnrollmentColumns.price, mono: true)
+            enrollmentCell(enrollmentPricingStatusLabel(enrollment.pricingStatus), width: EnrollmentColumns.billing)
             enrollmentCell(statusLabel(enrollment.status), width: EnrollmentColumns.status)
             enrollmentCell(enrollment.enrolledAt.formatted(date: .abbreviated, time: .omitted), width: EnrollmentColumns.date, mono: true)
             Spacer(minLength: 0)
-            Button {
-                removeEnrollment(enrollment)
-            } label: {
-                Image(systemName: "xmark")
+            HStack(spacing: 2) {
+                Button {
+                    editingEnrollment = enrollment
+                } label: {
+                    Image(systemName: "dollarsign.circle")
+                }
+                .buttonStyle(MDIconButtonStyle())
+                .help("编辑这门课的计费")
+
+                Button {
+                    removeEnrollment(enrollment)
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(MDIconButtonStyle())
+                .disabled(deletingID == enrollment.id)
+                .help("移除报名")
             }
-            .buttonStyle(MDIconButtonStyle())
-            .disabled(deletingID == enrollment.id)
-            .help("移除报名")
             .frame(width: EnrollmentColumns.action)
         }
         .frame(minHeight: 40)
@@ -466,6 +488,38 @@ struct EnrollmentsWorkspaceView: View {
         let instructor = model.instructor(id: course.defaultInstructorID)?.displayName ?? "—"
         let room = model.room(id: course.defaultRoomID)?.name ?? "—"
         return instructor + " · " + room
+    }
+
+    private func coursePriceLabel(_ course: Course) -> String {
+        switch course.pricingStatus {
+        case .pending: "待定价"
+        case .free: "$0.00"
+        case .reviewRequired:
+            course.unitPriceCents.map { "$\(MoneyTextParser.dollars(from: $0))/节" } ?? "待复核"
+        case .priced:
+            course.unitPriceCents.map { "$\(MoneyTextParser.dollars(from: $0))/节" } ?? "待定价"
+        }
+    }
+
+    private func coursePricingStatusLabel(_ course: Course) -> String {
+        switch course.pricingStatus {
+        case .pending: "待定价"
+        case .priced, .free: "待报名"
+        case .reviewRequired: "需复核"
+        }
+    }
+
+    private func enrollmentPriceLabel(_ enrollment: Enrollment) -> String {
+        guard let total = model.billingEstimate(for: enrollment).totalCents else { return "待定价" }
+        return "$" + MoneyTextParser.dollars(from: total)
+    }
+
+    private func enrollmentPricingStatusLabel(_ status: EnrollmentPricingStatus) -> String {
+        switch status {
+        case .pending: "待定价"
+        case .ready: "已就绪"
+        case .reviewRequired: "需复核"
+        }
     }
 
     private func statusLabel(_ status: EnrollmentStatus) -> String {
@@ -888,9 +942,11 @@ private enum EnrollmentColumns {
     static let term: CGFloat = 125
     static let schedule: CGFloat = 175
     static let staff: CGFloat = 120
+    static let price: CGFloat = 125
+    static let billing: CGFloat = 76
     static let status: CGFloat = 88
     static let date: CGFloat = 110
-    static let action: CGFloat = 68
+    static let action: CGFloat = 76
 }
 
 private func weekdayTitle(_ weekday: Int) -> String {

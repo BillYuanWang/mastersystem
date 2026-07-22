@@ -3,7 +3,8 @@
 ## Phase 1 MVP
 
 - Create terms, courses, and concrete class sessions.
-- Maintain user-defined course categories, age groups, rooms, instructors, and course names.
+- Maintain user-defined age groups, rooms, instructors, course types, and course names.
+- Keep the legacy course-category relation hidden for migration compatibility.
 - Mark courses as group or private while keeping the rest of course classification user-defined.
 - Assign default instructors and rooms per course, with per-session overrides.
 - Maintain students, guardians, and adult students.
@@ -12,6 +13,10 @@
 - Submit leave from iOS or on behalf of a user from administration.
 - Record versioned contract consent.
 - Record reminders and workflow notifications.
+- Set a per-session course price and calculate an enrollment estimate from actual sessions.
+- Adjust one enrollment discount, trial fee, billing start date, and price snapshot.
+- Issue immutable, versioned family invoices and record partial or full payments.
+- Produce private invoice and receipt PNGs while keeping all billing controls on macOS.
 - Offer system, light, and dark appearance modes.
 
 ## Roles
@@ -25,8 +30,9 @@ An instructor is course data, not an authentication role in the MVP. The authori
 ## Deferred
 
 - Per-class enrollment or charging.
-- Prices, balances, payment collection, and automated contract amounts.
-- Credits, carry-over, injury transfers, and flexible class packages.
+- Tax calculation, refunds, and automated payment reminders.
+- Automated credit, carry-over, injury-transfer, or exceptional settlement rules.
+- Flexible class packages and per-class enrollment.
 - Exceptional pricing, attendance, leave, or settlement rule engines.
 - Parent or adult-student course selection.
 - Independent instructor accounts.
@@ -36,6 +42,7 @@ An instructor is course data, not an authentication role in the MVP. The authori
 ## Open decisions
 
 - Exact remaining-session calculation for present, excused, absent, and makeup states.
+- Tax policy and any future refund workflow.
 - Leave deadline defaults and whether courses can override them.
 - Reminder timing and delivery channels.
 - Whether contract consent scopes the term or a specific enrollment.

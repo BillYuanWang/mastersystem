@@ -136,6 +136,8 @@ public struct Course: Identifiable, Codable, Equatable, Sendable {
     public var defaultInstructorID: InstructorID
     public var courseTypeID: CourseTypeID
     public var format: CourseFormat
+    public var pricingStatus: CoursePricingStatus
+    public var unitPriceCents: Int?
     public var notes: String?
     public var isActive: Bool
 
@@ -149,6 +151,8 @@ public struct Course: Identifiable, Codable, Equatable, Sendable {
         defaultInstructorID: InstructorID,
         courseTypeID: CourseTypeID,
         format: CourseFormat,
+        pricingStatus: CoursePricingStatus = .pending,
+        unitPriceCents: Int? = nil,
         notes: String? = nil,
         isActive: Bool = true
     ) {
@@ -161,6 +165,8 @@ public struct Course: Identifiable, Codable, Equatable, Sendable {
         self.defaultInstructorID = defaultInstructorID
         self.courseTypeID = courseTypeID
         self.format = format
+        self.pricingStatus = pricingStatus
+        self.unitPriceCents = unitPriceCents
         self.notes = notes
         self.isActive = isActive
     }
@@ -304,6 +310,14 @@ public struct Enrollment: Identifiable, Codable, Equatable, Sendable {
     public let studentID: StudentID
     public var enrolledAt: Date
     public var status: EnrollmentStatus
+    public var pricingStatus: EnrollmentPricingStatus
+    public var billingStartsOn: Date?
+    public var unitPriceCents: Int?
+    public var trialFeeCents: Int
+    public var discountName: String?
+    public var discountKind: BillingDiscountKind?
+    public var discountValue: Int?
+    public var billingNotes: String?
 
     public init(
         id: EnrollmentID = EnrollmentID(),
@@ -311,7 +325,15 @@ public struct Enrollment: Identifiable, Codable, Equatable, Sendable {
         courseID: CourseID,
         studentID: StudentID,
         enrolledAt: Date,
-        status: EnrollmentStatus = .active
+        status: EnrollmentStatus = .active,
+        pricingStatus: EnrollmentPricingStatus = .pending,
+        billingStartsOn: Date? = nil,
+        unitPriceCents: Int? = nil,
+        trialFeeCents: Int = 0,
+        discountName: String? = nil,
+        discountKind: BillingDiscountKind? = nil,
+        discountValue: Int? = nil,
+        billingNotes: String? = nil
     ) {
         self.id = id
         self.termID = termID
@@ -319,6 +341,14 @@ public struct Enrollment: Identifiable, Codable, Equatable, Sendable {
         self.studentID = studentID
         self.enrolledAt = enrolledAt
         self.status = status
+        self.pricingStatus = pricingStatus
+        self.billingStartsOn = billingStartsOn
+        self.unitPriceCents = unitPriceCents
+        self.trialFeeCents = trialFeeCents
+        self.discountName = discountName
+        self.discountKind = discountKind
+        self.discountValue = discountValue
+        self.billingNotes = billingNotes
     }
 }
 

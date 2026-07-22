@@ -8,13 +8,16 @@
 
 ## Product constraints
 
-- Phase 1 models term-based enrollment only.
-- Do not add pricing, balances, credits, per-class billing, or exceptional settlement rules.
+- Billing uses integer USD cents, enrollment price snapshots, and actual scheduled sessions.
+- Issued invoices and receipts are immutable; corrections create a new version.
+- Keep tax, refunds, payment reminders, and exceptional settlement rule engines out of the current release.
+- Keep pricing controls in macOS administration; iOS may only display private billing PNGs in a later release.
 - Do not add parent-selected courses or an independent teacher login role.
 - Keep instructors as user-managed course data.
-- Keep course category, age group, room, instructor, and course name user-managed rather than closed enums.
+- Keep age group, room, instructor, course type, and course name user-managed rather than closed enums.
+- Keep the legacy course-category field hidden as compatibility data; do not expose category management in the app.
 - Preserve system, light, and dark appearance choices.
-- AI integrations must remain behind `AIExtension`; do not ship an implementation in Phase 1.
+- AI integrations must remain behind `AIExtension`; do not ship an implementation in the current release.
 
 ## Engineering constraints
 

@@ -12,8 +12,12 @@ struct MobileNewsRow: View {
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         HStack(spacing: 12) {
-            NewsMediaView(model: model, image: model.newsCover(for: article.id))
-                .frame(width: 94, height: 72)
+            NewsMediaView(
+                model: model,
+                image: model.newsCover(for: article.id),
+                contentMode: .fit
+            )
+                .frame(width: 94, height: 94)
                 .background(theme.subtleSurface)
                 .clipShape(RoundedRectangle(cornerRadius: MDMetrics.radius))
 
@@ -116,14 +120,6 @@ struct MobileNewsDetailView: View {
                             .mdFont(.mono)
                             .foregroundStyle(theme.secondaryText)
                     }
-                }
-
-                if let cover = model.newsCover(for: article.id) {
-                    NewsMediaView(model: model, image: cover, contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .aspectRatio(16 / 9, contentMode: .fit)
-                        .background(theme.subtleSurface)
-                        .clipShape(RoundedRectangle(cornerRadius: MDMetrics.radius))
                 }
 
                 ForEach(Array(article.paragraphs.enumerated()), id: \.offset) { index, paragraph in

@@ -263,13 +263,14 @@ select throws_ok(
 );
 
 select ok(
-  not exists (
+  exists (
     select 1
     from information_schema.columns
     where table_schema = 'public'
-      and column_name ~ '(price|payment|credit|package)'
+      and table_name = 'courses'
+      and column_name = 'unit_price_cents'
   ),
-  'pricing and flexible-registration fields are outside this release'
+  'course pricing is stored in integer cents'
 );
 
 select * from finish();

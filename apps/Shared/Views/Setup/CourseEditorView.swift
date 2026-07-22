@@ -147,6 +147,47 @@ struct CourseEditorView: View {
                             }
                         }
 
+                        editorSection("课程定价", theme: theme) {
+                            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                                GridRow {
+                                    fieldLabel("定价状态")
+                                    Picker("", selection: $draft.pricingStatus) {
+                                        ForEach(CoursePricingStatus.allCases, id: \.self) { status in
+                                            Text(pricingStatusTitle(status)).tag(status)
+                                        }
+                                    }
+                                    .labelsHidden()
+                                    .frame(minWidth: 280, alignment: .leading)
+                                }
+
+                                if draft.pricingStatus == .priced || draft.pricingStatus == .reviewRequired {
+                                    GridRow {
+                                        fieldLabel("每节单价")
+                                        HStack(spacing: 7) {
+                                            Text("$")
+                                                .mdFont(.monoStrong)
+                                                .foregroundStyle(theme.secondaryText)
+                                            TextField("例如 25.00", text: $draft.unitPriceText)
+                                                .textFieldStyle(.roundedBorder)
+                                                .frame(width: 150)
+                                        }
+                                    }
+                                }
+
+                                GridRow {
+                                    fieldLabel("学期估算")
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(coursePriceSummary)
+                                            .mdFont(.monoStrong)
+                                            .foregroundStyle(priceIsValid ? theme.primaryText : theme.danger)
+                                        Text("按当前实际课次计算；报名后会保存学员自己的价格快照。")
+                                            .mdFont(.compact)
+                                            .foregroundStyle(theme.secondaryText)
+                                    }
+                                }
+                            }
+                        }
+
                         editorSection("备注", theme: theme) {
                             TextField("选填", text: $draft.notes, axis: .vertical)
                                 .lineLimit(3...5)
@@ -259,6 +300,7 @@ struct CourseEditorView: View {
             && draft.courseTypeID != nil
             && courseTermIsReady
             && activeOccurrenceCount > 0
+            && priceIsValid
     }
 
     private var courseTermIsReady: Bool {
@@ -269,6 +311,45 @@ struct CourseEditorView: View {
 
     private var weekdayOptions: [(Int, String)] {
         [(2, "周一"), (3, "周二"), (4, "周三"), (5, "周四"), (6, "周五"), (7, "周六"), (1, "周日")]
+    }
+
+    private var priceIsValid: Bool {
+        switch draft.pricingStatus {
+        case .pending, .free:
+            true
+        case .priced:
+            (MoneyTextParser.cents(from: draft.unitPriceText) ?? 0) > 0
+        case .reviewRequired:
+            draft.unitPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || (MoneyTextParser.cents(from: draft.unitPriceText) ?? -1) >= 0
+        }
+    }
+
+    private var coursePriceSummary: String {
+        switch draft.pricingStatus {
+        case .pending:
+            return "待定价"
+        case .free:
+            return "\(activeOccurrenceCount) 次 · 免费"
+        case .priced, .reviewRequired:
+            guard let cents = MoneyTextParser.cents(from: draft.unitPriceText), cents >= 0 else {
+                return "请输入正确单价"
+            }
+            let total = BillingCalculator.courseTotalCents(
+                unitPriceCents: cents,
+                scheduledSessionCount: activeOccurrenceCount
+            ) ?? 0
+            return "\(activeOccurrenceCount) 次 × $\(MoneyTextParser.dollars(from: cents)) = $\(MoneyTextParser.dollars(from: total))"
+        }
+    }
+
+    private func pricingStatusTitle(_ status: CoursePricingStatus) -> String {
+        switch status {
+        case .pending: "待定价"
+        case .priced: "已定价"
+        case .free: "免费"
+        case .reviewRequired: "需复核"
+        }
     }
 
     private var startTimeBinding: Binding<Date> {
@@ -371,6 +452,8 @@ struct CourseEditorView: View {
             draft.roomID = original.defaultRoomID
             draft.instructorID = original.defaultInstructorID
             draft.courseTypeID = original.courseTypeID
+            draft.pricingStatus = original.pricingStatus
+            draft.unitPriceText = MoneyTextParser.dollars(from: original.unitPriceCents)
             draft.notes = original.notes ?? ""
             draft.isActive = original.isActive
 
