@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import Foundation
 import MasterDanceCore
 import SwiftUI
@@ -17,34 +18,42 @@ struct CourseSheetView: View {
     @State private var selectedFilterValues: [CourseTableColumn: Set<String>] = [:]
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.mdInterfaceFontScale) private var interfaceFontScale
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         let allEntries = entries
         let visibleEntries = displayedEntries(from: allEntries)
-        VStack(spacing: 0) {
-            courseHeader(
-                theme: theme,
-                entries: allEntries,
-                displayedCount: visibleEntries.count
-            )
-            ScrollView {
-                if visibleEntries.isEmpty {
-                    ContentUnavailableView(
-                        allEntries.isEmpty ? "暂无课程" : "没有符合条件的课程",
-                        systemImage: allEntries.isEmpty ? "books.vertical" : "line.3.horizontal.decrease.circle"
+        GeometryReader { proxy in
+            let layout = columnLayout(for: allEntries, availableWidth: proxy.size.width)
+            ScrollView(.horizontal) {
+                VStack(spacing: 0) {
+                    courseHeader(
+                        theme: theme,
+                        entries: allEntries,
+                        displayedCount: visibleEntries.count,
+                        layout: layout
                     )
-                    .frame(maxWidth: .infinity, minHeight: 260)
-                } else {
-                    LazyVStack(spacing: 0) {
-                        ForEach(visibleEntries) { entry in
-                            courseRow(entry, theme: theme)
-                            Rectangle()
-                                .fill(theme.faintSeparator)
-                                .frame(height: 1)
+                    ScrollView(.vertical) {
+                        if visibleEntries.isEmpty {
+                            ContentUnavailableView(
+                                allEntries.isEmpty ? "暂无课程" : "没有符合条件的课程",
+                                systemImage: allEntries.isEmpty ? "books.vertical" : "line.3.horizontal.decrease.circle"
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 260)
+                        } else {
+                            LazyVStack(spacing: 0) {
+                                ForEach(visibleEntries) { entry in
+                                    courseRow(entry, theme: theme, layout: layout)
+                                    Rectangle()
+                                        .fill(theme.faintSeparator)
+                                        .frame(height: 1)
+                                }
+                            }
                         }
                     }
                 }
+                .frame(width: layout.totalWidth, height: proxy.size.height, alignment: .topLeading)
             }
         }
         .foregroundStyle(theme.primaryText)
@@ -53,18 +62,24 @@ struct CourseSheetView: View {
     private func courseHeader(
         theme: MDTheme,
         entries: [CourseTableEntry],
-        displayedCount: Int
+        displayedCount: Int,
+        layout: CourseTableLayout
     ) -> some View {
         HStack(spacing: 0) {
             ForEach(CourseTableColumn.allCases) { column in
-                sortableHeaderCell(column, entries: entries, theme: theme)
+                sortableHeaderCell(
+                    column,
+                    width: layout[column],
+                    entries: entries,
+                    theme: theme
+                )
             }
             operationHeader(
                 theme: theme,
                 displayedCount: displayedCount,
-                totalCount: entries.count
+                totalCount: entries.count,
+                width: layout.operationWidth
             )
-            Spacer(minLength: 0)
         }
         .frame(height: 34)
         .background(theme.subtleSurface)
@@ -75,6 +90,7 @@ struct CourseSheetView: View {
 
     private func sortableHeaderCell(
         _ column: CourseTableColumn,
+        width: CGFloat,
         entries: [CourseTableEntry],
         theme: MDTheme
     ) -> some View {
@@ -117,13 +133,14 @@ struct CourseSheetView: View {
         }
         .padding(.leading, 10)
         .padding(.trailing, 6)
-        .frame(width: column.width)
+        .frame(width: width)
     }
 
     private func operationHeader(
         theme: MDTheme,
         displayedCount: Int,
-        totalCount: Int
+        totalCount: Int,
+        width: CGFloat
     ) -> some View {
         HStack(spacing: 5) {
             if activeFilterCount > 0 {
@@ -146,7 +163,7 @@ struct CourseSheetView: View {
                 .lineLimit(1)
         }
         .padding(.horizontal, 8)
-        .frame(width: 70)
+        .frame(width: width)
     }
 
     @ViewBuilder
@@ -247,17 +264,21 @@ struct CourseSheetView: View {
         .buttonStyle(.plain)
     }
 
-    private func courseRow(_ entry: CourseTableEntry, theme: MDTheme) -> some View {
+    private func courseRow(
+        _ entry: CourseTableEntry,
+        theme: MDTheme,
+        layout: CourseTableLayout
+    ) -> some View {
         HStack(spacing: 0) {
-            dataCell(entry.course.name, width: CourseTableColumn.name.width, strong: true)
-            dataCell(entry.ageGroupName, width: CourseTableColumn.ageGroup.width)
-            dataCell(entry.roomName, width: CourseTableColumn.room.width)
-            dataCell(entry.instructorName, width: CourseTableColumn.instructor.width)
-            dataCell(entry.scheduleLabel, width: CourseTableColumn.schedule.width)
-            dataCell("\(entry.sessionCount)", width: CourseTableColumn.sessions.width, monospaced: true)
-            dataCell(entry.pricingLabel, width: CourseTableColumn.pricing.width, monospaced: true)
-            courseTypeCell(entry, theme: theme)
-            dataCell(entry.statusLabel, width: CourseTableColumn.status.width)
+            dataCell(entry.course.name, width: layout[.name], strong: true)
+            dataCell(entry.ageGroupName, width: layout[.ageGroup])
+            dataCell(entry.roomName, width: layout[.room])
+            dataCell(entry.instructorName, width: layout[.instructor])
+            dataCell(entry.scheduleLabel, width: layout[.schedule])
+            dataCell("\(entry.sessionCount)", width: layout[.sessions], monospaced: true)
+            dataCell(entry.pricingLabel, width: layout[.pricing], monospaced: true)
+            courseTypeCell(entry, width: layout[.courseType], theme: theme)
+            dataCell(entry.statusLabel, width: layout[.status])
             HStack(spacing: 3) {
                 Button {
                     edit(entry.course)
@@ -274,15 +295,18 @@ struct CourseSheetView: View {
                 .buttonStyle(MDIconButtonStyle())
                 .help("删除")
             }
-            .frame(width: 70)
-            Spacer(minLength: 0)
+            .frame(width: layout.operationWidth)
         }
         .frame(minHeight: 38)
         .contentShape(Rectangle())
         .help(entry.course.notes ?? "")
     }
 
-    private func courseTypeCell(_ entry: CourseTableEntry, theme: MDTheme) -> some View {
+    private func courseTypeCell(
+        _ entry: CourseTableEntry,
+        width: CGFloat,
+        theme: MDTheme
+    ) -> some View {
         HStack(spacing: 6) {
             Text(entry.course.format == .privateLesson ? "私" : "组")
                 .mdFont(.compactStrong)
@@ -295,7 +319,7 @@ struct CourseSheetView: View {
         }
         .padding(.leading, 10)
         .padding(.trailing, 5)
-        .frame(width: CourseTableColumn.courseType.width, alignment: .leading)
+        .frame(width: width, alignment: .leading)
     }
 
     private func dataCell(
@@ -311,6 +335,75 @@ struct CourseSheetView: View {
             .padding(.leading, 10)
             .padding(.trailing, 5)
             .frame(width: width, alignment: .leading)
+    }
+
+    private func columnLayout(
+        for entries: [CourseTableEntry],
+        availableWidth: CGFloat
+    ) -> CourseTableLayout {
+        var widths = Dictionary(
+            uniqueKeysWithValues: CourseTableColumn.allCases.map { column in
+                (column, max(column.minimumWidth, headerWidth(for: column)))
+            }
+        )
+
+        for entry in entries {
+            for column in CourseTableColumn.allCases {
+                widths[column] = max(widths[column, default: column.minimumWidth], contentWidth(entry, for: column))
+            }
+        }
+
+        let operationWidth = max(70, ceil(70 * interfaceFontScale))
+        let measuredWidth = widths.values.reduce(0, +) + operationWidth
+        let extraWidth = max(0, availableWidth - measuredWidth)
+        let stretchWeight = CourseTableColumn.allCases.reduce(0) { $0 + $1.stretchWeight }
+        if extraWidth > 0, stretchWeight > 0 {
+            for column in CourseTableColumn.allCases where column.stretchWeight > 0 {
+                widths[column, default: column.minimumWidth] += extraWidth * column.stretchWeight / stretchWeight
+            }
+        }
+
+        return CourseTableLayout(widths: widths, operationWidth: operationWidth)
+    }
+
+    private func headerWidth(for column: CourseTableColumn) -> CGFloat {
+        measuredTextWidth(column.title, size: 11, weight: .semibold) + 50
+    }
+
+    private func contentWidth(_ entry: CourseTableEntry, for column: CourseTableColumn) -> CGFloat {
+        switch column {
+        case .name:
+            measuredTextWidth(entry.course.name, size: 13, weight: .semibold) + 17
+        case .ageGroup:
+            measuredTextWidth(entry.ageGroupName, size: 13) + 17
+        case .room:
+            measuredTextWidth(entry.roomName, size: 13) + 17
+        case .instructor:
+            measuredTextWidth(entry.instructorName, size: 13) + 17
+        case .schedule:
+            measuredTextWidth(entry.scheduleLabel, size: 13) + 17
+        case .sessions:
+            measuredTextWidth("\(entry.sessionCount)", size: 11, monospaced: true) + 17
+        case .pricing:
+            measuredTextWidth(entry.pricingLabel, size: 11, monospaced: true) + 17
+        case .courseType:
+            measuredTextWidth(entry.courseTypeName, size: 11) + 44
+        case .status:
+            measuredTextWidth(entry.statusLabel, size: 13) + 17
+        }
+    }
+
+    private func measuredTextWidth(
+        _ text: String,
+        size: CGFloat,
+        weight: NSFont.Weight = .regular,
+        monospaced: Bool = false
+    ) -> CGFloat {
+        let scaledSize = size * interfaceFontScale
+        let font = monospaced
+            ? NSFont.monospacedSystemFont(ofSize: scaledSize, weight: weight)
+            : NSFont.systemFont(ofSize: scaledSize, weight: weight)
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
 
     private var entries: [CourseTableEntry] {
@@ -584,18 +677,41 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
         }
     }
 
-    var width: CGFloat {
+    var minimumWidth: CGFloat {
         switch self {
-        case .name: 205
-        case .ageGroup: 115
-        case .room: 100
-        case .instructor: 110
-        case .schedule: 180
-        case .sessions: 70
-        case .pricing: 175
-        case .courseType: 120
-        case .status: 70
+        case .name: 140
+        case .ageGroup: 90
+        case .room: 75
+        case .instructor: 85
+        case .schedule: 145
+        case .sessions: 68
+        case .pricing: 120
+        case .courseType: 100
+        case .status: 68
         }
+    }
+
+    var stretchWeight: CGFloat {
+        switch self {
+        case .name: 1.4
+        case .schedule: 1
+        case .pricing: 1.5
+        case .courseType: 0.8
+        case .ageGroup, .room, .instructor, .sessions, .status: 0
+        }
+    }
+}
+
+private struct CourseTableLayout {
+    let widths: [CourseTableColumn: CGFloat]
+    let operationWidth: CGFloat
+
+    subscript(column: CourseTableColumn) -> CGFloat {
+        widths[column, default: column.minimumWidth]
+    }
+
+    var totalWidth: CGFloat {
+        widths.values.reduce(0, +) + operationWidth
     }
 }
 
