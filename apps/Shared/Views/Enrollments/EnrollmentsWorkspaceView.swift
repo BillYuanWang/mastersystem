@@ -42,6 +42,8 @@ struct EnrollmentsWorkspaceView: View {
         .onChange(of: selectedTermID) { _, termID in
             guard let termID, let course = draftCourse, course.termID != termID else { return }
             draftCourseID = nil
+            draftRegistrationMode = .fullTerm
+            draftSelectedSessionIDs.removeAll()
         }
         .sheet(item: $editingEnrollment) { enrollment in
             EnrollmentBillingEditorView(model: model, enrollment: enrollment)
@@ -209,7 +211,9 @@ struct EnrollmentsWorkspaceView: View {
                     )
                 }
             }
-            .help("选择整期报名或具体课次")
+            .help(draftCourse?.format.requiresPerSessionEnrollment == true
+                ? "私课仅支持选择具体课次"
+                : "选择整期报名或具体课次")
             enrollmentCell(
                 draftCourse.map { coursePriceLabel($0, mode: draftRegistrationMode) } ?? "—",
                 width: EnrollmentColumns.price,
@@ -446,7 +450,9 @@ struct EnrollmentsWorkspaceView: View {
 
     private func selectCourse(_ courseID: CourseID) {
         draftCourseID = courseID
-        draftRegistrationMode = .fullTerm
+        draftRegistrationMode = model.course(id: courseID)?.format.requiresPerSessionEnrollment == true
+            ? .perSession
+            : .fullTerm
         draftSelectedSessionIDs.removeAll()
         showingCoursePicker = false
     }
@@ -538,7 +544,10 @@ struct EnrollmentsWorkspaceView: View {
         _ course: Course,
         mode: EnrollmentRegistrationMode = .fullTerm
     ) -> String {
-        let unitPrice = mode == .fullTerm ? course.unitPriceCents : course.dropInUnitPriceCents
+        let effectiveMode: EnrollmentRegistrationMode = course.format.requiresPerSessionEnrollment
+            ? .perSession
+            : mode
+        let unitPrice = effectiveMode == .fullTerm ? course.unitPriceCents : course.dropInUnitPriceCents
         return switch course.pricingStatus {
         case .pending: "待定价"
         case .free: "$0.00"
@@ -550,12 +559,20 @@ struct EnrollmentsWorkspaceView: View {
     }
 
     private var canSubmitDraft: Bool {
-        guard draftStudentID != nil, draftCourseID != nil else { return false }
+        guard draftStudentID != nil, let draftCourse else { return false }
+        if draftCourse.format.requiresPerSessionEnrollment, draftRegistrationMode != .perSession {
+            return false
+        }
         return draftRegistrationMode == .fullTerm || !draftSelectedSessionIDs.isEmpty
     }
 
     private var draftRegistrationLabel: String {
-        registrationLabel(draftRegistrationMode, count: draftSelectedSessionIDs.count)
+        guard let draftCourse else {
+            return registrationLabel(draftRegistrationMode, count: draftSelectedSessionIDs.count)
+        }
+        return draftCourse.format.requiresPerSessionEnrollment
+            ? "私课按次 \(draftSelectedSessionIDs.count) 节"
+            : registrationLabel(draftRegistrationMode, count: draftSelectedSessionIDs.count)
     }
 
     private func registrationLabel(_ mode: EnrollmentRegistrationMode, count: Int) -> String {
@@ -977,12 +994,18 @@ private struct DraftEnrollmentRegistrationPicker: View {
                 Text(course.name)
                     .mdFont(.bodyStrong)
                     .lineLimit(1)
-                Picker("报名方式", selection: $mode) {
-                    Text("整期报名").tag(EnrollmentRegistrationMode.fullTerm)
-                    Text("按次报名").tag(EnrollmentRegistrationMode.perSession)
+                if course.format.requiresPerSessionEnrollment {
+                    Label("私课仅支持按次报名", systemImage: "calendar.badge.clock")
+                        .mdFont(.compactStrong)
+                        .foregroundStyle(theme.accent)
+                } else {
+                    Picker("报名方式", selection: $mode) {
+                        Text("整期报名").tag(EnrollmentRegistrationMode.fullTerm)
+                        Text("按次报名").tag(EnrollmentRegistrationMode.perSession)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
             }
             .padding(12)
 
@@ -1021,7 +1044,16 @@ private struct DraftEnrollmentRegistrationPicker: View {
         }
         .frame(width: 440, height: 480)
         .background(theme.background)
+        .onAppear {
+            if course.format.requiresPerSessionEnrollment {
+                mode = .perSession
+            }
+        }
         .onChange(of: mode) { _, newMode in
+            if course.format.requiresPerSessionEnrollment, newMode != .perSession {
+                mode = .perSession
+                return
+            }
             if newMode == .fullTerm {
                 selectedSessionIDs.removeAll()
             }

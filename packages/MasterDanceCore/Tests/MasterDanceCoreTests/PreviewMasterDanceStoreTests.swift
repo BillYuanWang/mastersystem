@@ -123,6 +123,68 @@ struct PreviewMasterDanceStoreTests {
         #expect(remaining == [second])
     }
 
+    @Test("Private lessons require selected per-session enrollment")
+    func privateLessonEnrollmentMode() async throws {
+        let term = Term(
+            name: "Private Term",
+            startsOn: .distantPast,
+            endsOn: .distantFuture,
+            status: .open
+        )
+        let course = Course(
+            termID: term.id,
+            name: "Private Lesson",
+            categoryID: CourseCategoryID(),
+            ageGroupID: AgeGroupID(),
+            defaultRoomID: RoomID(),
+            defaultInstructorID: InstructorID(),
+            courseTypeID: CourseTypeID(),
+            format: .privateLesson,
+            pricingStatus: .priced,
+            unitPriceCents: nil,
+            dropInUnitPriceCents: 8_000
+        )
+        let session = ClassSession(
+            courseID: course.id,
+            startsAt: Date(timeIntervalSince1970: 2_000),
+            endsAt: Date(timeIntervalSince1970: 5_600)
+        )
+        let studentID = StudentID()
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(terms: [term], courses: [course], sessions: [session])
+        )
+        let fullTermEnrollment = Enrollment(
+            termID: term.id,
+            courseID: course.id,
+            studentID: studentID,
+            enrolledAt: .distantPast
+        )
+
+        await #expect(throws: PreviewRepositoryError.privateLessonRequiresPerSessionEnrollment) {
+            try await store.save(enrollment: fullTermEnrollment)
+        }
+
+        let perSessionEnrollment = Enrollment(
+            termID: term.id,
+            courseID: course.id,
+            studentID: studentID,
+            enrolledAt: .distantPast,
+            registrationMode: .perSession,
+            selectedSessionIDs: [session.id],
+            pricingStatus: .ready,
+            billingStartsOn: session.startsAt,
+            unitPriceCents: 8_000
+        )
+        try await store.save(enrollment: perSessionEnrollment)
+
+        let saved = try await store.listEnrollments(
+            termID: term.id,
+            courseID: course.id,
+            studentID: studentID
+        )
+        #expect(saved == [perSessionEnrollment])
+    }
+
     @Test("Saving the same identity updates instead of duplicating")
     func saveUpserts() async throws {
         let term = Term(

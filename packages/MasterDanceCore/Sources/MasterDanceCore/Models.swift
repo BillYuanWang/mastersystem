@@ -124,6 +124,10 @@ public struct Instructor: Identifiable, Codable, Equatable, Sendable {
 public enum CourseFormat: String, Codable, CaseIterable, Sendable {
     case group
     case privateLesson
+
+    public var requiresPerSessionEnrollment: Bool {
+        self == .privateLesson
+    }
 }
 
 public struct Course: Identifiable, Codable, Equatable, Sendable {

@@ -8,6 +8,7 @@ struct StudentCourseManagerView: View {
     let student: Student
 
     @State private var selectedCourseID: CourseID?
+    @State private var selectedSessionIDs: Set<ClassSessionID> = []
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -47,6 +48,40 @@ struct StudentCourseManagerView: View {
             }
             .labelsHidden()
             .frame(maxWidth: .infinity)
+            .onChange(of: selectedCourseID) { _, _ in
+                selectedSessionIDs.removeAll()
+            }
+
+            if selectedCourse?.format.requiresPerSessionEnrollment == true {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        Label("私课仅按次报名", systemImage: "calendar.badge.clock")
+                            .mdFont(.compactStrong)
+                            .foregroundStyle(theme.accent)
+                        Spacer()
+                        Text("已选 \(selectedSessionIDs.count) 节")
+                            .mdFont(.mono)
+                            .foregroundStyle(theme.secondaryText)
+                    }
+
+                    if selectableSessions.isEmpty {
+                        Text("这门私课没有可报名课次")
+                            .mdFont(.compact)
+                            .foregroundStyle(theme.danger)
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 4) {
+                                ForEach(selectableSessions) { session in
+                                    sessionButton(session, theme: theme)
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 170)
+                    }
+                }
+                .padding(9)
+                .background(theme.subtleSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
+            }
 
             Button {
                 addCourse()
@@ -54,7 +89,7 @@ struct StudentCourseManagerView: View {
                 Label("加入课程", systemImage: "plus")
                     .frame(maxWidth: .infinity)
             }
-            .disabled(selectedCourseID == nil)
+            .disabled(!canAddCourse)
         }
     }
 
@@ -72,6 +107,20 @@ struct StudentCourseManagerView: View {
         return model.courses
             .filter { !enrolledIDs.contains($0.id) }
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+    }
+
+    private var selectedCourse: Course? {
+        selectedCourseID.flatMap { model.course(id: $0) }
+    }
+
+    private var selectableSessions: [ClassSession] {
+        guard let selectedCourseID else { return [] }
+        return model.sessions(forCourse: selectedCourseID).filter { $0.status != .cancelled }
+    }
+
+    private var canAddCourse: Bool {
+        guard let selectedCourse else { return false }
+        return !selectedCourse.format.requiresPerSessionEnrollment || !selectedSessionIDs.isEmpty
     }
 
     private func enrollmentRow(_ enrollment: Enrollment, theme: MDTheme) -> some View {
@@ -117,15 +166,57 @@ struct StudentCourseManagerView: View {
     }
 
     private func addCourse() {
-        guard let selectedCourseID else { return }
+        guard let selectedCourse else { return }
         let studentID = student.id
+        let mode: EnrollmentRegistrationMode = selectedCourse.format.requiresPerSessionEnrollment
+            ? .perSession
+            : .fullTerm
+        let selectedSessionIDs = self.selectedSessionIDs
         model.performBackgroundOperation(
             label: "添加学员课程",
             successMessage: "学员课程已添加"
         ) {
-            try await model.enroll(studentID: studentID, courseID: selectedCourseID)
+            try await model.enroll(
+                studentID: studentID,
+                courseID: selectedCourse.id,
+                registrationMode: mode,
+                selectedSessionIDs: selectedSessionIDs
+            )
         }
         self.selectedCourseID = nil
+        self.selectedSessionIDs.removeAll()
+    }
+
+    private func sessionButton(_ session: ClassSession, theme: MDTheme) -> some View {
+        let selected = selectedSessionIDs.contains(session.id)
+        return Button {
+            if selected {
+                selectedSessionIDs.remove(session.id)
+            } else {
+                selectedSessionIDs.insert(session.id)
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selected ? theme.accent : theme.secondaryText)
+                Text(session.startsAt.formatted(
+                    .dateTime
+                        .month()
+                        .day()
+                        .weekday(.abbreviated)
+                        .locale(Locale(identifier: "zh_Hans_CN"))
+                ))
+                .mdFont(.compactStrong)
+                Spacer()
+                Text(session.startsAt.formatted(date: .omitted, time: .shortened))
+                    .mdFont(.mono)
+                    .foregroundStyle(theme.secondaryText)
+            }
+            .padding(.horizontal, 7)
+            .frame(height: 34)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func remove(_ enrollment: Enrollment) {

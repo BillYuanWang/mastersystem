@@ -253,6 +253,7 @@ insert into public.enrollments (
   term_id,
   course_id,
   student_id,
+  registration_mode,
   enrolled_at
 )
 values
@@ -262,6 +263,7 @@ values
     '10000000-0000-0000-0000-000000000001',
     '60000000-0000-0000-0000-000000000001',
     '70000000-0000-0000-0000-000000000001',
+    'full_term',
     '2026-08-01T12:00:00Z'
   ),
   (
@@ -270,6 +272,7 @@ values
     '10000000-0000-0000-0000-000000000001',
     '60000000-0000-0000-0000-000000000002',
     '70000000-0000-0000-0000-000000000002',
+    'full_term',
     '2026-08-01T12:00:00Z'
   ),
   (
@@ -278,9 +281,26 @@ values
     '10000000-0000-0000-0000-000000000001',
     '60000000-0000-0000-0000-000000000003',
     '70000000-0000-0000-0000-000000000003',
+    'per_session',
     '2026-08-01T12:00:00Z'
   )
 on conflict (id) do nothing;
+
+insert into public.enrollment_session_selections (
+  organization_id,
+  enrollment_id,
+  course_id,
+  session_id
+)
+select
+  '00000000-0000-0000-0000-000000000001',
+  '90000000-0000-0000-0000-000000000003',
+  '60000000-0000-0000-0000-000000000003',
+  session.id
+from public.class_sessions session
+where session.course_id = '60000000-0000-0000-0000-000000000003'
+  and session.status <> 'cancelled'
+on conflict (enrollment_id, session_id) do nothing;
 
 insert into public.contract_documents (
   id,

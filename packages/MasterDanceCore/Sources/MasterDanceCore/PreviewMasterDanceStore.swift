@@ -199,6 +199,28 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
                 throw PreviewRepositoryError.termRequiresHoliday
             }
         }
+        if course.format.requiresPerSessionEnrollment {
+            let hasValidPricing = switch course.pricingStatus {
+            case .pending:
+                course.unitPriceCents == nil && course.dropInUnitPriceCents == nil
+            case .priced:
+                course.unitPriceCents == nil && (course.dropInUnitPriceCents ?? 0) > 0
+            case .free:
+                course.unitPriceCents == nil && course.dropInUnitPriceCents == 0
+            case .reviewRequired:
+                course.unitPriceCents == nil
+                    && (course.dropInUnitPriceCents.map { $0 >= 0 } ?? true)
+            }
+            guard hasValidPricing else {
+                throw PreviewRepositoryError.invalidPrivateLessonPricing
+            }
+        }
+        if course.format.requiresPerSessionEnrollment,
+           data.enrollments.contains(where: {
+               $0.courseID == course.id && $0.registrationMode != .perSession
+           }) {
+            throw PreviewRepositoryError.privateLessonRequiresPerSessionEnrollment
+        }
         upsert(course, in: &data.courses)
     }
     public func deleteCourse(id: CourseID) throws {
@@ -348,6 +370,11 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
     }
 
     public func save(enrollment: Enrollment) throws {
+        if data.courses.first(where: { $0.id == enrollment.courseID })?
+            .format.requiresPerSessionEnrollment == true,
+           enrollment.registrationMode != .perSession {
+            throw PreviewRepositoryError.privateLessonRequiresPerSessionEnrollment
+        }
         switch enrollment.registrationMode {
         case .fullTerm:
             guard enrollment.selectedSessionIDs.isEmpty else {
@@ -813,6 +840,8 @@ public enum PreviewRepositoryError: LocalizedError, Sendable, Equatable {
     case invalidTermRange
     case holidayOutsideTerm
     case invalidPerSessionEnrollment
+    case privateLessonRequiresPerSessionEnrollment
+    case invalidPrivateLessonPricing
 
     public var errorDescription: String? {
         switch self {
@@ -834,6 +863,10 @@ public enum PreviewRepositoryError: LocalizedError, Sendable, Equatable {
             "假期日期必须位于学期范围内。"
         case .invalidPerSessionEnrollment:
             "按次报名必须选择这门课程中尚未取消的具体课次。"
+        case .privateLessonRequiresPerSessionEnrollment:
+            "私课仅支持按次报名。"
+        case .invalidPrivateLessonPricing:
+            "私课只能填写按次单价。"
         }
     }
 }

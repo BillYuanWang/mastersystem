@@ -730,6 +730,25 @@ final class AppModel {
         try validateCourseTermReady(termID: course.termID, existingCourseID: course.id)
         var updated = course
         updated.format = type.isPrivate ? .privateLesson : .group
+        if updated.format.requiresPerSessionEnrollment {
+            let effectivePrice = updated.pricingStatus == .free
+                ? 0
+                : (updated.dropInUnitPriceCents ?? updated.unitPriceCents)
+            updated.unitPriceCents = nil
+            updated.dropInUnitPriceCents = effectivePrice
+            if updated.pricingStatus == .pending, let effectivePrice {
+                updated.pricingStatus = effectivePrice == 0 ? .free : .priced
+            }
+            if enrollments.contains(where: {
+                $0.courseID == updated.id && $0.registrationMode != .perSession
+            }) {
+                throw AppModelError.privateLessonRequiresPerSessionEnrollment
+            }
+            if updated.pricingStatus == .priced,
+               (updated.dropInUnitPriceCents ?? 0) <= 0 {
+                throw AppModelError.invalidCourseUnitPrice
+            }
+        }
         try await withCloudActivity(label: "保存课程") {
             try await repository.save(course: updated)
             await reload()
@@ -757,7 +776,8 @@ final class AppModel {
             throw AppModelError.missingCourseFields
         }
         try validateCourseTermReady(termID: termID)
-        let pricing = try normalizedCoursePricing(from: draft)
+        let isPrivateLesson = selectedCourseType.isPrivate
+        let pricing = try normalizedCoursePricing(from: draft, isPrivateLesson: isPrivateLesson)
         try await withCloudActivity(label: "创建课程") {
             let categoryID = try await hiddenCourseCategoryID()
 
@@ -769,7 +789,7 @@ final class AppModel {
                 defaultRoomID: roomID,
                 defaultInstructorID: instructorID,
                 courseTypeID: courseTypeID,
-                format: selectedCourseType.isPrivate ? .privateLesson : .group,
+                format: isPrivateLesson ? .privateLesson : .group,
                 pricingStatus: pricing.status,
                 unitPriceCents: pricing.unitPriceCents,
                 dropInUnitPriceCents: pricing.dropInUnitPriceCents,
@@ -800,10 +820,17 @@ final class AppModel {
             throw AppModelError.missingCourseFields
         }
         try validateCourseTermReady(termID: termID, existingCourseID: original.id)
-        let pricing = try normalizedCoursePricing(from: draft)
+        let isPrivateLesson = selectedCourseType.isPrivate
+        let pricing = try normalizedCoursePricing(from: draft, isPrivateLesson: isPrivateLesson)
 
         if original.termID != termID, enrollments.contains(where: { $0.courseID == original.id }) {
             throw AppModelError.courseTermHasEnrollments
+        }
+        if isPrivateLesson,
+           enrollments.contains(where: {
+               $0.courseID == original.id && $0.registrationMode != .perSession
+           }) {
+            throw AppModelError.privateLessonRequiresPerSessionEnrollment
         }
 
         var updated = original
@@ -813,7 +840,7 @@ final class AppModel {
         updated.defaultRoomID = roomID
         updated.defaultInstructorID = instructorID
         updated.courseTypeID = courseTypeID
-        updated.format = selectedCourseType.isPrivate ? .privateLesson : .group
+        updated.format = isPrivateLesson ? .privateLesson : .group
         updated.pricingStatus = pricing.status
         updated.unitPriceCents = pricing.unitPriceCents
         updated.dropInUnitPriceCents = pricing.dropInUnitPriceCents
@@ -888,7 +915,8 @@ final class AppModel {
     }
 
     private func normalizedCoursePricing(
-        from draft: CourseCreationDraft
+        from draft: CourseCreationDraft,
+        isPrivateLesson: Bool
     ) throws -> (
         status: CoursePricingStatus,
         unitPriceCents: Int?,
@@ -904,6 +932,21 @@ final class AppModel {
                 throw AppModelError.invalidCourseUnitPrice
             }
             dropInPrice = cents
+        }
+        if isPrivateLesson {
+            switch draft.pricingStatus {
+            case .pending:
+                return (.pending, nil, nil)
+            case .free:
+                return (.free, nil, 0)
+            case .priced:
+                guard let dropInPrice, dropInPrice > 0 else {
+                    throw AppModelError.invalidCourseUnitPrice
+                }
+                return (.priced, nil, dropInPrice)
+            case .reviewRequired:
+                return (.reviewRequired, nil, dropInPrice)
+            }
         }
         switch draft.pricingStatus {
         case .pending:
@@ -1339,6 +1382,9 @@ final class AppModel {
         guard let course = course(id: courseID) else {
             throw AppModelError.missingEnrollmentFields
         }
+        if course.format.requiresPerSessionEnrollment, registrationMode != .perSession {
+            throw AppModelError.privateLessonRequiresPerSessionEnrollment
+        }
         let validSelectedSessionIDs = Set(
             sessions(forCourse: courseID)
                 .filter { selectedSessionIDs.contains($0.id) && $0.status != .cancelled }
@@ -1405,6 +1451,10 @@ final class AppModel {
     }
 
     func saveEnrollmentBilling(_ enrollment: Enrollment) async throws {
+        if course(id: enrollment.courseID)?.format.requiresPerSessionEnrollment == true,
+           enrollment.registrationMode != .perSession {
+            throw AppModelError.privateLessonRequiresPerSessionEnrollment
+        }
         if enrollment.registrationMode == .perSession {
             let validIDs = Set(sessions(forCourse: enrollment.courseID).map(\.id))
             guard !enrollment.selectedSessionIDs.isEmpty,

@@ -161,30 +161,47 @@ struct CourseEditorView: View {
                                 }
 
                                 if draft.pricingStatus == .priced || draft.pricingStatus == .reviewRequired {
-                                    GridRow {
-                                        fieldLabel("整期每节价")
-                                        HStack(spacing: 7) {
-                                            Text("$")
-                                                .mdFont(.monoStrong)
-                                                .foregroundStyle(theme.secondaryText)
-                                            TextField("例如 25.00", text: $draft.unitPriceText)
-                                                .textFieldStyle(.roundedBorder)
-                                                .frame(width: 150)
+                                    if draftIsPrivateLesson {
+                                        GridRow {
+                                            fieldLabel("私课按次价")
+                                            HStack(spacing: 7) {
+                                                Text("$")
+                                                    .mdFont(.monoStrong)
+                                                    .foregroundStyle(theme.secondaryText)
+                                                TextField("例如 80.00", text: $draft.dropInUnitPriceText)
+                                                    .textFieldStyle(.roundedBorder)
+                                                    .frame(width: 150)
+                                                Text("私课仅按所选课次报名")
+                                                    .mdFont(.compact)
+                                                    .foregroundStyle(theme.secondaryText)
+                                            }
                                         }
-                                    }
+                                    } else {
+                                        GridRow {
+                                            fieldLabel("整期每节价")
+                                            HStack(spacing: 7) {
+                                                Text("$")
+                                                    .mdFont(.monoStrong)
+                                                    .foregroundStyle(theme.secondaryText)
+                                                TextField("例如 25.00", text: $draft.unitPriceText)
+                                                    .textFieldStyle(.roundedBorder)
+                                                    .frame(width: 150)
+                                            }
+                                        }
 
-                                    GridRow {
-                                        fieldLabel("按次每节价")
-                                        HStack(spacing: 7) {
-                                            Text("$")
-                                                .mdFont(.monoStrong)
-                                                .foregroundStyle(theme.secondaryText)
-                                            TextField("例如 30.00", text: $draft.dropInUnitPriceText)
-                                                .textFieldStyle(.roundedBorder)
-                                                .frame(width: 150)
-                                            Text("留空则暂不开放按次报名")
-                                                .mdFont(.compact)
-                                                .foregroundStyle(theme.secondaryText)
+                                        GridRow {
+                                            fieldLabel("按次每节价")
+                                            HStack(spacing: 7) {
+                                                Text("$")
+                                                    .mdFont(.monoStrong)
+                                                    .foregroundStyle(theme.secondaryText)
+                                                TextField("例如 30.00", text: $draft.dropInUnitPriceText)
+                                                    .textFieldStyle(.roundedBorder)
+                                                    .frame(width: 150)
+                                                Text("留空则暂不开放按次报名")
+                                                    .mdFont(.compact)
+                                                    .foregroundStyle(theme.secondaryText)
+                                            }
                                         }
                                     }
                                 }
@@ -195,7 +212,9 @@ struct CourseEditorView: View {
                                         Text(coursePriceSummary)
                                             .mdFont(.monoStrong)
                                             .foregroundStyle(priceIsValid ? theme.primaryText : theme.danger)
-                                        Text("整期价按实际课次计算；按次价按所选日期计算。报名后均保存价格快照。")
+                                        Text(draftIsPrivateLesson
+                                            ? "私课只按报名时选择的具体课次计算，并保存当时的单价快照。"
+                                            : "整期价按实际课次计算；按次价按所选日期计算。报名后均保存价格快照。")
                                             .mdFont(.compact)
                                             .foregroundStyle(theme.secondaryText)
                                     }
@@ -269,6 +288,10 @@ struct CourseEditorView: View {
             draft.endsOn = term.endsOn
             draft.excludedDates.removeAll()
         }
+        .onChange(of: draft.courseTypeID) { oldValue, newValue in
+            guard oldValue != newValue else { return }
+            alignPricingFieldsForCourseType()
+        }
     }
 
     private var occurrenceDates: [Date] {
@@ -324,6 +347,11 @@ struct CourseEditorView: View {
         return model.termHolidays.contains { $0.termID == termID }
     }
 
+    private var draftIsPrivateLesson: Bool {
+        guard let courseTypeID = draft.courseTypeID else { return false }
+        return model.courseType(id: courseTypeID)?.isPrivate == true
+    }
+
     private var weekdayOptions: [(Int, String)] {
         [(2, "周一"), (3, "周二"), (4, "周三"), (5, "周四"), (6, "周五"), (7, "周六"), (1, "周日")]
     }
@@ -332,6 +360,16 @@ struct CourseEditorView: View {
         let dropInText = draft.dropInUnitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
         let dropInIsValid = dropInText.isEmpty
             || (MoneyTextParser.cents(from: dropInText) ?? -1) > 0
+        if draftIsPrivateLesson {
+            return switch draft.pricingStatus {
+            case .pending, .free:
+                true
+            case .priced:
+                (MoneyTextParser.cents(from: dropInText) ?? 0) > 0
+            case .reviewRequired:
+                dropInText.isEmpty || (MoneyTextParser.cents(from: dropInText) ?? -1) >= 0
+            }
+        }
         return switch draft.pricingStatus {
         case .pending, .free:
             true
@@ -345,6 +383,9 @@ struct CourseEditorView: View {
     }
 
     private var coursePriceSummary: String {
+        if draftIsPrivateLesson {
+            return privateLessonPriceSummary
+        }
         switch draft.pricingStatus {
         case .pending:
             return dropInPriceSummary(prefix: "整期待定价")
@@ -360,6 +401,21 @@ struct CourseEditorView: View {
             ) ?? 0
             let termSummary = "整期 \(activeOccurrenceCount) 次 × $\(MoneyTextParser.dollars(from: cents)) = $\(MoneyTextParser.dollars(from: total))"
             return dropInPriceSummary(prefix: termSummary)
+        }
+    }
+
+    private var privateLessonPriceSummary: String {
+        switch draft.pricingStatus {
+        case .pending:
+            return "私课 · 按次待定价"
+        case .free:
+            return "私课 · 按次免费"
+        case .priced, .reviewRequired:
+            let text = draft.dropInUnitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let cents = MoneyTextParser.cents(from: text), cents >= 0 else {
+                return draft.pricingStatus == .reviewRequired ? "私课 · 按次价格待复核" : "请输入正确按次单价"
+            }
+            return "私课 · 按次 $\(MoneyTextParser.dollars(from: cents))/节"
         }
     }
 
@@ -496,8 +552,13 @@ struct CourseEditorView: View {
             draft.instructorID = original.defaultInstructorID
             draft.courseTypeID = original.courseTypeID
             draft.pricingStatus = original.pricingStatus
-            draft.unitPriceText = MoneyTextParser.dollars(from: original.unitPriceCents)
-            draft.dropInUnitPriceText = MoneyTextParser.dollars(from: original.dropInUnitPriceCents)
+            draft.unitPriceText = original.format.requiresPerSessionEnrollment
+                ? ""
+                : MoneyTextParser.dollars(from: original.unitPriceCents)
+            draft.dropInUnitPriceText = MoneyTextParser.dollars(
+                from: original.dropInUnitPriceCents
+                    ?? (original.format.requiresPerSessionEnrollment ? original.unitPriceCents : nil)
+            )
             draft.notes = original.notes ?? ""
             draft.isActive = original.isActive
 
@@ -536,6 +597,19 @@ struct CourseEditorView: View {
                 draft.startsOn = term.startsOn
                 draft.endsOn = term.endsOn
             }
+        }
+        alignPricingFieldsForCourseType()
+    }
+
+    private func alignPricingFieldsForCourseType() {
+        if draftIsPrivateLesson {
+            if draft.dropInUnitPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draft.dropInUnitPriceText = draft.unitPriceText
+            }
+            draft.unitPriceText = ""
+        } else if draft.unitPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !draft.dropInUnitPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            draft.unitPriceText = draft.dropInUnitPriceText
         }
     }
 
