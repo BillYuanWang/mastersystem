@@ -41,7 +41,7 @@ targets:
         CFBundleDisplayName: MD Desk
         CFBundleIconFile: AppIcon
         CFBundleShortVersionString: 0.1.22
-        CFBundleVersion: 66
+        CFBundleVersion: 67
         CFBundleURLTypes:
           - CFBundleURLName: com.masterdance.desk.auth
             CFBundleURLSchemes:

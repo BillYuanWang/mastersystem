@@ -29,6 +29,8 @@ struct CourseBlockView: View {
         let borderColor = theme.scheduleBlockBorder(index: instructorIndex)
         let textColor = theme.scheduleBlockText
         let preview = CourseAttendancePreview(model: model, session: session)
+        let priceLabel = schedulePriceLabel(for: course, compact: false)
+        let compactPriceLabel = schedulePriceLabel(for: course, compact: true)
 
         Button(action: select) {
             ZStack(alignment: .bottomTrailing) {
@@ -39,6 +41,7 @@ struct CourseBlockView: View {
                         ageGroupName: ageGroup?.name ?? "年龄未设置",
                         instructorName: instructor?.displayName ?? "老师",
                         isPrivateLesson: course?.format == .privateLesson,
+                        priceLabel: compactPriceLabel,
                         textColor: textColor
                     )
                 } else {
@@ -48,6 +51,7 @@ struct CourseBlockView: View {
                         ageGroupName: ageGroup?.name ?? "年龄未设置",
                         instructorName: instructor?.displayName ?? "老师",
                         isPrivateLesson: course?.format == .privateLesson,
+                        priceLabel: priceLabel,
                         textColor: textColor
                     )
                 }
@@ -93,6 +97,7 @@ struct CourseBlockView: View {
         ageGroupName: String,
         instructorName: String,
         isPrivateLesson: Bool,
+        priceLabel: String,
         textColor: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: height < 62 ? 0 : 1) {
@@ -105,6 +110,8 @@ struct CourseBlockView: View {
                     .layoutPriority(1)
 
                 Spacer(minLength: 1)
+
+                priceBadge(priceLabel, compact: true, textColor: textColor)
 
                 formatBadge(
                     isPrivateLesson: isPrivateLesson,
@@ -160,6 +167,7 @@ struct CourseBlockView: View {
         ageGroupName: String,
         instructorName: String,
         isPrivateLesson: Bool,
+        priceLabel: String,
         textColor: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: height < 58 ? 0 : 1) {
@@ -192,6 +200,8 @@ struct CourseBlockView: View {
                     .layoutPriority(2)
 
                 Spacer(minLength: 0)
+
+                priceBadge(priceLabel, compact: false, textColor: textColor)
             }
 
             Spacer(minLength: height < 58 ? 0 : 2)
@@ -251,6 +261,26 @@ struct CourseBlockView: View {
             .accessibilityLabel("年龄段，\(ageGroupName)")
     }
 
+    private func priceBadge(_ label: String, compact: Bool, textColor: Color) -> some View {
+        Text(label)
+            .mdFont(size: compact ? labelFontSize - 0.5 : labelFontSize, weight: .bold, design: .monospaced)
+            .foregroundStyle(textColor.opacity(0.96))
+            .lineLimit(1)
+            .minimumScaleFactor(compact ? 0.58 : 0.66)
+            .padding(.horizontal, compact ? 2 : 3)
+            .frame(height: compact ? 12 : 13)
+            .background(
+                textColor.opacity(colorScheme == .dark ? 0.16 : 0.11),
+                in: RoundedRectangle(cornerRadius: 3)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 3)
+                    .stroke(textColor.opacity(0.2), lineWidth: 0.5)
+            )
+            .layoutPriority(3)
+            .accessibilityLabel("课程价格，\(label)")
+    }
+
     private func verticalMetadata(courseTypeName: String, ageGroupName: String) -> String {
         height >= 62
             ? courseTypeName.uppercased()
@@ -298,6 +328,69 @@ struct CourseBlockView: View {
         return String(format: "%d:%02d", displayHour, minute)
     }
 
+    private func schedulePriceLabel(for course: Course?, compact: Bool) -> String {
+        guard let course else { return compact ? "待定" : "价格待定" }
+
+        switch course.pricingStatus {
+        case .free:
+            return "免费"
+        case .pending:
+            if compact { return "待定" }
+            if course.format.requiresPerSessionEnrollment {
+                return "次价待定"
+            }
+            return course.dropInUnitPriceCents.map {
+                "期待定 · 次 $\(compactDollars($0))/节"
+            } ?? "期待定"
+        case .reviewRequired:
+            return reviewPriceLabel(for: course, compact: compact)
+        case .priced:
+            return pricedLabel(for: course, compact: compact)
+        }
+    }
+
+    private func pricedLabel(for course: Course, compact: Bool) -> String {
+        let primaryPrice = course.format.requiresPerSessionEnrollment
+            ? course.dropInUnitPriceCents
+            : course.unitPriceCents
+        guard let primaryPrice else { return compact ? "待定" : "价格待定" }
+        if compact { return "$\(compactDollars(primaryPrice))" }
+        if course.format.requiresPerSessionEnrollment {
+            return "次 $\(compactDollars(primaryPrice))/节"
+        }
+
+        var parts = ["期 $\(compactDollars(primaryPrice))/节"]
+        if let dropInPrice = course.dropInUnitPriceCents {
+            parts.append("次 $\(compactDollars(dropInPrice))/节")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func reviewPriceLabel(for course: Course, compact: Bool) -> String {
+        let primaryPrice = course.format.requiresPerSessionEnrollment
+            ? course.dropInUnitPriceCents
+            : course.unitPriceCents
+        guard let primaryPrice else { return compact ? "待核" : "价格待复核" }
+        if compact { return "$\(compactDollars(primaryPrice))*" }
+
+        var parts = [course.format.requiresPerSessionEnrollment
+            ? "次 $\(compactDollars(primaryPrice))/节"
+            : "期 $\(compactDollars(primaryPrice))/节"]
+        if !course.format.requiresPerSessionEnrollment,
+           let dropInPrice = course.dropInUnitPriceCents {
+            parts.append("次 $\(compactDollars(dropInPrice))/节")
+        }
+        parts.append("待核")
+        return parts.joined(separator: " · ")
+    }
+
+    private func compactDollars(_ cents: Int) -> String {
+        if cents.isMultiple(of: 100) {
+            return String(cents / 100)
+        }
+        return MoneyTextParser.dollars(from: cents)
+    }
+
     private var hoverText: String {
         let course = model.course(id: session.courseID)
         let courseType = course.flatMap { model.courseType(id: $0.courseTypeID) }?.name ?? ""
@@ -306,7 +399,8 @@ struct CourseBlockView: View {
         let roster = model.enrollments(forSession: session.id).compactMap {
             model.student(id: $0.studentID)?.displayName
         }
-        return [course?.name ?? "课程", courseType, age, room, fullSessionTime, roster.joined(separator: "、")]
+        let price = schedulePriceLabel(for: course, compact: false)
+        return [course?.name ?? "课程", courseType, age, room, fullSessionTime, price, roster.joined(separator: "、")]
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
     }
