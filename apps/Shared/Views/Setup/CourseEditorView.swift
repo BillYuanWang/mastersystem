@@ -162,7 +162,7 @@ struct CourseEditorView: View {
 
                                 if draft.pricingStatus == .priced || draft.pricingStatus == .reviewRequired {
                                     GridRow {
-                                        fieldLabel("每节单价")
+                                        fieldLabel("整期每节价")
                                         HStack(spacing: 7) {
                                             Text("$")
                                                 .mdFont(.monoStrong)
@@ -170,6 +170,21 @@ struct CourseEditorView: View {
                                             TextField("例如 25.00", text: $draft.unitPriceText)
                                                 .textFieldStyle(.roundedBorder)
                                                 .frame(width: 150)
+                                        }
+                                    }
+
+                                    GridRow {
+                                        fieldLabel("按次每节价")
+                                        HStack(spacing: 7) {
+                                            Text("$")
+                                                .mdFont(.monoStrong)
+                                                .foregroundStyle(theme.secondaryText)
+                                            TextField("例如 30.00", text: $draft.dropInUnitPriceText)
+                                                .textFieldStyle(.roundedBorder)
+                                                .frame(width: 150)
+                                            Text("留空则暂不开放按次报名")
+                                                .mdFont(.compact)
+                                                .foregroundStyle(theme.secondaryText)
                                         }
                                     }
                                 }
@@ -180,7 +195,7 @@ struct CourseEditorView: View {
                                         Text(coursePriceSummary)
                                             .mdFont(.monoStrong)
                                             .foregroundStyle(priceIsValid ? theme.primaryText : theme.danger)
-                                        Text("按当前实际课次计算；报名后会保存学员自己的价格快照。")
+                                        Text("整期价按实际课次计算；按次价按所选日期计算。报名后均保存价格快照。")
                                             .mdFont(.compact)
                                             .foregroundStyle(theme.secondaryText)
                                     }
@@ -314,21 +329,25 @@ struct CourseEditorView: View {
     }
 
     private var priceIsValid: Bool {
-        switch draft.pricingStatus {
+        let dropInText = draft.dropInUnitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dropInIsValid = dropInText.isEmpty
+            || (MoneyTextParser.cents(from: dropInText) ?? -1) > 0
+        return switch draft.pricingStatus {
         case .pending, .free:
             true
         case .priced:
-            (MoneyTextParser.cents(from: draft.unitPriceText) ?? 0) > 0
+            (MoneyTextParser.cents(from: draft.unitPriceText) ?? 0) > 0 && dropInIsValid
         case .reviewRequired:
-            draft.unitPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                || (MoneyTextParser.cents(from: draft.unitPriceText) ?? -1) >= 0
+            (draft.unitPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || (MoneyTextParser.cents(from: draft.unitPriceText) ?? -1) >= 0)
+                && dropInIsValid
         }
     }
 
     private var coursePriceSummary: String {
         switch draft.pricingStatus {
         case .pending:
-            return "待定价"
+            return dropInPriceSummary(prefix: "整期待定价")
         case .free:
             return "\(activeOccurrenceCount) 次 · 免费"
         case .priced, .reviewRequired:
@@ -339,8 +358,19 @@ struct CourseEditorView: View {
                 unitPriceCents: cents,
                 scheduledSessionCount: activeOccurrenceCount
             ) ?? 0
-            return "\(activeOccurrenceCount) 次 × $\(MoneyTextParser.dollars(from: cents)) = $\(MoneyTextParser.dollars(from: total))"
+            let termSummary = "整期 \(activeOccurrenceCount) 次 × $\(MoneyTextParser.dollars(from: cents)) = $\(MoneyTextParser.dollars(from: total))"
+            return dropInPriceSummary(prefix: termSummary)
         }
+    }
+
+    private func dropInPriceSummary(prefix: String) -> String {
+        let text = draft.dropInUnitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty,
+              let cents = MoneyTextParser.cents(from: text),
+              cents >= 0 else {
+            return prefix + " · 按次待填写"
+        }
+        return prefix + " · 按次 $\(MoneyTextParser.dollars(from: cents))/节"
     }
 
     private func pricingStatusTitle(_ status: CoursePricingStatus) -> String {
@@ -415,9 +445,22 @@ struct CourseEditorView: View {
         } label: {
             HStack(spacing: 6) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(date.formatted(.dateTime.month(.abbreviated).day()))
+                    Text(
+                        date.formatted(
+                            .dateTime
+                                .month(.abbreviated)
+                                .day()
+                                .locale(Locale(identifier: "zh_Hans_CN"))
+                        )
+                    )
                         .mdFont(.monoStrong)
-                    Text(date.formatted(.dateTime.weekday(.wide)))
+                    Text(
+                        date.formatted(
+                            .dateTime
+                                .weekday(.wide)
+                                .locale(Locale(identifier: "zh_Hans_CN"))
+                        )
+                    )
                         .mdFont(.compact)
                 }
                 Spacer(minLength: 2)
@@ -454,6 +497,7 @@ struct CourseEditorView: View {
             draft.courseTypeID = original.courseTypeID
             draft.pricingStatus = original.pricingStatus
             draft.unitPriceText = MoneyTextParser.dollars(from: original.unitPriceCents)
+            draft.dropInUnitPriceText = MoneyTextParser.dollars(from: original.dropInUnitPriceCents)
             draft.notes = original.notes ?? ""
             draft.isActive = original.isActive
 

@@ -121,7 +121,7 @@ struct MobileAttendanceHomeView: View {
     }
 
     private func attendanceProgress(for session: ClassSession) -> String {
-        let enrolledIDs = Set(model.enrollments(forCourse: session.courseID).map(\.studentID))
+        let enrolledIDs = Set(model.enrollments(forSession: session.id).map(\.studentID))
         let attendanceIDs: Set<StudentID> = Set(model.attendance.compactMap { record in
             guard record.sessionID == session.id, enrolledIDs.contains(record.studentID) else {
                 return nil
@@ -326,7 +326,7 @@ private struct MobileAttendanceSessionView: View {
 
     private var enrolledStudents: [Student] {
         guard let session = model.session(id: sessionID) else { return [] }
-        let studentIDs = Set(model.enrollments(forCourse: session.courseID).map(\.studentID))
+        let studentIDs = Set(model.enrollments(forSession: session.id).map(\.studentID))
         return model.students
             .filter { studentIDs.contains($0.id) }
             .sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
@@ -624,7 +624,7 @@ private struct MobileGuestAttendancePicker: View {
     }
 
     private var enrolledStudentIDs: Set<StudentID> {
-        Set(model.enrollments(forCourse: session.courseID).map(\.studentID))
+        Set(model.enrollments(forSession: session.id).map(\.studentID))
     }
 
     private var existingStudentIDs: Set<StudentID> {

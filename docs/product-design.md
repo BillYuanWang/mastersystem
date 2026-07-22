@@ -37,4 +37,4 @@ The app stores one of three explicit preferences: system, light, or dark.
 
 ## Scope guardrails
 
-Pricing, invoice, payment, credit, and receipt controls belong to macOS administration. iOS does not expose course prices or billing controls in this release. Per-class enrollment, parent course selection, teacher login, and AI implementation remain out of scope.
+Pricing, invoice, payment, credit, and receipt controls belong to macOS administration. Administrators may register a learner for the full term or selected class dates. iOS uses that coverage for schedules, attendance, leave, and remaining-session views but does not expose prices or billing controls in this release. Parent course selection, teacher login, and AI implementation remain out of scope.

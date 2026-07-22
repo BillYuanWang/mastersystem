@@ -13,7 +13,8 @@
 - Submit leave from iOS or on behalf of a user from administration.
 - Record versioned contract consent.
 - Record reminders and workflow notifications.
-- Set a per-session course price and calculate an enrollment estimate from actual sessions.
+- Set separate full-term and per-session course rates, then calculate from actual covered sessions.
+- Register a learner for the full term or explicitly selected class dates.
 - Adjust one enrollment discount, trial fee, billing start date, and price snapshot.
 - Issue immutable, versioned family invoices and record partial or full payments.
 - Produce private invoice and receipt PNGs while keeping all billing controls on macOS.

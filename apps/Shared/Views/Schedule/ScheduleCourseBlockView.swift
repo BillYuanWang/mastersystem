@@ -303,7 +303,7 @@ struct CourseBlockView: View {
         let courseType = course.flatMap { model.courseType(id: $0.courseTypeID) }?.name ?? ""
         let age = course.flatMap { model.ageGroup(id: $0.ageGroupID) }?.name ?? ""
         let room = model.effectiveRoom(for: session)?.name ?? ""
-        let roster = model.enrollments(forCourse: session.courseID).compactMap {
+        let roster = model.enrollments(forSession: session.id).compactMap {
             model.student(id: $0.studentID)?.displayName
         }
         return [course?.name ?? "课程", courseType, age, room, fullSessionTime, roster.joined(separator: "、")]

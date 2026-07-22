@@ -346,20 +346,25 @@ struct CourseSheetView: View {
     }
 
     private func pricingLabel(_ course: Course, sessionCount: Int) -> String {
+        let dropIn = course.dropInUnitPriceCents.map {
+            "按次 $\(MoneyTextParser.dollars(from: $0))"
+        } ?? "按次待定"
         switch course.pricingStatus {
         case .pending:
-            return "待定价"
+            return "整期待定 · \(dropIn)"
         case .free:
             return "免费"
         case .reviewRequired:
-            return course.unitPriceCents.map { "需复核 · $\(MoneyTextParser.dollars(from: $0))" } ?? "需复核"
+            return course.unitPriceCents.map {
+                "需复核 · 整期 $\(MoneyTextParser.dollars(from: $0)) · \(dropIn)"
+            } ?? "需复核 · \(dropIn)"
         case .priced:
             guard let unit = course.unitPriceCents else { return "待定价" }
             let total = BillingCalculator.courseTotalCents(
                 unitPriceCents: unit,
                 scheduledSessionCount: sessionCount
             ) ?? 0
-            return "$\(MoneyTextParser.dollars(from: unit))/节 · $\(MoneyTextParser.dollars(from: total))"
+            return "整期 $\(MoneyTextParser.dollars(from: unit))/节 · \(dropIn) · 合计 $\(MoneyTextParser.dollars(from: total))"
         }
     }
 

@@ -124,7 +124,7 @@ struct CourseAttendancePreview {
     fileprivate let pending: [CourseAttendancePerson]
 
     init(model: AppModel, session: ClassSession) {
-        let activeEnrollments = model.enrollments(forCourse: session.courseID)
+        let activeEnrollments = model.enrollments(forSession: session.id)
         let enrolledStudentIDs = Set(activeEnrollments.map(\.studentID))
         let sessionRecords = model.attendance.filter { $0.sessionID == session.id }
         let guestStudentIDs = Set(

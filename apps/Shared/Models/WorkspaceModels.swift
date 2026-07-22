@@ -104,6 +104,7 @@ struct CourseCreationDraft {
     var excludedDates: Set<Date> = []
     var pricingStatus = CoursePricingStatus.pending
     var unitPriceText = ""
+    var dropInUnitPriceText = ""
     var notes = ""
     var isActive = true
 }
@@ -243,6 +244,7 @@ enum AppModelError: LocalizedError {
     case courseTermRequiresHoliday
     case invalidCourseUnitPrice
     case missingEnrollmentFields
+    case missingPerSessionSelection
     case invalidEnrollmentBilling
     case missingBillingTerm
     case missingBillingItems
@@ -282,6 +284,7 @@ enum AppModelError: LocalizedError {
         case .courseTermRequiresHoliday: "请先为这个学期创建至少一个假期，再创建课程。"
         case .invalidCourseUnitPrice: "请输入正确的每节单价，金额最多保留两位小数。"
         case .missingEnrollmentFields: "请选择学生和课程。"
+        case .missingPerSessionSelection: "按次报名至少需要选择一个具体课次。"
         case .invalidEnrollmentBilling: "请检查报名计费起始日、单价、试课费和折扣。"
         case .missingBillingTerm: "请选择账单所属学期。"
         case .missingBillingItems: "账单至少需要一个收费项目。"
@@ -299,7 +302,7 @@ enum AppModelError: LocalizedError {
         case .invalidMakeupSource: "所选课次不是这名学员可补的请假或缺席。"
         case .makeupSourceAlreadyUsed: "这次请假或缺席已经登记过补课。"
         case .courseTermHasEnrollments: "这门课程已有报名，不能更换学期；请先处理报名。"
-        case .courseScheduleHasRecords: "这门课程已有签到或请假记录，不能整体重排课次。"
+        case .courseScheduleHasRecords: "这门课程已有签到、请假或按次报名记录，不能整体重排课次。"
         case .missingNewsTitle: "请输入新闻标题。"
         case .missingNewsBody: "请输入新闻正文。"
         case .missingNewsAuthor: "请输入作者。"

@@ -138,6 +138,7 @@ public struct Course: Identifiable, Codable, Equatable, Sendable {
     public var format: CourseFormat
     public var pricingStatus: CoursePricingStatus
     public var unitPriceCents: Int?
+    public var dropInUnitPriceCents: Int?
     public var notes: String?
     public var isActive: Bool
 
@@ -153,6 +154,7 @@ public struct Course: Identifiable, Codable, Equatable, Sendable {
         format: CourseFormat,
         pricingStatus: CoursePricingStatus = .pending,
         unitPriceCents: Int? = nil,
+        dropInUnitPriceCents: Int? = nil,
         notes: String? = nil,
         isActive: Bool = true
     ) {
@@ -167,6 +169,7 @@ public struct Course: Identifiable, Codable, Equatable, Sendable {
         self.format = format
         self.pricingStatus = pricingStatus
         self.unitPriceCents = unitPriceCents
+        self.dropInUnitPriceCents = dropInUnitPriceCents
         self.notes = notes
         self.isActive = isActive
     }
@@ -310,6 +313,8 @@ public struct Enrollment: Identifiable, Codable, Equatable, Sendable {
     public let studentID: StudentID
     public var enrolledAt: Date
     public var status: EnrollmentStatus
+    public var registrationMode: EnrollmentRegistrationMode
+    public var selectedSessionIDs: Set<ClassSessionID>
     public var pricingStatus: EnrollmentPricingStatus
     public var billingStartsOn: Date?
     public var unitPriceCents: Int?
@@ -326,6 +331,8 @@ public struct Enrollment: Identifiable, Codable, Equatable, Sendable {
         studentID: StudentID,
         enrolledAt: Date,
         status: EnrollmentStatus = .active,
+        registrationMode: EnrollmentRegistrationMode = .fullTerm,
+        selectedSessionIDs: Set<ClassSessionID> = [],
         pricingStatus: EnrollmentPricingStatus = .pending,
         billingStartsOn: Date? = nil,
         unitPriceCents: Int? = nil,
@@ -341,6 +348,8 @@ public struct Enrollment: Identifiable, Codable, Equatable, Sendable {
         self.studentID = studentID
         self.enrolledAt = enrolledAt
         self.status = status
+        self.registrationMode = registrationMode
+        self.selectedSessionIDs = selectedSessionIDs
         self.pricingStatus = pricingStatus
         self.billingStartsOn = billingStartsOn
         self.unitPriceCents = unitPriceCents
@@ -349,6 +358,75 @@ public struct Enrollment: Identifiable, Codable, Equatable, Sendable {
         self.discountKind = discountKind
         self.discountValue = discountValue
         self.billingNotes = billingNotes
+    }
+
+    public func includes(sessionID: ClassSessionID) -> Bool {
+        registrationMode == .fullTerm || selectedSessionIDs.contains(sessionID)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case termID
+        case courseID
+        case studentID
+        case enrolledAt
+        case status
+        case registrationMode
+        case selectedSessionIDs
+        case pricingStatus
+        case billingStartsOn
+        case unitPriceCents
+        case trialFeeCents
+        case discountName
+        case discountKind
+        case discountValue
+        case billingNotes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(EnrollmentID.self, forKey: .id)
+        termID = try values.decode(TermID.self, forKey: .termID)
+        courseID = try values.decode(CourseID.self, forKey: .courseID)
+        studentID = try values.decode(StudentID.self, forKey: .studentID)
+        enrolledAt = try values.decode(Date.self, forKey: .enrolledAt)
+        status = try values.decode(EnrollmentStatus.self, forKey: .status)
+        registrationMode = try values.decodeIfPresent(
+            EnrollmentRegistrationMode.self,
+            forKey: .registrationMode
+        ) ?? .fullTerm
+        selectedSessionIDs = try values.decodeIfPresent(
+            Set<ClassSessionID>.self,
+            forKey: .selectedSessionIDs
+        ) ?? []
+        pricingStatus = try values.decode(EnrollmentPricingStatus.self, forKey: .pricingStatus)
+        billingStartsOn = try values.decodeIfPresent(Date.self, forKey: .billingStartsOn)
+        unitPriceCents = try values.decodeIfPresent(Int.self, forKey: .unitPriceCents)
+        trialFeeCents = try values.decode(Int.self, forKey: .trialFeeCents)
+        discountName = try values.decodeIfPresent(String.self, forKey: .discountName)
+        discountKind = try values.decodeIfPresent(BillingDiscountKind.self, forKey: .discountKind)
+        discountValue = try values.decodeIfPresent(Int.self, forKey: .discountValue)
+        billingNotes = try values.decodeIfPresent(String.self, forKey: .billingNotes)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(termID, forKey: .termID)
+        try values.encode(courseID, forKey: .courseID)
+        try values.encode(studentID, forKey: .studentID)
+        try values.encode(enrolledAt, forKey: .enrolledAt)
+        try values.encode(status, forKey: .status)
+        try values.encode(registrationMode, forKey: .registrationMode)
+        try values.encode(selectedSessionIDs, forKey: .selectedSessionIDs)
+        try values.encode(pricingStatus, forKey: .pricingStatus)
+        try values.encodeIfPresent(billingStartsOn, forKey: .billingStartsOn)
+        try values.encodeIfPresent(unitPriceCents, forKey: .unitPriceCents)
+        try values.encode(trialFeeCents, forKey: .trialFeeCents)
+        try values.encodeIfPresent(discountName, forKey: .discountName)
+        try values.encodeIfPresent(discountKind, forKey: .discountKind)
+        try values.encodeIfPresent(discountValue, forKey: .discountValue)
+        try values.encodeIfPresent(billingNotes, forKey: .billingNotes)
     }
 }
 

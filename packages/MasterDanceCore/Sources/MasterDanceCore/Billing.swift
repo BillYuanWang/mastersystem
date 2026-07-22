@@ -13,6 +13,11 @@ public enum EnrollmentPricingStatus: String, Codable, CaseIterable, Sendable {
     case reviewRequired = "review_required"
 }
 
+public enum EnrollmentRegistrationMode: String, Codable, CaseIterable, Sendable {
+    case fullTerm = "full_term"
+    case perSession = "per_session"
+}
+
 public enum BillingDiscountKind: String, Codable, CaseIterable, Sendable {
     case percentage
     case fixedAmount = "fixed_amount"
@@ -98,7 +103,8 @@ public enum BillingCalculator {
         let startDay = enrollment.billingStartsOn.map(calendar.startOfDay(for:))
         let normalSessionCount = sessions.reduce(into: 0) { count, session in
             guard session.status != .cancelled,
-                  !trialSessionIDs.contains(session.id) else { return }
+                  !trialSessionIDs.contains(session.id),
+                  enrollment.includes(sessionID: session.id) else { return }
             if let startDay,
                calendar.startOfDay(for: session.startsAt) < startDay {
                 return

@@ -269,6 +269,7 @@ struct CourseRow: Codable, Sendable {
     let format: String
     let pricingStatus: String
     let unitPriceCents: Int?
+    let dropInUnitPriceCents: Int?
     let notes: String?
     let isActive: Bool
 
@@ -285,6 +286,7 @@ struct CourseRow: Codable, Sendable {
         case format
         case pricingStatus = "pricing_status"
         case unitPriceCents = "unit_price_cents"
+        case dropInUnitPriceCents = "drop_in_unit_price_cents"
         case notes
         case isActive = "is_active"
     }
@@ -302,6 +304,7 @@ struct CourseRow: Codable, Sendable {
         format = course.format == .privateLesson ? "private_lesson" : "group"
         pricingStatus = course.pricingStatus.rawValue
         unitPriceCents = course.unitPriceCents
+        dropInUnitPriceCents = course.dropInUnitPriceCents
         notes = course.notes
         isActive = course.isActive
     }
@@ -329,6 +332,7 @@ struct CourseRow: Codable, Sendable {
             format: domainFormat,
             pricingStatus: domainPricingStatus,
             unitPriceCents: unitPriceCents,
+            dropInUnitPriceCents: dropInUnitPriceCents,
             notes: notes,
             isActive: isActive
         )
@@ -574,6 +578,7 @@ struct EnrollmentRow: Codable, Sendable {
     let studentID: UUID
     let enrolledAt: String
     let status: String
+    let registrationMode: String
     let pricingStatus: String
     let billingStartsOn: String?
     let unitPriceCents: Int?
@@ -591,6 +596,7 @@ struct EnrollmentRow: Codable, Sendable {
         case studentID = "student_id"
         case enrolledAt = "enrolled_at"
         case status
+        case registrationMode = "registration_mode"
         case pricingStatus = "pricing_status"
         case billingStartsOn = "billing_starts_on"
         case unitPriceCents = "unit_price_cents"
@@ -609,6 +615,7 @@ struct EnrollmentRow: Codable, Sendable {
         studentID = enrollment.studentID.rawValue
         enrolledAt = SupabaseDateCodec.timestampString(from: enrollment.enrolledAt)
         status = enrollment.status.rawValue
+        registrationMode = enrollment.registrationMode.rawValue
         pricingStatus = enrollment.pricingStatus.rawValue
         billingStartsOn = enrollment.billingStartsOn.map(SupabaseDateCodec.dayString(from:))
         unitPriceCents = enrollment.unitPriceCents
@@ -619,9 +626,12 @@ struct EnrollmentRow: Codable, Sendable {
         billingNotes = enrollment.billingNotes
     }
 
-    func domain() throws -> Enrollment {
+    func domain(selectedSessionIDs: Set<ClassSessionID> = []) throws -> Enrollment {
         guard let status = EnrollmentStatus(rawValue: status) else {
             throw SupabaseRepositoryError.invalidValue(field: "报名状态", value: status)
+        }
+        guard let domainRegistrationMode = EnrollmentRegistrationMode(rawValue: registrationMode) else {
+            throw SupabaseRepositoryError.invalidValue(field: "报名方式", value: registrationMode)
         }
         guard let domainPricingStatus = EnrollmentPricingStatus(rawValue: pricingStatus) else {
             throw SupabaseRepositoryError.invalidValue(field: "报名定价状态", value: pricingStatus)
@@ -642,6 +652,8 @@ struct EnrollmentRow: Codable, Sendable {
             studentID: StudentID(serverID: studentID),
             enrolledAt: SupabaseDateCodec.timestamp(from: enrolledAt),
             status: status,
+            registrationMode: domainRegistrationMode,
+            selectedSessionIDs: selectedSessionIDs,
             pricingStatus: domainPricingStatus,
             billingStartsOn: try billingStartsOn.map(SupabaseDateCodec.date(from:)),
             unitPriceCents: unitPriceCents,
@@ -651,6 +663,73 @@ struct EnrollmentRow: Codable, Sendable {
             discountValue: discountValue,
             billingNotes: billingNotes
         )
+    }
+}
+
+struct EnrollmentSessionSelectionRow: Codable, Sendable {
+    let enrollmentID: UUID
+    let sessionID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case enrollmentID = "enrollment_id"
+        case sessionID = "session_id"
+    }
+}
+
+struct AdminSaveEnrollmentParameters: Encodable, Sendable {
+    let id: UUID
+    let termID: UUID
+    let courseID: UUID
+    let studentID: UUID
+    let enrolledAt: String
+    let status: String
+    let registrationMode: String
+    let pricingStatus: String
+    let billingStartsOn: String?
+    let unitPriceCents: Int?
+    let trialFeeCents: Int
+    let discountName: String?
+    let discountKind: String?
+    let discountValue: Int?
+    let billingNotes: String?
+    let selectedSessionIDs: [UUID]
+
+    enum CodingKeys: String, CodingKey {
+        case id = "target_id"
+        case termID = "target_term_id"
+        case courseID = "target_course_id"
+        case studentID = "target_student_id"
+        case enrolledAt = "target_enrolled_at"
+        case status = "target_status"
+        case registrationMode = "target_registration_mode"
+        case pricingStatus = "target_pricing_status"
+        case billingStartsOn = "target_billing_starts_on"
+        case unitPriceCents = "target_unit_price_cents"
+        case trialFeeCents = "target_trial_fee_cents"
+        case discountName = "target_discount_name"
+        case discountKind = "target_discount_kind"
+        case discountValue = "target_discount_value"
+        case billingNotes = "target_billing_notes"
+        case selectedSessionIDs = "target_selected_session_ids"
+    }
+
+    init(_ enrollment: Enrollment) {
+        id = enrollment.id.rawValue
+        termID = enrollment.termID.rawValue
+        courseID = enrollment.courseID.rawValue
+        studentID = enrollment.studentID.rawValue
+        enrolledAt = SupabaseDateCodec.timestampString(from: enrollment.enrolledAt)
+        status = enrollment.status.rawValue
+        registrationMode = enrollment.registrationMode.rawValue
+        pricingStatus = enrollment.pricingStatus.rawValue
+        billingStartsOn = enrollment.billingStartsOn.map(SupabaseDateCodec.dayString(from:))
+        unitPriceCents = enrollment.unitPriceCents
+        trialFeeCents = enrollment.trialFeeCents
+        discountName = enrollment.discountName
+        discountKind = enrollment.discountKind?.rawValue
+        discountValue = enrollment.discountValue
+        billingNotes = enrollment.billingNotes
+        selectedSessionIDs = enrollment.selectedSessionIDs.map(\.rawValue).sorted { $0.uuidString < $1.uuidString }
     }
 }
 

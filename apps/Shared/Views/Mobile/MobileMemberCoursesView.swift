@@ -56,7 +56,7 @@ struct MobileMemberCoursesView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(course.name)
                 .mdFont(.bodyStrong)
-            if let next = model.nextSession(forCourse: course.id) {
+            if let next = model.nextSession(for: enrollment) {
                 Text(next.startsAt.mdChineseFormatted(.dateTime.weekday(.wide).hour().minute()))
                     .mdFont(.monoStrong)
                     .foregroundStyle(.secondary)
@@ -95,7 +95,7 @@ private struct MobileMemberCourseDetailView: View {
             }
 
             Section("接下来") {
-                let sessions = Array(model.sessions(forCourse: course.id).filter { $0.startsAt >= Date() }.prefix(8))
+                let sessions = Array(model.sessions(for: enrollment).filter { $0.startsAt >= Date() }.prefix(8))
                 if sessions.isEmpty {
                     Text("暂无后续课次")
                         .foregroundStyle(theme.secondaryText)

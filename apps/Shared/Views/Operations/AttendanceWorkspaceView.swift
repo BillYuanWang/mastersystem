@@ -428,12 +428,8 @@ struct AttendanceWorkspaceView: View {
             .sorted { $0.startsAt < $1.startsAt }
     }
 
-    private func courseRoster(_ course: Course) -> [Enrollment] {
-        model.enrollments(forCourse: course.id)
-    }
-
     private func regularRoster(course: Course, session: ClassSession) -> [Enrollment] {
-        courseRoster(course).filter { enrollment in
+        model.enrollments(forSession: session.id).filter { enrollment in
             guard let record = attendanceRecord(sessionID: session.id, studentID: enrollment.studentID) else {
                 return true
             }
@@ -474,7 +470,7 @@ struct AttendanceWorkspaceView: View {
     }
 
     private func guestCandidates(course: Course, session: ClassSession) -> [Student] {
-        let enrolledStudentIDs = Set(courseRoster(course).map(\.studentID))
+        let enrolledStudentIDs = Set(model.enrollments(forSession: session.id).map(\.studentID))
         let recordedStudentIDs = Set(
             model.attendance
                 .filter { $0.sessionID == session.id }

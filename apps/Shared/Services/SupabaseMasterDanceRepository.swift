@@ -410,13 +410,25 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
                 && (courseID == nil || row.courseID == courseID?.rawValue)
                 && (studentID == nil || row.studentID == studentID?.rawValue)
         }
-        return try filtered.map { try $0.domain() }
+        let selectionRows: [EnrollmentSessionSelectionRow] = try await client
+            .from("enrollment_session_selections")
+            .select("enrollment_id,session_id")
+            .execute()
+            .value
+        let selectedIDsByEnrollment = Dictionary(
+            grouping: selectionRows,
+            by: \EnrollmentSessionSelectionRow.enrollmentID
+        ).mapValues { rows in
+            Set(rows.map { ClassSessionID(serverID: $0.sessionID) })
+        }
+        return try filtered.map {
+            try $0.domain(selectedSessionIDs: selectedIDsByEnrollment[$0.id] ?? [])
+        }
     }
 
     func save(enrollment: Enrollment) async throws {
         try await client
-            .from("enrollments")
-            .upsert(EnrollmentRow(enrollment, organizationID: organizationID))
+            .rpc("admin_save_enrollment", params: AdminSaveEnrollmentParameters(enrollment))
             .execute()
     }
 

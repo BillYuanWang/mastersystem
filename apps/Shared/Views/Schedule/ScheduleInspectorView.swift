@@ -29,7 +29,7 @@ struct ScheduleInspectorView: View {
     }
 
     private func inspector(session: ClassSession, course: Course, theme: MDTheme) -> some View {
-        let roster = model.enrollments(forCourse: course.id)
+        let roster = model.enrollments(forSession: session.id)
         let records = model.attendance.filter { $0.sessionID == session.id }
         let presentCount = records.filter { $0.status == .present }.count
         let leaveCount = records.filter { $0.status == .excused }.count

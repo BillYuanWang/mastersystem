@@ -49,6 +49,7 @@ struct EnrollmentBillingEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     identitySection(theme: theme)
+                    registrationSection(theme: theme)
                     pricingSection(theme: theme)
                     discountSection(theme: theme)
                     estimateSection(theme: theme)
@@ -69,8 +70,64 @@ struct EnrollmentBillingEditorView: View {
             }
             .padding(14)
         }
-        .frame(width: 700, height: 690)
+        .frame(width: 780, height: 780)
         .background(theme.background)
+        .onChange(of: draft.registrationMode) { _, mode in
+            applyCoursePrice(for: mode)
+            if mode == .fullTerm {
+                draft.selectedSessionIDs.removeAll()
+                draft.billingStartsOn = model.suggestedBillingStart(
+                    courseID: original.courseID,
+                    studentID: original.studentID
+                )
+            }
+        }
+    }
+
+    private func registrationSection(theme: MDTheme) -> some View {
+        section("报名方式", theme: theme) {
+            Picker("报名方式", selection: $draft.registrationMode) {
+                Text("整期报名").tag(EnrollmentRegistrationMode.fullTerm)
+                Text("按次报名").tag(EnrollmentRegistrationMode.perSession)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 300)
+
+            if draft.registrationMode == .perSession {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("选择具体课次")
+                            .mdFont(.compactStrong)
+                        Text("已选 \(draft.selectedSessionIDs.count) 节")
+                            .mdFont(.mono)
+                            .foregroundStyle(theme.accent)
+                        Spacer()
+                        Button("清空") {
+                            draft.selectedSessionIDs.removeAll()
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(draft.selectedSessionIDs.isEmpty)
+                    }
+
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 128), spacing: 8)],
+                        alignment: .leading,
+                        spacing: 8
+                    ) {
+                        ForEach(selectableSessions) { session in
+                            sessionSelectionButton(session, theme: theme)
+                        }
+                    }
+
+                    if selectableSessions.isEmpty {
+                        Text("这门课程没有可报名课次")
+                            .mdFont(.compact)
+                            .foregroundStyle(theme.danger)
+                    }
+                }
+            }
+        }
     }
 
     private func identitySection(theme: MDTheme) -> some View {
@@ -115,13 +172,13 @@ struct EnrollmentBillingEditorView: View {
                 }
 
                 GridRow {
-                    fieldLabel("每节单价")
+                    fieldLabel(draft.registrationMode == .fullTerm ? "整期每节价" : "按次每节价")
                     HStack(spacing: 7) {
                         Text("$").mdFont(.monoStrong).foregroundStyle(theme.secondaryText)
                         TextField("例如 25.00", text: $unitPriceText)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 150)
-                        if let coursePrice = model.course(id: original.courseID)?.unitPriceCents {
+                        if let coursePrice = selectedCoursePrice {
                             Button("使用课程价 $\(MoneyTextParser.dollars(from: coursePrice))") {
                                 unitPriceText = MoneyTextParser.dollars(from: coursePrice)
                             }
@@ -246,7 +303,21 @@ struct EnrollmentBillingEditorView: View {
         model.billingEstimate(for: draftForEstimate)
     }
 
+    private var selectableSessions: [ClassSession] {
+        model.sessions(forCourse: original.courseID).filter { $0.status != .cancelled }
+    }
+
+    private var selectedCoursePrice: Int? {
+        guard let course = model.course(id: original.courseID) else { return nil }
+        return draft.registrationMode == .fullTerm
+            ? course.unitPriceCents
+            : course.dropInUnitPriceCents
+    }
+
     private var isValid: Bool {
+        if draft.registrationMode == .perSession, draft.selectedSessionIDs.isEmpty {
+            return false
+        }
         guard let trial = parsedTrialFee, trial >= 0 else { return false }
         if draft.pricingStatus == .ready {
             guard draft.billingStartsOn != nil,
@@ -286,6 +357,9 @@ struct EnrollmentBillingEditorView: View {
     private func save() {
         guard isValid else { return }
         var saved = draft
+        if saved.registrationMode == .fullTerm {
+            saved.selectedSessionIDs.removeAll()
+        }
         saved.unitPriceCents = parsedUnitPrice
         saved.trialFeeCents = parsedTrialFee ?? 0
         saved.discountName = discountEnabled
@@ -303,6 +377,65 @@ struct EnrollmentBillingEditorView: View {
             try await model.saveEnrollmentBilling(saved)
         }
         dismiss()
+    }
+
+    private func sessionSelectionButton(_ session: ClassSession, theme: MDTheme) -> some View {
+        let selected = draft.selectedSessionIDs.contains(session.id)
+        return Button {
+            if selected {
+                draft.selectedSessionIDs.remove(session.id)
+            } else {
+                draft.selectedSessionIDs.insert(session.id)
+            }
+            draft.billingStartsOn = selectableSessions
+                .filter { draft.selectedSessionIDs.contains($0.id) }
+                .map(\.startsAt)
+                .min()
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selected ? theme.accent : theme.secondaryText)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(sessionDateLabel(session.startsAt))
+                        .mdFont(.compactStrong)
+                    Text(session.startsAt.formatted(date: .omitted, time: .shortened))
+                        .mdFont(.mono)
+                        .foregroundStyle(theme.secondaryText)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 9)
+            .frame(height: 42)
+            .background(selected ? theme.accent.opacity(0.10) : theme.surface)
+            .overlay {
+                RoundedRectangle(cornerRadius: MDMetrics.radius)
+                    .stroke(selected ? theme.accent : theme.separator, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func applyCoursePrice(for mode: EnrollmentRegistrationMode) {
+        guard let course = model.course(id: original.courseID) else { return }
+        let cents = mode == .fullTerm ? course.unitPriceCents : course.dropInUnitPriceCents
+        unitPriceText = MoneyTextParser.dollars(from: cents)
+        if cents == nil {
+            draft.pricingStatus = .pending
+        } else if course.pricingStatus == .reviewRequired {
+            draft.pricingStatus = .reviewRequired
+        } else {
+            draft.pricingStatus = .ready
+        }
+    }
+
+    private func sessionDateLabel(_ date: Date) -> String {
+        date.formatted(
+            .dateTime
+                .month()
+                .day()
+                .weekday(.abbreviated)
+                .locale(Locale(identifier: "zh_Hans_CN"))
+        )
     }
 
     private func statusBadge(theme: MDTheme) -> some View {

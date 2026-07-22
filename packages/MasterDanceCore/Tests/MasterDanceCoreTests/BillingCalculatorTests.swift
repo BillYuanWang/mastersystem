@@ -20,6 +20,25 @@ struct BillingCalculatorTests {
         #expect(estimate.totalCents == 42_500)
     }
 
+    @Test("per-session tuition includes only explicitly selected class dates")
+    func perSessionTuition() {
+        let fixture = Fixture()
+        let sessions = fixture.sessions(count: 6)
+        var enrollment = fixture.enrollment(unitPriceCents: 3_200)
+        enrollment.registrationMode = .perSession
+        enrollment.selectedSessionIDs = [sessions[1].id, sessions[4].id]
+
+        let estimate = BillingCalculator.estimate(
+            enrollment: enrollment,
+            sessions: sessions,
+            calendar: fixture.calendar
+        )
+
+        #expect(estimate.normalSessionCount == 2)
+        #expect(estimate.tuitionBeforeDiscountCents == 6_400)
+        #expect(estimate.totalCents == 6_400)
+    }
+
     @Test("trial sessions and pre-billing dates are excluded from normal tuition")
     func trialConversion() {
         let fixture = Fixture()

@@ -151,14 +151,16 @@ extension AppModel {
     }
 
     func upcomingSessions(forStudent studentID: StudentID, from date: Date = Date()) -> [ClassSession] {
-        let courseIDs = Set(activeEnrollments(forStudent: studentID).map(\.courseID))
-        return sessions
-            .filter {
-                courseIDs.contains($0.courseID)
-                    && $0.startsAt >= date
-                    && $0.status == .scheduled
-            }
+        activeEnrollments(forStudent: studentID)
+            .flatMap { sessions(for: $0) }
+            .filter { $0.startsAt >= date && $0.status == .scheduled }
             .sorted { $0.startsAt < $1.startsAt }
+    }
+
+    func nextSession(for enrollment: Enrollment, from date: Date = Date()) -> ClassSession? {
+        sessions(for: enrollment)
+            .filter { $0.startsAt >= date && $0.status == .scheduled }
+            .min { $0.startsAt < $1.startsAt }
     }
 
     func nextSession(forCourse courseID: CourseID, from date: Date = Date()) -> ClassSession? {

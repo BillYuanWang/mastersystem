@@ -571,8 +571,12 @@ private struct BillingComposerView: View {
                     studentID: enrollment.studentID,
                     enrollmentID: enrollment.id,
                     kind: .tuition,
-                    title: courseName + " 学费",
-                    detail: "\(estimate.normalSessionCount) 次 × $\(MoneyTextParser.dollars(from: unit))",
+                    title: courseName + (enrollment.registrationMode == .perSession ? " 按次学费" : " 整期学费"),
+                    detail: billingDetail(
+                        enrollment: enrollment,
+                        sessionCount: estimate.normalSessionCount,
+                        unitPriceCents: unit
+                    ),
                     quantity: max(1, estimate.normalSessionCount),
                     unitAmountCents: unit,
                     amountText: MoneyTextParser.dollars(from: tuition)
@@ -608,6 +612,24 @@ private struct BillingComposerView: View {
         }
         generatedFile = nil
         statusMessage = enrollments.isEmpty ? "该家庭本学期暂无报名" : "已按报名生成"
+    }
+
+    private func billingDetail(
+        enrollment: Enrollment,
+        sessionCount: Int,
+        unitPriceCents: Int
+    ) -> String {
+        let calculation = "\(sessionCount) 次 × $\(MoneyTextParser.dollars(from: unitPriceCents))"
+        guard enrollment.registrationMode == .perSession else {
+            return "整期报名 · " + calculation
+        }
+        let dates = model.sessions(for: enrollment)
+            .filter { $0.status != .cancelled }
+            .map { $0.startsAt.formatted(.dateTime.month().day()) }
+            .joined(separator: "、")
+        return dates.isEmpty
+            ? "按次报名 · " + calculation
+            : "按次报名 · " + calculation + " · " + dates
     }
 
     private func appendPreset(_ kind: BillingLineItemKind) {

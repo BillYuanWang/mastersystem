@@ -388,6 +388,7 @@ private struct LeaveRequestEditorView: View {
         return model.enrollments
             .filter { enrollment in
                 enrollment.courseID == session.courseID
+                    && enrollment.includes(sessionID: session.id)
                     && (enrollment.status != .withdrawn || enrollment.id == original?.enrollmentID)
             }
             .sorted { left, right in

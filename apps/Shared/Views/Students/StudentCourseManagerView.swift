@@ -76,7 +76,7 @@ struct StudentCourseManagerView: View {
 
     private func enrollmentRow(_ enrollment: Enrollment, theme: MDTheme) -> some View {
         let course = model.course(id: enrollment.courseID)
-        let firstSession = course.flatMap { model.sessions(forCourse: $0.id).first }
+        let firstSession = model.sessions(for: enrollment).first
 
         return HStack(alignment: .top, spacing: 8) {
             RoundedRectangle(cornerRadius: 2)
@@ -98,6 +98,9 @@ struct StudentCourseManagerView: View {
                     .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                 }
+                Text(enrollment.registrationMode == .fullTerm ? "整期报名" : "按次报名 · \(enrollment.selectedSessionIDs.count) 节")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
             }
             Spacer()
             Button {

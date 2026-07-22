@@ -331,7 +331,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 
     public func save(enrollment: Enrollment) async throws {
         try await ensureSnapshot()
-        await local.save(enrollment: enrollment)
+        try await local.save(enrollment: enrollment)
         try await enqueue(.saveEnrollment(enrollment))
     }
 

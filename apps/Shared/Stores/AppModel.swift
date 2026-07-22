@@ -290,13 +290,7 @@ final class AppModel {
             return
         }
 
-        let enrollmentID = session(id: sessionID).flatMap { session in
-            enrollments.first {
-                $0.courseID == session.courseID
-                    && $0.studentID == studentID
-                    && $0.status == .active
-            }?.id
-        }
+        let enrollmentID = enrollment(forSession: sessionID, studentID: studentID)?.id
         leaveRequests.append(
             LeaveRequest(
                 sessionID: sessionID,
@@ -440,8 +434,27 @@ final class AppModel {
         enrollments.filter { $0.courseID == courseID && $0.status == .active }
     }
 
+    func enrollments(forSession sessionID: ClassSessionID) -> [Enrollment] {
+        guard let session = session(id: sessionID) else { return [] }
+        return enrollments.filter {
+            $0.courseID == session.courseID
+                && $0.status == .active
+                && $0.includes(sessionID: sessionID)
+        }
+    }
+
+    func enrollment(forSession sessionID: ClassSessionID, studentID: StudentID) -> Enrollment? {
+        enrollments(forSession: sessionID).first { $0.studentID == studentID }
+    }
+
     func sessions(forCourse courseID: CourseID) -> [ClassSession] {
         sessions.filter { $0.courseID == courseID }.sorted { $0.startsAt < $1.startsAt }
+    }
+
+    func sessions(for enrollment: Enrollment) -> [ClassSession] {
+        sessions(forCourse: enrollment.courseID).filter {
+            enrollment.includes(sessionID: $0.id)
+        }
     }
 
     func trialSessionIDs(for enrollment: Enrollment) -> Set<ClassSessionID> {
@@ -508,16 +521,14 @@ final class AppModel {
         forStudent studentID: StudentID,
         asOf date: Date = Date()
     ) -> Int {
-        let activeCourseIDs = Set(
-            enrollments
-                .filter { $0.studentID == studentID && $0.status == .active }
-                .map(\.courseID)
-        )
-        return sessions.filter {
-            activeCourseIDs.contains($0.courseID)
-                && $0.status == .scheduled
-                && $0.endsAt > date
-        }.count
+        let activeEnrollments = enrollments.filter {
+            $0.studentID == studentID && $0.status == .active
+        }
+        return activeEnrollments.reduce(into: 0) { count, enrollment in
+            count += sessions(for: enrollment).filter {
+                $0.status == .scheduled && $0.endsAt > date
+            }.count
+        }
     }
 
     func perfectAttendanceStatus(
@@ -761,6 +772,7 @@ final class AppModel {
                 format: selectedCourseType.isPrivate ? .privateLesson : .group,
                 pricingStatus: pricing.status,
                 unitPriceCents: pricing.unitPriceCents,
+                dropInUnitPriceCents: pricing.dropInUnitPriceCents,
                 notes: draft.notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                 isActive: draft.isActive
             )
@@ -804,6 +816,7 @@ final class AppModel {
         updated.format = selectedCourseType.isPrivate ? .privateLesson : .group
         updated.pricingStatus = pricing.status
         updated.unitPriceCents = pricing.unitPriceCents
+        updated.dropInUnitPriceCents = pricing.dropInUnitPriceCents
         updated.notes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         updated.isActive = draft.isActive
 
@@ -812,6 +825,7 @@ final class AppModel {
         let scheduleChanged = !sameSchedule(existingSessions, replacementSessions)
         let pricingWasExplicitlyChanged = original.pricingStatus != pricing.status
             || original.unitPriceCents != pricing.unitPriceCents
+            || original.dropInUnitPriceCents != pricing.dropInUnitPriceCents
         if scheduleChanged,
            !pricingWasExplicitlyChanged,
            updated.pricingStatus == .priced || updated.pricingStatus == .free {
@@ -821,7 +835,12 @@ final class AppModel {
             let existingSessionIDs = Set(existingSessions.map(\.id))
             let hasAttendance = attendance.contains { existingSessionIDs.contains($0.sessionID) }
             let hasLeaveRequests = leaveRequests.contains { existingSessionIDs.contains($0.sessionID) }
-            guard !hasAttendance, !hasLeaveRequests else {
+            let hasPerSessionEnrollments = enrollments.contains {
+                $0.courseID == original.id
+                    && $0.registrationMode == .perSession
+                    && !$0.selectedSessionIDs.isEmpty
+            }
+            guard !hasAttendance, !hasLeaveRequests, !hasPerSessionEnrollments else {
                 throw AppModelError.courseScheduleHasRecords
             }
         }
@@ -870,24 +889,38 @@ final class AppModel {
 
     private func normalizedCoursePricing(
         from draft: CourseCreationDraft
-    ) throws -> (status: CoursePricingStatus, unitPriceCents: Int?) {
+    ) throws -> (
+        status: CoursePricingStatus,
+        unitPriceCents: Int?,
+        dropInUnitPriceCents: Int?
+    ) {
         let priceText = draft.unitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dropInPriceText = draft.dropInUnitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dropInPrice: Int?
+        if dropInPriceText.isEmpty {
+            dropInPrice = nil
+        } else {
+            guard let cents = MoneyTextParser.cents(from: dropInPriceText), cents >= 0 else {
+                throw AppModelError.invalidCourseUnitPrice
+            }
+            dropInPrice = cents
+        }
         switch draft.pricingStatus {
         case .pending:
-            return (.pending, nil)
+            return (.pending, nil, dropInPrice)
         case .free:
-            return (.free, 0)
+            return (.free, 0, 0)
         case .priced:
             guard let cents = MoneyTextParser.cents(from: priceText), cents > 0 else {
                 throw AppModelError.invalidCourseUnitPrice
             }
-            return (.priced, cents)
+            return (.priced, cents, dropInPrice)
         case .reviewRequired:
-            guard !priceText.isEmpty else { return (.reviewRequired, nil) }
+            guard !priceText.isEmpty else { return (.reviewRequired, nil, dropInPrice) }
             guard let cents = MoneyTextParser.cents(from: priceText), cents >= 0 else {
                 throw AppModelError.invalidCourseUnitPrice
             }
-            return (.reviewRequired, cents)
+            return (.reviewRequired, cents, dropInPrice)
         }
     }
 
@@ -1297,29 +1330,53 @@ final class AppModel {
         }
     }
 
-    func enroll(studentID: StudentID, courseID: CourseID) async throws {
+    func enroll(
+        studentID: StudentID,
+        courseID: CourseID,
+        registrationMode: EnrollmentRegistrationMode = .fullTerm,
+        selectedSessionIDs: Set<ClassSessionID> = []
+    ) async throws {
         guard let course = course(id: courseID) else {
             throw AppModelError.missingEnrollmentFields
         }
-        let suggestedStart = suggestedBillingStart(courseID: courseID, studentID: studentID)
+        let validSelectedSessionIDs = Set(
+            sessions(forCourse: courseID)
+                .filter { selectedSessionIDs.contains($0.id) && $0.status != .cancelled }
+                .map(\.id)
+        )
+        if registrationMode == .perSession, validSelectedSessionIDs.isEmpty {
+            throw AppModelError.missingPerSessionSelection
+        }
+        let suggestedStart: Date?
+        if registrationMode == .perSession {
+            suggestedStart = sessions(forCourse: courseID)
+                .filter { validSelectedSessionIDs.contains($0.id) }
+                .map(\.startsAt)
+                .min()
+        } else {
+            suggestedStart = suggestedBillingStart(courseID: courseID, studentID: studentID)
+        }
+        let selectedUnitPrice = registrationMode == .fullTerm
+            ? course.unitPriceCents
+            : course.dropInUnitPriceCents
         let initialPricingStatus: EnrollmentPricingStatus
-        switch course.pricingStatus {
-        case .priced, .free:
-            initialPricingStatus = suggestedStart == nil ? .pending : .ready
-        case .reviewRequired:
+        switch (course.pricingStatus, selectedUnitPrice) {
+        case (.reviewRequired, _):
             initialPricingStatus = .reviewRequired
-        case .pending:
+        case (_, .some):
+            initialPricingStatus = suggestedStart == nil ? .pending : .ready
+        default:
             initialPricingStatus = .pending
         }
         try await withCloudActivity(label: "添加报名") {
             if let existing = enrollments.first(where: { $0.studentID == studentID && $0.courseID == courseID }) {
                 var restored = existing
                 restored.status = .active
-                if restored.unitPriceCents == nil {
-                    restored.unitPriceCents = course.unitPriceCents
-                    restored.billingStartsOn = restored.billingStartsOn ?? suggestedStart
-                    restored.pricingStatus = initialPricingStatus
-                }
+                restored.registrationMode = registrationMode
+                restored.selectedSessionIDs = registrationMode == .perSession ? validSelectedSessionIDs : []
+                restored.unitPriceCents = selectedUnitPrice
+                restored.billingStartsOn = suggestedStart
+                restored.pricingStatus = initialPricingStatus
                 try await repository.save(enrollment: restored)
             } else {
                 try await repository.save(
@@ -1328,9 +1385,11 @@ final class AppModel {
                         courseID: courseID,
                         studentID: studentID,
                         enrolledAt: Date(),
+                        registrationMode: registrationMode,
+                        selectedSessionIDs: registrationMode == .perSession ? validSelectedSessionIDs : [],
                         pricingStatus: initialPricingStatus,
                         billingStartsOn: suggestedStart,
-                        unitPriceCents: course.unitPriceCents
+                        unitPriceCents: selectedUnitPrice
                     )
                 )
             }
@@ -1346,6 +1405,15 @@ final class AppModel {
     }
 
     func saveEnrollmentBilling(_ enrollment: Enrollment) async throws {
+        if enrollment.registrationMode == .perSession {
+            let validIDs = Set(sessions(forCourse: enrollment.courseID).map(\.id))
+            guard !enrollment.selectedSessionIDs.isEmpty,
+                  enrollment.selectedSessionIDs.isSubset(of: validIDs) else {
+                throw AppModelError.missingPerSessionSelection
+            }
+        } else if !enrollment.selectedSessionIDs.isEmpty {
+            throw AppModelError.invalidEnrollmentBilling
+        }
         guard enrollment.trialFeeCents >= 0,
               enrollment.unitPriceCents.map({ $0 >= 0 }) ?? true else {
             throw AppModelError.invalidEnrollmentBilling
@@ -1422,13 +1490,7 @@ final class AppModel {
         status: AttendanceStatus,
         makeupForSessionID: ClassSessionID? = nil
     ) async throws {
-        let matchingEnrollmentID = session(id: sessionID).flatMap { session in
-            enrollments.first {
-                $0.courseID == session.courseID
-                    && $0.studentID == studentID
-                    && $0.status == .active
-            }?.id
-        }
+        let matchingEnrollmentID = enrollment(forSession: sessionID, studentID: studentID)?.id
         let enrollmentID = status.isGuestAttendance ? nil : matchingEnrollmentID
         guard status.isGuestAttendance || enrollmentID != nil else {
             throw AppModelError.attendanceRequiresEnrollment

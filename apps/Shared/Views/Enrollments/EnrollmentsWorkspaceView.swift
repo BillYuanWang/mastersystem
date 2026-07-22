@@ -10,8 +10,11 @@ struct EnrollmentsWorkspaceView: View {
     @SceneStorage("md-desk.enrollments.search") private var searchText = ""
     @State private var draftStudentID: StudentID?
     @State private var draftCourseID: CourseID?
+    @State private var draftRegistrationMode = EnrollmentRegistrationMode.fullTerm
+    @State private var draftSelectedSessionIDs: Set<ClassSessionID> = []
     @State private var showingStudentPicker = false
     @State private var showingCoursePicker = false
+    @State private var showingRegistrationPicker = false
     @State private var pendingEnrollments: [PendingEnrollmentSubmission] = []
     @State private var deletingID: EnrollmentID?
     @State private var editingEnrollment: Enrollment?
@@ -125,6 +128,7 @@ struct EnrollmentsWorkspaceView: View {
             enrollmentHeader("学期", width: EnrollmentColumns.term)
             enrollmentHeader("上课时间", width: EnrollmentColumns.schedule)
             enrollmentHeader("老师 / 教室", width: EnrollmentColumns.staff)
+            enrollmentHeader("报名方式", width: EnrollmentColumns.mode)
             enrollmentHeader("预计课程费", width: EnrollmentColumns.price)
             enrollmentHeader("计费", width: EnrollmentColumns.billing)
             enrollmentHeader("状态", width: EnrollmentColumns.status)
@@ -188,7 +192,29 @@ struct EnrollmentsWorkspaceView: View {
             enrollmentCell(draftCourse.flatMap { model.term(id: $0.termID) }?.name ?? "—", width: EnrollmentColumns.term)
             enrollmentCell(draftCourse.map(scheduleLabel) ?? "—", width: EnrollmentColumns.schedule, mono: draftCourse != nil)
             enrollmentCell(draftCourse.map(staffAndRoom) ?? "—", width: EnrollmentColumns.staff)
-            enrollmentCell(draftCourse.map(coursePriceLabel) ?? "—", width: EnrollmentColumns.price, mono: true)
+            Button {
+                showingRegistrationPicker = true
+            } label: {
+                enrollmentCell(draftRegistrationLabel, width: EnrollmentColumns.mode, strong: true)
+            }
+            .buttonStyle(.plain)
+            .disabled(draftCourse == nil)
+            .popover(isPresented: $showingRegistrationPicker, arrowEdge: .bottom) {
+                if let course = draftCourse {
+                    DraftEnrollmentRegistrationPicker(
+                        model: model,
+                        course: course,
+                        mode: $draftRegistrationMode,
+                        selectedSessionIDs: $draftSelectedSessionIDs
+                    )
+                }
+            }
+            .help("选择整期报名或具体课次")
+            enrollmentCell(
+                draftCourse.map { coursePriceLabel($0, mode: draftRegistrationMode) } ?? "—",
+                width: EnrollmentColumns.price,
+                mono: true
+            )
             enrollmentCell(draftCourse.map(coursePricingStatusLabel) ?? "—", width: EnrollmentColumns.billing)
             enrollmentCell("待提交", width: EnrollmentColumns.status)
             enrollmentCell(Date().formatted(date: .abbreviated, time: .omitted), width: EnrollmentColumns.date, mono: true)
@@ -198,7 +224,7 @@ struct EnrollmentsWorkspaceView: View {
                 Image(systemName: "checkmark")
             }
             .buttonStyle(MDIconButtonStyle())
-            .disabled(draftStudentID == nil || draftCourseID == nil)
+            .disabled(!canSubmitDraft)
             .help("提交报名")
             .frame(width: EnrollmentColumns.action)
         }
@@ -252,7 +278,8 @@ struct EnrollmentsWorkspaceView: View {
             enrollmentCell(course.flatMap { model.term(id: $0.termID) }?.name ?? "—", width: EnrollmentColumns.term)
             enrollmentCell(course.map(scheduleLabel) ?? "—", width: EnrollmentColumns.schedule, mono: course != nil)
             enrollmentCell(course.map(staffAndRoom) ?? "—", width: EnrollmentColumns.staff)
-            enrollmentCell(course.map(coursePriceLabel) ?? "—", width: EnrollmentColumns.price, mono: true)
+            enrollmentCell(registrationLabel(submission.registrationMode, count: submission.selectedSessionIDs.count), width: EnrollmentColumns.mode)
+            enrollmentCell(course.map { coursePriceLabel($0, mode: submission.registrationMode) } ?? "—", width: EnrollmentColumns.price, mono: true)
             enrollmentCell(course.map(coursePricingStatusLabel) ?? "—", width: EnrollmentColumns.billing)
             pendingStatus(submission.status, theme: theme)
             enrollmentCell("刚刚", width: EnrollmentColumns.date, mono: true)
@@ -269,8 +296,9 @@ struct EnrollmentsWorkspaceView: View {
             enrollmentCell(model.student(id: enrollment.studentID)?.displayName ?? "—", width: EnrollmentColumns.student, strong: true)
             enrollmentCell(model.course(id: enrollment.courseID)?.name ?? "—", width: EnrollmentColumns.course)
             enrollmentCell(model.term(id: enrollment.termID)?.name ?? "—", width: EnrollmentColumns.term)
-            enrollmentCell(courseForEnrollment(enrollment).map(scheduleLabel) ?? "未排课", width: EnrollmentColumns.schedule, mono: true)
+            enrollmentCell(enrollmentScheduleLabel(enrollment), width: EnrollmentColumns.schedule, mono: true)
             enrollmentCell(courseForEnrollment(enrollment).map(staffAndRoom) ?? "—", width: EnrollmentColumns.staff)
+            enrollmentCell(registrationLabel(enrollment.registrationMode, count: enrollment.selectedSessionIDs.count), width: EnrollmentColumns.mode)
             enrollmentCell(enrollmentPriceLabel(enrollment), width: EnrollmentColumns.price, mono: true)
             enrollmentCell(enrollmentPricingStatusLabel(enrollment.pricingStatus), width: EnrollmentColumns.billing)
             enrollmentCell(statusLabel(enrollment.status), width: EnrollmentColumns.status)
@@ -411,20 +439,31 @@ struct EnrollmentsWorkspaceView: View {
     private func selectStudent(_ studentID: StudentID) {
         draftStudentID = studentID
         draftCourseID = nil
+        draftRegistrationMode = .fullTerm
+        draftSelectedSessionIDs.removeAll()
         showingStudentPicker = false
     }
 
     private func selectCourse(_ courseID: CourseID) {
         draftCourseID = courseID
+        draftRegistrationMode = .fullTerm
+        draftSelectedSessionIDs.removeAll()
         showingCoursePicker = false
     }
 
     private func submitDraft() {
         guard let studentID = draftStudentID, let courseID = draftCourseID else { return }
-        let submission = PendingEnrollmentSubmission(studentID: studentID, courseID: courseID)
+        let submission = PendingEnrollmentSubmission(
+            studentID: studentID,
+            courseID: courseID,
+            registrationMode: draftRegistrationMode,
+            selectedSessionIDs: draftRegistrationMode == .perSession ? draftSelectedSessionIDs : []
+        )
         pendingEnrollments.insert(submission, at: 0)
         draftStudentID = nil
         draftCourseID = nil
+        draftRegistrationMode = .fullTerm
+        draftSelectedSessionIDs.removeAll()
         start(submission)
     }
 
@@ -448,7 +487,12 @@ struct EnrollmentsWorkspaceView: View {
                 }
             }
         ) {
-            try await model.enroll(studentID: submission.studentID, courseID: submission.courseID)
+            try await model.enroll(
+                studentID: submission.studentID,
+                courseID: submission.courseID,
+                registrationMode: submission.registrationMode,
+                selectedSessionIDs: submission.selectedSessionIDs
+            )
         }
     }
 
@@ -490,15 +534,42 @@ struct EnrollmentsWorkspaceView: View {
         return instructor + " · " + room
     }
 
-    private func coursePriceLabel(_ course: Course) -> String {
-        switch course.pricingStatus {
+    private func coursePriceLabel(
+        _ course: Course,
+        mode: EnrollmentRegistrationMode = .fullTerm
+    ) -> String {
+        let unitPrice = mode == .fullTerm ? course.unitPriceCents : course.dropInUnitPriceCents
+        return switch course.pricingStatus {
         case .pending: "待定价"
         case .free: "$0.00"
         case .reviewRequired:
-            course.unitPriceCents.map { "$\(MoneyTextParser.dollars(from: $0))/节" } ?? "待复核"
+            unitPrice.map { "$\(MoneyTextParser.dollars(from: $0))/节" } ?? "待复核"
         case .priced:
-            course.unitPriceCents.map { "$\(MoneyTextParser.dollars(from: $0))/节" } ?? "待定价"
+            unitPrice.map { "$\(MoneyTextParser.dollars(from: $0))/节" } ?? "待定价"
         }
+    }
+
+    private var canSubmitDraft: Bool {
+        guard draftStudentID != nil, draftCourseID != nil else { return false }
+        return draftRegistrationMode == .fullTerm || !draftSelectedSessionIDs.isEmpty
+    }
+
+    private var draftRegistrationLabel: String {
+        registrationLabel(draftRegistrationMode, count: draftSelectedSessionIDs.count)
+    }
+
+    private func registrationLabel(_ mode: EnrollmentRegistrationMode, count: Int) -> String {
+        mode == .fullTerm ? "整期" : "按次 \(count) 节"
+    }
+
+    private func enrollmentScheduleLabel(_ enrollment: Enrollment) -> String {
+        guard enrollment.registrationMode == .perSession else {
+            return courseForEnrollment(enrollment).map(scheduleLabel) ?? "未排课"
+        }
+        let selected = model.sessions(for: enrollment)
+        guard let first = selected.first else { return "未选择课次" }
+        let date = first.startsAt.formatted(.dateTime.month().day())
+        return selected.count == 1 ? date : "\(date) 起 · \(selected.count) 节"
     }
 
     private func coursePricingStatusLabel(_ course: Course) -> String {
@@ -890,6 +961,118 @@ private struct CourseEnrollmentPicker: View {
     }
 }
 
+@MainActor
+private struct DraftEnrollmentRegistrationPicker: View {
+    let model: AppModel
+    let course: Course
+    @Binding var mode: EnrollmentRegistrationMode
+    @Binding var selectedSessionIDs: Set<ClassSessionID>
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 9) {
+                Text(course.name)
+                    .mdFont(.bodyStrong)
+                    .lineLimit(1)
+                Picker("报名方式", selection: $mode) {
+                    Text("整期报名").tag(EnrollmentRegistrationMode.fullTerm)
+                    Text("按次报名").tag(EnrollmentRegistrationMode.perSession)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            .padding(12)
+
+            Divider()
+
+            if mode == .fullTerm {
+                ContentUnavailableView(
+                    "整期报名",
+                    systemImage: "calendar.badge.checkmark",
+                    description: Text("包含这门课程所有未取消的课次。")
+                )
+            } else if sessions.isEmpty {
+                ContentUnavailableView("没有可选课次", systemImage: "calendar.badge.exclamationmark")
+            } else {
+                HStack {
+                    Text("选择具体日期")
+                        .mdFont(.compactStrong)
+                    Spacer()
+                    Text("已选 \(selectedSessionIDs.count) 节")
+                        .mdFont(.monoStrong)
+                        .foregroundStyle(theme.accent)
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 36)
+                .background(theme.subtleSurface)
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(sessions) { session in
+                            sessionRow(session, theme: theme)
+                            Divider().padding(.leading, 42)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(width: 440, height: 480)
+        .background(theme.background)
+        .onChange(of: mode) { _, newMode in
+            if newMode == .fullTerm {
+                selectedSessionIDs.removeAll()
+            }
+        }
+    }
+
+    private var sessions: [ClassSession] {
+        model.sessions(forCourse: course.id).filter { $0.status != .cancelled }
+    }
+
+    private func sessionRow(_ session: ClassSession, theme: MDTheme) -> some View {
+        let selected = selectedSessionIDs.contains(session.id)
+        return Button {
+            if selected {
+                selectedSessionIDs.remove(session.id)
+            } else {
+                selectedSessionIDs.insert(session.id)
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 16))
+                    .foregroundStyle(selected ? theme.accent : theme.secondaryText)
+                    .frame(width: 22)
+                Text(sessionDateLabel(session.startsAt))
+                    .mdFont(.bodyStrong)
+                    .foregroundStyle(theme.primaryText)
+                Spacer()
+                Text(session.startsAt.formatted(date: .omitted, time: .shortened))
+                    .mdFont(.mono)
+                    .foregroundStyle(theme.secondaryText)
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sessionDateLabel(_ date: Date) -> String {
+        date.formatted(
+            .dateTime
+                .year()
+                .month()
+                .day()
+                .weekday(.wide)
+                .locale(Locale(identifier: "zh_Hans_CN"))
+        )
+    }
+}
+
 private enum StudentPickerFilter: String, CaseIterable, Identifiable {
     case all
     case children
@@ -923,6 +1106,8 @@ private struct PendingEnrollmentSubmission: Identifiable {
     let id = UUID()
     let studentID: StudentID
     let courseID: CourseID
+    let registrationMode: EnrollmentRegistrationMode
+    let selectedSessionIDs: Set<ClassSessionID>
     var status = PendingEnrollmentStatus.syncing
 }
 
@@ -942,6 +1127,7 @@ private enum EnrollmentColumns {
     static let term: CGFloat = 125
     static let schedule: CGFloat = 175
     static let staff: CGFloat = 120
+    static let mode: CGFloat = 82
     static let price: CGFloat = 125
     static let billing: CGFloat = 76
     static let status: CGFloat = 88

@@ -102,7 +102,8 @@ public enum PerfectAttendancePolicy {
             let hasOccurred = session.startsAt < date
             let isInEvaluationWeek = session.startsAt >= evaluationWeekStart
                 && session.startsAt < evaluationWeekEnd
-            return session.startsAt >= enrollment.enrolledAt
+            return enrollment.includes(sessionID: session.id)
+                && session.startsAt >= enrollment.enrolledAt
                 && (hasOccurred || isInEvaluationWeek)
         }
         let relevantSessionIDs = Set(relevantSessions.map(\.id))

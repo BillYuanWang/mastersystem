@@ -219,7 +219,8 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
     public func deleteSession(id: ClassSessionID) throws {
         let inUse = data.attendance.contains { $0.sessionID == id }
             || data.leaveRequests.contains { $0.sessionID == id }
-        try requireUnused(!inUse, "这次课已有签到或请假记录，不能删除。")
+            || data.enrollments.contains { $0.selectedSessionIDs.contains(id) }
+        try requireUnused(!inUse, "这次课已有签到、请假或按次报名记录，不能删除。")
         remove(id: id, from: &data.sessions)
     }
 
@@ -346,7 +347,25 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         }
     }
 
-    public func save(enrollment: Enrollment) { upsert(enrollment, in: &data.enrollments) }
+    public func save(enrollment: Enrollment) throws {
+        switch enrollment.registrationMode {
+        case .fullTerm:
+            guard enrollment.selectedSessionIDs.isEmpty else {
+                throw PreviewRepositoryError.invalidPerSessionEnrollment
+            }
+        case .perSession:
+            let validSessionIDs = Set(
+                data.sessions
+                    .filter { $0.courseID == enrollment.courseID && $0.status != .cancelled }
+                    .map(\.id)
+            )
+            guard !enrollment.selectedSessionIDs.isEmpty,
+                  enrollment.selectedSessionIDs.isSubset(of: validSessionIDs) else {
+                throw PreviewRepositoryError.invalidPerSessionEnrollment
+            }
+        }
+        upsert(enrollment, in: &data.enrollments)
+    }
     public func deleteEnrollment(id: EnrollmentID) { remove(id: id, from: &data.enrollments) }
 
     public func listAttendance(
@@ -793,6 +812,7 @@ public enum PreviewRepositoryError: LocalizedError, Sendable, Equatable {
     case termRequiresHoliday
     case invalidTermRange
     case holidayOutsideTerm
+    case invalidPerSessionEnrollment
 
     public var errorDescription: String? {
         switch self {
@@ -812,6 +832,8 @@ public enum PreviewRepositoryError: LocalizedError, Sendable, Equatable {
             "结束日期不能早于开始日期。"
         case .holidayOutsideTerm:
             "假期日期必须位于学期范围内。"
+        case .invalidPerSessionEnrollment:
+            "按次报名必须选择这门课程中尚未取消的具体课次。"
         }
     }
 }
