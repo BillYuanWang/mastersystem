@@ -2,7 +2,9 @@
 
 ## Scope
 
-- Preserve `web`, `macos-app`, and `product-research`; treat them as migration inputs.
+- Preserve `web` and `product-research` as migration inputs. Treat `macos-app`
+  as retired reference source only: never build, launch, or restore its old app
+  bundle; its compatibility script must redirect to the current root app.
 - Keep production domain logic in `packages/MasterDanceCore` and UI composition in `apps`.
 - Keep engineering documentation primarily in English and ASCII. Product-facing
   operator documentation may use Chinese when that is the clearest language for

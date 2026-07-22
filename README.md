@@ -1,6 +1,6 @@
 # Master Dance
 
-Current local test release: `v0.1.23a` (documentation release; macOS app version
+Current local test release: `v0.1.23b` (legacy cleanup release; macOS app version
 0.1.23, build 68; iOS remains build 42).
 
 Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
@@ -33,7 +33,10 @@ A release is not complete until `README.md`, `HISTORY.md`, `TUTORIAL.md`, and
 `TUTORIAL.pdf` describe the same behavior. Product-facing tutorial text is in
 plain Chinese; engineering documents under `docs` may remain in English.
 
-Existing `web`, `macos-app`, and `product-research` directories are migration inputs. This skeleton does not replace or remove them.
+The `web` and `product-research` directories remain migration inputs. The
+`macos-app` directory contains retired reference source only; its old English/CSV
+app bundle has been removed and its build command redirects to the supported
+native app.
 
 ## Run MD Desk
 
@@ -46,6 +49,10 @@ Build, package, and open the native app with Apple Command Line Tools:
 The script creates `MD Desk.app` at the repository root. The same command is
 available as the Codex `Run` action. Optional modes are `--verify`, `--debug`,
 `--logs`, and `--telemetry`.
+
+This root bundle is the only supported macOS app. Do not launch or recreate the
+retired `macos-app/MD Desk.app`; its CSV is retained only as a read-only
+historical backup.
 
 MD Desk accepts administrator accounts only. The first Auth user completes the
 one-time school activation after signing in; additional administrators are

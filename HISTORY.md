@@ -18,6 +18,16 @@ Run `./script/build_tutorial_pdf.sh` after editing the tutorial.
 
 ## Current release
 
+### v0.1.23b - 2026-07-22
+
+- Removed the retired English/CSV schedule prototype app bundle from
+  `macos-app` while preserving its five-course CSV as a read-only backup.
+- Redirected the legacy build script and nested Codex Run action to the current
+  root MD Desk app so the old prototype cannot be rebuilt accidentally.
+- Updated the current build script to close stale legacy `MDDesk` and
+  `MasterDanceReserve` processes before opening the supported app.
+- No Supabase schema or production cloud data changed in this release.
+
 ### v0.1.23a - 2026-07-22
 
 - Added the first complete Chinese MD Desk administrator manual, organized by

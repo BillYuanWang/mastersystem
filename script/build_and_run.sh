@@ -18,7 +18,11 @@ APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 
+# Close both the supported native app and any retired CSV prototype that may
+# still be running from an old Finder or Codex launch.
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+pkill -x "MDDesk" >/dev/null 2>&1 || true
+pkill -x "MasterDanceReserve" >/dev/null 2>&1 || true
 
 cd "$ROOT_DIR"
 swift build --product "$PRODUCT_NAME"
