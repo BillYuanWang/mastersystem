@@ -1,6 +1,7 @@
 # Master Dance
 
-Current local test release: `v0.1.23` (macOS app version 0.1.23, build 68; iOS remains build 42).
+Current local test release: `v0.1.23a` (documentation release; macOS app version
+0.1.23, build 68; iOS remains build 42).
 
 Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
 
@@ -12,6 +13,25 @@ Master Dance formal product backend. / Master Dance 正式产品云端后端。
 - `apps`: the production MD Desk macOS source, the Master Dance iPhone source, and shared SwiftUI workflows.
 - `supabase`: production Postgres schema, RLS, Storage, Realtime, Edge Function, seed, and pgTAP tests.
 - `docs`: architecture, product scope, visual baseline, policy log, migration design, QA evidence, and delivery roadmap.
+
+## Documentation
+
+- [Administrator tutorial (Markdown)](TUTORIAL.md): the editable, searchable
+  Chinese guide for MD Desk administrators.
+- [Administrator tutorial (PDF)](TUTORIAL.pdf): the printable and shareable
+  edition, with bookmarks and a linked table of contents.
+- [Release history](HISTORY.md): user-visible changes by version.
+
+`TUTORIAL.md` is the source of truth for the PDF. Regenerate the PDF after every
+user-visible change:
+
+```sh
+./script/build_tutorial_pdf.sh
+```
+
+A release is not complete until `README.md`, `HISTORY.md`, `TUTORIAL.md`, and
+`TUTORIAL.pdf` describe the same behavior. Product-facing tutorial text is in
+plain Chinese; engineering documents under `docs` may remain in English.
 
 Existing `web`, `macos-app`, and `product-research` directories are migration inputs. This skeleton does not replace or remove them.
 
@@ -96,5 +116,7 @@ Guardian leave must be recorded at least 12 hours before class; administrators
 can record it at any time, and leave records do not use an approval workflow.
 Age groups, rooms, instructors, course types, and course names are user-managed
 data. The legacy course-category field remains hidden for database compatibility.
-Per-class enrollment, tax, refunds, exceptional rule engines, parent course
-selection, and teacher login are intentionally absent.
+Tax, refunds, exceptional rule engines, parent course selection, and teacher
+login are intentionally absent. Group courses may be enrolled for the full term
+or selected sessions when a drop-in price is configured; private lessons are
+always enrolled by selected session.

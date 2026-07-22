@@ -4,7 +4,9 @@
 
 - Preserve `web`, `macos-app`, and `product-research`; treat them as migration inputs.
 - Keep production domain logic in `packages/MasterDanceCore` and UI composition in `apps`.
-- Keep source and repository documentation primarily in English and ASCII.
+- Keep engineering documentation primarily in English and ASCII. Product-facing
+  operator documentation may use Chinese when that is the clearest language for
+  the intended user.
 
 ## Product constraints
 
@@ -26,3 +28,16 @@
 - Run `swift test` from the repository root after core changes.
 - Generate app projects from `apps/project.yml`; do not commit generated build output.
 - Never commit secrets, recordings, production CSV data, app bundles, or local data folders.
+
+## Release documentation
+
+- Every user-visible feature, workflow, rule, limitation, or release change must
+  update all four root artifacts before the release is considered complete:
+  `README.md`, `HISTORY.md`, `TUTORIAL.md`, and the regenerated `TUTORIAL.pdf`.
+- Keep `TUTORIAL.md` as the single editable source for the PDF. Regenerate the
+  PDF with `./script/build_tutorial_pdf.sh`; never edit the PDF by hand.
+- Write the administrator tutorial in plain Chinese, organize it by the macOS
+  tabs, and update cross-tab workflows when a change affects more than one tab.
+- For documentation-only releases, use the current product version plus the
+  next letter suffix. Do not change app build numbers or the database solely for
+  a documentation release.
