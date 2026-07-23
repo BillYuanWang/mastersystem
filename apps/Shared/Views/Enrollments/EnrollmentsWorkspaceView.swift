@@ -8,6 +8,9 @@ struct EnrollmentsWorkspaceView: View {
 
     @SceneStorage("md-desk.enrollments.selected-term-id") private var selectedTermIDStorage = ""
     @SceneStorage("md-desk.enrollments.search") private var searchText = ""
+    @SceneStorage("md-desk.enrollments.sort-column") private var sortColumnStorage = ""
+    @SceneStorage("md-desk.enrollments.sort-ascending") private var sortAscending = true
+    @SceneStorage("md-desk.enrollments.column-filters") private var columnFiltersStorage = ""
     @State private var draftStudentID: StudentID?
     @State private var draftCourseID: CourseID?
     @State private var draftRegistrationMode = EnrollmentRegistrationMode.fullTerm
@@ -125,24 +128,44 @@ struct EnrollmentsWorkspaceView: View {
 
     private func tableHeader(theme: MDTheme) -> some View {
         HStack(spacing: 0) {
-            enrollmentHeader("学员", width: EnrollmentColumns.student)
-            enrollmentHeader("课程", width: EnrollmentColumns.course)
-            enrollmentHeader("学期", width: EnrollmentColumns.term)
-            enrollmentHeader("上课时间", width: EnrollmentColumns.schedule)
-            enrollmentHeader("老师 / 教室", width: EnrollmentColumns.staff)
-            enrollmentHeader("报名方式", width: EnrollmentColumns.mode)
-            enrollmentHeader("预计课程费", width: EnrollmentColumns.price)
-            enrollmentHeader("计费", width: EnrollmentColumns.billing)
-            enrollmentHeader("状态", width: EnrollmentColumns.status)
-            enrollmentHeader("报名日期", width: EnrollmentColumns.date)
+            ForEach(EnrollmentTableColumn.allCases) { column in
+                enrollmentColumnHeader(column)
+            }
             Spacer(minLength: 0)
-            Text("操作")
-                .mdFont(.compactStrong)
-                .foregroundStyle(theme.secondaryText)
-                .frame(width: EnrollmentColumns.action)
+            HStack(spacing: 5) {
+                if hasActiveColumnFilters {
+                    Button {
+                        columnFiltersStorage = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(theme.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .help("清除全部列筛选")
+                }
+                Text("操作")
+                    .mdFont(.compactStrong)
+                    .foregroundStyle(theme.secondaryText)
+            }
+            .frame(width: EnrollmentColumns.action)
         }
         .frame(height: 34)
         .background(theme.subtleSurface)
+    }
+
+    private func enrollmentColumnHeader(_ column: EnrollmentTableColumn) -> some View {
+        MDTableColumnHeader(
+            title: column.title,
+            width: column.width,
+            isSorted: sortColumn == column,
+            ascending: sortAscending,
+            options: enrollmentFilterOptions(for: column),
+            selectedValues: mdTableFilterSelection(
+                storage: $columnFiltersStorage,
+                key: column.rawValue
+            ),
+            onSort: { toggleSort(column) }
+        )
     }
 
     private func draftRow(theme: MDTheme) -> some View {
@@ -378,21 +401,144 @@ struct EnrollmentsWorkspaceView: View {
 
     private var filteredEnrollments: [Enrollment] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return model.enrollments.filter { enrollment in
+        var result = model.enrollments.filter { enrollment in
             guard selectedTermID == nil || enrollment.termID == selectedTermID else { return false }
-            guard !query.isEmpty else { return true }
-            let student = model.student(id: enrollment.studentID)
-            let course = model.course(id: enrollment.courseID)
-            let guardianName = student.flatMap { model.guardian(id: $0.guardianID)?.displayName } ?? ""
-            let searchableValues = [
-                student?.displayName ?? "",
-                guardianName,
-                course?.name ?? "",
-                course.flatMap { model.instructor(id: $0.defaultInstructorID)?.displayName } ?? "",
-                course.flatMap { model.room(id: $0.defaultRoomID)?.name } ?? ""
-            ]
-            return searchableValues.contains { $0.localizedCaseInsensitiveContains(query) }
+            let matchesSearch: Bool
+            if query.isEmpty {
+                matchesSearch = true
+            } else {
+                let student = model.student(id: enrollment.studentID)
+                let course = model.course(id: enrollment.courseID)
+                let guardianName = student.flatMap { model.guardian(id: $0.guardianID)?.displayName } ?? ""
+                let searchableValues = [
+                    student?.displayName ?? "",
+                    guardianName,
+                    course?.name ?? "",
+                    course.flatMap { model.instructor(id: $0.defaultInstructorID)?.displayName } ?? "",
+                    course.flatMap { model.room(id: $0.defaultRoomID)?.name } ?? ""
+                ]
+                matchesSearch = searchableValues.contains { $0.localizedCaseInsensitiveContains(query) }
+            }
+            return matchesSearch && matchesEnrollmentColumnFilters(enrollment)
         }
+        guard let sortColumn else { return result }
+        result.sort { enrollmentOrderedBefore($0, $1, by: sortColumn) }
+        return result
+    }
+
+    private var filterSourceEnrollments: [Enrollment] {
+        model.enrollments.filter { selectedTermID == nil || $0.termID == selectedTermID }
+    }
+
+    private var sortColumn: EnrollmentTableColumn? {
+        get { EnrollmentTableColumn(rawValue: sortColumnStorage) }
+        nonmutating set { sortColumnStorage = newValue?.rawValue ?? "" }
+    }
+
+    private var hasActiveColumnFilters: Bool {
+        EnrollmentTableColumn.allCases.contains {
+            !MDTableFilterCodec.selection(in: columnFiltersStorage, for: $0.rawValue).isEmpty
+        }
+    }
+
+    private func toggleSort(_ column: EnrollmentTableColumn) {
+        if sortColumn == column {
+            sortAscending.toggle()
+        } else {
+            sortColumn = column
+            sortAscending = true
+        }
+    }
+
+    private func enrollmentFilterOptions(for column: EnrollmentTableColumn) -> [MDTableFilterOption] {
+        mdTableFilterOptions(
+            filterSourceEnrollments,
+            key: { enrollmentColumnKey($0, column: column) },
+            label: { enrollmentColumnLabel($0, column: column) }
+        )
+    }
+
+    private func matchesEnrollmentColumnFilters(_ enrollment: Enrollment) -> Bool {
+        EnrollmentTableColumn.allCases.allSatisfy { column in
+            let selected = MDTableFilterCodec.selection(
+                in: columnFiltersStorage,
+                for: column.rawValue
+            )
+            return selected.isEmpty || selected.contains(enrollmentColumnKey(enrollment, column: column))
+        }
+    }
+
+    private func enrollmentColumnKey(
+        _ enrollment: Enrollment,
+        column: EnrollmentTableColumn
+    ) -> String {
+        switch column {
+        case .student: enrollment.studentID.description
+        case .course: enrollment.courseID.description
+        case .term: enrollment.termID.description
+        case .schedule: enrollmentScheduleLabel(enrollment)
+        case .staff: courseForEnrollment(enrollment).map(staffAndRoom) ?? "—"
+        case .mode: enrollment.registrationMode.rawValue
+        case .price: enrollmentPriceLabel(enrollment)
+        case .billing: enrollment.pricingStatus.rawValue
+        case .status: enrollment.status.rawValue
+        case .date:
+            enrollment.enrolledAt.formatted(.iso8601.year().month().day())
+        }
+    }
+
+    private func enrollmentColumnLabel(
+        _ enrollment: Enrollment,
+        column: EnrollmentTableColumn
+    ) -> String {
+        switch column {
+        case .student: model.student(id: enrollment.studentID)?.displayName ?? "—"
+        case .course: model.course(id: enrollment.courseID)?.name ?? "—"
+        case .term: model.term(id: enrollment.termID)?.name ?? "—"
+        case .schedule: enrollmentScheduleLabel(enrollment)
+        case .staff: courseForEnrollment(enrollment).map(staffAndRoom) ?? "—"
+        case .mode: registrationLabel(enrollment.registrationMode, count: enrollment.selectedSessionIDs.count)
+        case .price: enrollmentPriceLabel(enrollment)
+        case .billing: enrollmentPricingStatusLabel(enrollment.pricingStatus)
+        case .status: statusLabel(enrollment.status)
+        case .date: enrollment.enrolledAt.formatted(date: .abbreviated, time: .omitted)
+        }
+    }
+
+    private func enrollmentOrderedBefore(
+        _ lhs: Enrollment,
+        _ rhs: Enrollment,
+        by column: EnrollmentTableColumn
+    ) -> Bool {
+        switch column {
+        case .price:
+            let left = model.billingEstimate(for: lhs).totalCents ?? Int.max
+            let right = model.billingEstimate(for: rhs).totalCents ?? Int.max
+            if left != right { return sortAscending ? left < right : left > right }
+        case .date:
+            if lhs.enrolledAt != rhs.enrolledAt {
+                return sortAscending ? lhs.enrolledAt < rhs.enrolledAt : lhs.enrolledAt > rhs.enrolledAt
+            }
+        case .schedule:
+            let left = enrollmentScheduleSortDate(lhs)
+            let right = enrollmentScheduleSortDate(rhs)
+            if left != right { return sortAscending ? left < right : left > right }
+        default:
+            break
+        }
+
+        let comparison = enrollmentColumnLabel(lhs, column: column)
+            .localizedStandardCompare(enrollmentColumnLabel(rhs, column: column))
+        if comparison == .orderedSame { return lhs.id.description < rhs.id.description }
+        return sortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+    }
+
+    private func enrollmentScheduleSortDate(_ enrollment: Enrollment) -> Date {
+        if enrollment.registrationMode == .perSession {
+            return model.sessions(for: enrollment).first?.startsAt ?? .distantFuture
+        }
+        return courseForEnrollment(enrollment)
+            .flatMap { model.sessions(forCourse: $0.id).first?.startsAt } ?? .distantFuture
     }
 
     private var selectedTermID: TermID? {
@@ -1150,6 +1296,51 @@ private enum PendingEnrollmentStatus {
     var errorMessage: String? {
         if case let .failed(message) = self { return message }
         return nil
+    }
+}
+
+private enum EnrollmentTableColumn: String, CaseIterable, Identifiable {
+    case student
+    case course
+    case term
+    case schedule
+    case staff
+    case mode
+    case price
+    case billing
+    case status
+    case date
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .student: "学员"
+        case .course: "课程"
+        case .term: "学期"
+        case .schedule: "上课时间"
+        case .staff: "老师 / 教室"
+        case .mode: "报名方式"
+        case .price: "预计课程费"
+        case .billing: "计费"
+        case .status: "状态"
+        case .date: "报名日期"
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .student: EnrollmentColumns.student
+        case .course: EnrollmentColumns.course
+        case .term: EnrollmentColumns.term
+        case .schedule: EnrollmentColumns.schedule
+        case .staff: EnrollmentColumns.staff
+        case .mode: EnrollmentColumns.mode
+        case .price: EnrollmentColumns.price
+        case .billing: EnrollmentColumns.billing
+        case .status: EnrollmentColumns.status
+        case .date: EnrollmentColumns.date
+        }
     }
 }
 

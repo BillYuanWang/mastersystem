@@ -7,8 +7,14 @@ import SwiftUI
 struct ContractsWorkspaceView: View {
     let model: AppModel
 
-    @State private var section = ContractSection.documents
-    @State private var searchText = ""
+    @SceneStorage("md-desk.contracts.section") private var sectionStorage = ContractSection.documents.rawValue
+    @SceneStorage("md-desk.contracts.search") private var searchText = ""
+    @SceneStorage("md-desk.contracts.document-sort-column") private var documentSortColumnStorage = ""
+    @SceneStorage("md-desk.contracts.document-sort-ascending") private var documentSortAscending = true
+    @SceneStorage("md-desk.contracts.document-filters") private var documentFiltersStorage = ""
+    @SceneStorage("md-desk.contracts.consent-sort-column") private var consentSortColumnStorage = ""
+    @SceneStorage("md-desk.contracts.consent-sort-ascending") private var consentSortAscending = true
+    @SceneStorage("md-desk.contracts.consent-filters") private var consentFiltersStorage = ""
     @State private var editorDocument: ContractDocument?
     @State private var showingNewDocument = false
     @State private var deletion: ContractDocument?
@@ -22,7 +28,7 @@ struct ContractsWorkspaceView: View {
             HStack(spacing: 12) {
                 MDSectionTitle(chinese: "合同")
 
-                Picker("合同内容", selection: $section) {
+                Picker("合同内容", selection: sectionSelection) {
                     Text("协议版本").tag(ContractSection.documents)
                     Text("签署记录").tag(ContractSection.consents)
                 }
@@ -91,10 +97,7 @@ struct ContractsWorkspaceView: View {
 
     private func documentList(theme: MDTheme) -> some View {
         VStack(spacing: 0) {
-            contractHeader(
-                [("协议名称", 250), ("版本", 90), ("学期", 170), ("状态", 90), ("发布时间", 150), ("字数", 70)],
-                theme: theme
-            )
+            documentHeader(theme: theme)
             if filteredDocuments.isEmpty {
                 ContentUnavailableView(
                     "暂无协议",
@@ -151,10 +154,7 @@ struct ContractsWorkspaceView: View {
 
     private func consentList(theme: MDTheme) -> some View {
         VStack(spacing: 0) {
-            contractHeader(
-                [("签署人", 190), ("签字", 130), ("合同版本", 120), ("范围", 110), ("同意时间", 190)],
-                theme: theme
-            )
+            consentHeader(theme: theme)
             if filteredConsents.isEmpty {
                 ContentUnavailableView("暂无签署记录", systemImage: "signature")
             } else {
@@ -183,17 +183,47 @@ struct ContractsWorkspaceView: View {
         }
     }
 
-    private func contractHeader(_ columns: [(String, CGFloat)], theme: MDTheme) -> some View {
+    private func documentHeader(theme: MDTheme) -> some View {
         HStack(spacing: 0) {
-            ForEach(Array(columns.enumerated()), id: \.offset) { _, column in
-                contractCell(column.0, width: column.1, strong: true)
-                    .foregroundStyle(theme.secondaryText)
+            ForEach(ContractDocumentColumn.allCases) { column in
+                MDTableColumnHeader(
+                    title: column.title,
+                    width: column.width,
+                    isSorted: documentSortColumn == column,
+                    ascending: documentSortAscending,
+                    options: documentFilterOptions(for: column),
+                    selectedValues: mdTableFilterSelection(
+                        storage: $documentFiltersStorage,
+                        key: column.rawValue
+                    ),
+                    onSort: { toggleDocumentSort(column) }
+                )
             }
-            if section == .documents {
-                Text("操作")
-                    .mdFont(.compactStrong)
-                    .foregroundStyle(theme.secondaryText)
-                    .frame(width: 70)
+            Text("操作")
+                .mdFont(.compactStrong)
+                .foregroundStyle(theme.secondaryText)
+                .frame(width: 70)
+            Spacer(minLength: 0)
+        }
+        .frame(height: 34)
+        .background(theme.subtleSurface)
+    }
+
+    private func consentHeader(theme: MDTheme) -> some View {
+        HStack(spacing: 0) {
+            ForEach(ContractConsentColumn.allCases) { column in
+                MDTableColumnHeader(
+                    title: column.title,
+                    width: column.width,
+                    isSorted: consentSortColumn == column,
+                    ascending: consentSortAscending,
+                    options: consentFilterOptions(for: column),
+                    selectedValues: mdTableFilterSelection(
+                        storage: $consentFiltersStorage,
+                        key: column.rawValue
+                    ),
+                    onSort: { toggleConsentSort(column) }
+                )
             }
             Spacer(minLength: 0)
         }
@@ -203,24 +233,187 @@ struct ContractsWorkspaceView: View {
 
     private var filteredDocuments: [ContractDocument] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return model.contractDocuments }
-        return model.contractDocuments.filter { document in
-            [
+        var result = model.contractDocuments.filter { document in
+            let matchesSearch = query.isEmpty || [
                 document.title,
                 document.version,
                 document.bodyText,
                 model.term(id: document.termID)?.name ?? ""
             ].contains { $0.localizedCaseInsensitiveContains(query) }
+            return matchesSearch && matchesDocumentFilters(document)
         }
+        guard let documentSortColumn else { return result }
+        result.sort { documentOrderedBefore($0, $1, by: documentSortColumn) }
+        return result
     }
 
     private var filteredConsents: [ContractConsent] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return model.contractConsents }
-        return model.contractConsents.filter {
-            $0.signerDisplayName.localizedCaseInsensitiveContains(query)
-                || $0.contractVersion.localizedCaseInsensitiveContains(query)
+        var result = model.contractConsents.filter { consent in
+            let matchesSearch = query.isEmpty
+                || consent.signerDisplayName.localizedCaseInsensitiveContains(query)
+                || consent.contractVersion.localizedCaseInsensitiveContains(query)
+            return matchesSearch && matchesConsentFilters(consent)
         }
+        guard let consentSortColumn else { return result }
+        result.sort { consentOrderedBefore($0, $1, by: consentSortColumn) }
+        return result
+    }
+
+    private var section: ContractSection {
+        get { ContractSection(rawValue: sectionStorage) ?? .documents }
+        nonmutating set { sectionStorage = newValue.rawValue }
+    }
+
+    private var sectionSelection: Binding<ContractSection> {
+        Binding(get: { section }, set: { section = $0 })
+    }
+
+    private var documentSortColumn: ContractDocumentColumn? {
+        get { ContractDocumentColumn(rawValue: documentSortColumnStorage) }
+        nonmutating set { documentSortColumnStorage = newValue?.rawValue ?? "" }
+    }
+
+    private var consentSortColumn: ContractConsentColumn? {
+        get { ContractConsentColumn(rawValue: consentSortColumnStorage) }
+        nonmutating set { consentSortColumnStorage = newValue?.rawValue ?? "" }
+    }
+
+    private func toggleDocumentSort(_ column: ContractDocumentColumn) {
+        if documentSortColumn == column {
+            documentSortAscending.toggle()
+        } else {
+            documentSortColumn = column
+            documentSortAscending = true
+        }
+    }
+
+    private func toggleConsentSort(_ column: ContractConsentColumn) {
+        if consentSortColumn == column {
+            consentSortAscending.toggle()
+        } else {
+            consentSortColumn = column
+            consentSortAscending = true
+        }
+    }
+
+    private func documentFilterOptions(for column: ContractDocumentColumn) -> [MDTableFilterOption] {
+        mdTableFilterOptions(
+            model.contractDocuments,
+            key: { documentColumnKey($0, column: column) },
+            label: { documentColumnLabel($0, column: column) }
+        )
+    }
+
+    private func consentFilterOptions(for column: ContractConsentColumn) -> [MDTableFilterOption] {
+        mdTableFilterOptions(
+            model.contractConsents,
+            key: { consentColumnKey($0, column: column) },
+            label: { consentColumnLabel($0, column: column) }
+        )
+    }
+
+    private func matchesDocumentFilters(_ document: ContractDocument) -> Bool {
+        ContractDocumentColumn.allCases.allSatisfy { column in
+            let values = MDTableFilterCodec.selection(in: documentFiltersStorage, for: column.rawValue)
+            return values.isEmpty || values.contains(documentColumnKey(document, column: column))
+        }
+    }
+
+    private func matchesConsentFilters(_ consent: ContractConsent) -> Bool {
+        ContractConsentColumn.allCases.allSatisfy { column in
+            let values = MDTableFilterCodec.selection(in: consentFiltersStorage, for: column.rawValue)
+            return values.isEmpty || values.contains(consentColumnKey(consent, column: column))
+        }
+    }
+
+    private func documentColumnKey(
+        _ document: ContractDocument,
+        column: ContractDocumentColumn
+    ) -> String {
+        switch column {
+        case .title: document.title
+        case .version: document.version
+        case .term: document.termID.description
+        case .status: document.status.rawValue
+        case .publishedAt: document.publishedAt?.formatted(.iso8601.year().month().day()) ?? "unpublished"
+        case .wordCount: String(document.bodyText.count)
+        }
+    }
+
+    private func documentColumnLabel(
+        _ document: ContractDocument,
+        column: ContractDocumentColumn
+    ) -> String {
+        switch column {
+        case .title: document.title
+        case .version: document.version
+        case .term: model.term(id: document.termID)?.name ?? "—"
+        case .status: statusLabel(document.status)
+        case .publishedAt: document.publishedAt?.formatted(date: .abbreviated, time: .shortened) ?? "未发布"
+        case .wordCount: "\(document.bodyText.count) 字"
+        }
+    }
+
+    private func consentColumnKey(
+        _ consent: ContractConsent,
+        column: ContractConsentColumn
+    ) -> String {
+        switch column {
+        case .signer: consent.signerDisplayName
+        case .signature: consent.signaturePNG == nil ? "missing" : "stored"
+        case .version: consent.contractVersion
+        case .scope: consent.enrollmentID == nil ? "term" : "enrollment"
+        case .consentedAt: consent.consentedAt.formatted(.iso8601.year().month().day())
+        }
+    }
+
+    private func consentColumnLabel(
+        _ consent: ContractConsent,
+        column: ContractConsentColumn
+    ) -> String {
+        switch column {
+        case .signer: consent.signerDisplayName
+        case .signature: consent.signaturePNG == nil ? "未存档" : "已存档"
+        case .version: consent.contractVersion
+        case .scope: consent.enrollmentID == nil ? "整个学期" : "单门报名"
+        case .consentedAt: consent.consentedAt.formatted(date: .abbreviated, time: .shortened)
+        }
+    }
+
+    private func documentOrderedBefore(
+        _ lhs: ContractDocument,
+        _ rhs: ContractDocument,
+        by column: ContractDocumentColumn
+    ) -> Bool {
+        if column == .wordCount, lhs.bodyText.count != rhs.bodyText.count {
+            return documentSortAscending
+                ? lhs.bodyText.count < rhs.bodyText.count
+                : lhs.bodyText.count > rhs.bodyText.count
+        }
+        if column == .publishedAt {
+            let left = lhs.publishedAt ?? .distantFuture
+            let right = rhs.publishedAt ?? .distantFuture
+            if left != right { return documentSortAscending ? left < right : left > right }
+        }
+        let comparison = documentColumnLabel(lhs, column: column)
+            .localizedStandardCompare(documentColumnLabel(rhs, column: column))
+        if comparison == .orderedSame { return lhs.id.description < rhs.id.description }
+        return documentSortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+    }
+
+    private func consentOrderedBefore(
+        _ lhs: ContractConsent,
+        _ rhs: ContractConsent,
+        by column: ContractConsentColumn
+    ) -> Bool {
+        if column == .consentedAt, lhs.consentedAt != rhs.consentedAt {
+            return consentSortAscending ? lhs.consentedAt < rhs.consentedAt : lhs.consentedAt > rhs.consentedAt
+        }
+        let comparison = consentColumnLabel(lhs, column: column)
+            .localizedStandardCompare(consentColumnLabel(rhs, column: column))
+        if comparison == .orderedSame { return lhs.id.description < rhs.id.description }
+        return consentSortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
     }
 
     private func statusLabel(_ status: ContractDocumentStatus) -> String {
@@ -244,9 +437,72 @@ struct ContractsWorkspaceView: View {
     }
 }
 
-private enum ContractSection {
+private enum ContractSection: String {
     case documents
     case consents
+}
+
+private enum ContractDocumentColumn: String, CaseIterable, Identifiable {
+    case title
+    case version
+    case term
+    case status
+    case publishedAt
+    case wordCount
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .title: "协议名称"
+        case .version: "版本"
+        case .term: "学期"
+        case .status: "状态"
+        case .publishedAt: "发布时间"
+        case .wordCount: "字数"
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .title: 250
+        case .version: 90
+        case .term: 170
+        case .status: 90
+        case .publishedAt: 150
+        case .wordCount: 70
+        }
+    }
+}
+
+private enum ContractConsentColumn: String, CaseIterable, Identifiable {
+    case signer
+    case signature
+    case version
+    case scope
+    case consentedAt
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .signer: "签署人"
+        case .signature: "签字"
+        case .version: "合同版本"
+        case .scope: "范围"
+        case .consentedAt: "同意时间"
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .signer: 190
+        case .signature: 130
+        case .version: 120
+        case .scope: 110
+        case .consentedAt: 190
+        }
+    }
 }
 
 private struct ContractSignatureThumbnail: View {

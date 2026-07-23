@@ -18,6 +18,17 @@ Run `./script/build_tutorial_pdf.sh` after editing the tutorial.
 
 ## Current release
 
+### v0.1.23c - 2026-07-22
+
+- Added column sorting and filtering to every macOS operational table: courses,
+  families, enrollments, attendance rosters, leave requests, news,
+  advertisements, contracts, terms, holidays, and reference data.
+- Preserved each tab's search, column filters, sort column, sort direction, and
+  applicable term/date scope when switching away and returning.
+- Kept Data Center manual drag ordering while adding remembered temporary column
+  sorting and filtering.
+- No Supabase schema or production cloud data changed in this release.
+
 ### v0.1.23b - 2026-07-22
 
 - Removed the retired English/CSV schedule prototype app bundle from

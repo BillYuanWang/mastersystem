@@ -6,12 +6,19 @@ import SwiftUI
 struct DataCenterWorkspaceView: View {
     let model: AppModel
 
-    @State private var section = DataCenterSection.terms
-    @State private var searchText = ""
+    @SceneStorage("md-desk.data-center.section") private var sectionStorage = DataCenterSection.terms.rawValue
+    @SceneStorage("md-desk.data-center.search") private var searchText = ""
+    @SceneStorage("md-desk.data-center.reference-sort") private var referenceSortStorage = "custom"
+    @SceneStorage("md-desk.data-center.reference-filters") private var referenceFiltersStorage = ""
+    @SceneStorage("md-desk.data-center.term-sort-column") private var termSortColumnStorage = ""
+    @SceneStorage("md-desk.data-center.term-sort-ascending") private var termSortAscending = true
+    @SceneStorage("md-desk.data-center.term-filters") private var termFiltersStorage = ""
+    @SceneStorage("md-desk.data-center.holiday-sort-column") private var holidaySortColumnStorage = ""
+    @SceneStorage("md-desk.data-center.holiday-sort-ascending") private var holidaySortAscending = true
+    @SceneStorage("md-desk.data-center.holiday-filters") private var holidayFiltersStorage = ""
     @State private var editor: DataCenterEditor?
     @State private var deletion: DataCenterDeletion?
     @State private var errorMessage: String?
-    @State private var referenceSort = ReferenceTableSort.custom
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -21,7 +28,7 @@ struct DataCenterWorkspaceView: View {
             HStack(spacing: 12) {
                 MDSectionTitle(chinese: "数据中心")
 
-                Picker("资料类别", selection: $section) {
+                Picker("资料类别", selection: sectionSelection) {
                     ForEach(DataCenterSection.allCases) { item in
                         Text(item.title).tag(item)
                     }
@@ -87,9 +94,20 @@ struct DataCenterWorkspaceView: View {
         } message: { item in
             Text("确定删除“\(item.name)”吗？已被其他资料使用的项目不会被删除。")
         }
-        .onChange(of: section) { _, _ in
-            referenceSort = .custom
-        }
+    }
+
+    private var section: DataCenterSection {
+        get { DataCenterSection(rawValue: sectionStorage) ?? .terms }
+        nonmutating set { sectionStorage = newValue.rawValue }
+    }
+
+    private var sectionSelection: Binding<DataCenterSection> {
+        Binding(get: { section }, set: { section = $0 })
+    }
+
+    private var referenceSort: ReferenceTableSort {
+        get { ReferenceTableSort(storageValue: referenceSortStorage) }
+        nonmutating set { referenceSortStorage = newValue.storageValue }
     }
 
     @ViewBuilder
@@ -155,10 +173,10 @@ struct DataCenterWorkspaceView: View {
                     action: { editor = .term(nil) },
                     theme: theme
                 )
-                rowHeader([("名称", 150), ("开始", 92), ("结束", 92), ("状态", 66)], theme: theme)
+                termHeader(theme: theme)
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(filtered(model.terms, text: { [$0.name] })) { term in
+                        ForEach(visibleTerms) { term in
                             HStack(spacing: 0) {
                                 dataCell(term.name, width: 150, strong: true)
                                 dataCell(shortDate(term.startsOn), width: 92, mono: true)
@@ -185,10 +203,10 @@ struct DataCenterWorkspaceView: View {
                     action: { editor = .holiday(nil) },
                     theme: theme
                 )
-                rowHeader([("假期", 150), ("所属学期", 140), ("开始", 92), ("结束", 92)], theme: theme)
+                holidayHeader(theme: theme)
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(filteredHolidays) { holiday in
+                        ForEach(visibleHolidays) { holiday in
                             HStack(spacing: 0) {
                                 dataCell(holiday.name, width: 150, strong: true)
                                 dataCell(model.term(id: holiday.termID)?.name ?? "—", width: 140)
@@ -221,14 +239,15 @@ struct DataCenterWorkspaceView: View {
         delete: @escaping (Value) -> Void,
         theme: MDTheme
     ) -> some View {
-        let displayedRows = sortedReferenceRows(rows, values: values)
+        let filteredRows = rows.filter { matchesReferenceFilters($0, values: values) }
+        let displayedRows = sortedReferenceRows(filteredRows, values: values)
         return VStack(spacing: 0) {
-            referenceHeader(headers, theme: theme)
-            if rows.isEmpty {
+            referenceHeader(headers, rows: rows, values: values, theme: theme)
+            if displayedRows.isEmpty {
                 ContentUnavailableView(
-                    "暂无\(section.singularTitle)",
+                    rows.isEmpty ? "暂无\(section.singularTitle)" : "没有符合条件的\(section.singularTitle)",
                     systemImage: section.systemImage,
-                    description: Text("点击右上角加号创建。")
+                    description: Text(rows.isEmpty ? "点击右上角加号创建。" : "请调整列筛选或搜索内容。")
                 )
             } else {
                 ScrollView {
@@ -269,7 +288,12 @@ struct DataCenterWorkspaceView: View {
         }
     }
 
-    private func referenceHeader(_ columns: [(String, CGFloat)], theme: MDTheme) -> some View {
+    private func referenceHeader<Value: Identifiable>(
+        _ columns: [(String, CGFloat)],
+        rows: [Value],
+        values: @escaping (Value) -> [String],
+        theme: MDTheme
+    ) -> some View {
         HStack(spacing: 0) {
             Button {
                 referenceSort = .custom
@@ -283,26 +307,18 @@ struct DataCenterWorkspaceView: View {
             .help("使用手动排序")
 
             ForEach(Array(columns.enumerated()), id: \.offset) { index, column in
-                Button {
-                    toggleReferenceSort(column: index)
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(column.0)
-                            .mdFont(.compactStrong)
-                            .lineLimit(1)
-                        if case let .column(selected, ascending) = referenceSort, selected == index {
-                            Image(systemName: ascending ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 8, weight: .bold))
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .foregroundStyle(theme.secondaryText)
-                    .frame(width: column.1, alignment: .leading)
-                    .padding(.leading, 10)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("按“\(column.0)”排序")
+                MDTableColumnHeader(
+                    title: column.0,
+                    width: column.1,
+                    isSorted: referenceSort.isColumn(index),
+                    ascending: referenceSort.isAscending,
+                    options: referenceFilterOptions(rows, values: values, column: index),
+                    selectedValues: mdTableFilterSelection(
+                        storage: $referenceFiltersStorage,
+                        key: referenceFilterKey(column: index)
+                    ),
+                    onSort: { toggleReferenceSort(column: index) }
+                )
             }
 
             Text("操作")
@@ -363,6 +379,42 @@ struct DataCenterWorkspaceView: View {
         }
     }
 
+    private func referenceFilterKey(column: Int) -> String {
+        "\(section.rawValue).\(column)"
+    }
+
+    private func referenceFilterOptions<Value>(
+        _ rows: [Value],
+        values: (Value) -> [String],
+        column: Int
+    ) -> [MDTableFilterOption] {
+        mdTableFilterOptions(
+            rows,
+            key: { row in
+                let rowValues = values(row)
+                return rowValues.indices.contains(column) ? rowValues[column] : ""
+            },
+            label: { row in
+                let rowValues = values(row)
+                return rowValues.indices.contains(column) ? rowValues[column] : "—"
+            }
+        )
+    }
+
+    private func matchesReferenceFilters<Value>(
+        _ row: Value,
+        values: (Value) -> [String]
+    ) -> Bool {
+        let rowValues = values(row)
+        return rowValues.indices.allSatisfy { index in
+            let selected = MDTableFilterCodec.selection(
+                in: referenceFiltersStorage,
+                for: referenceFilterKey(column: index)
+            )
+            return selected.isEmpty || selected.contains(rowValues[index])
+        }
+    }
+
     private func referenceToken<Value: Identifiable>(_ value: Value) -> String {
         String(describing: value.id)
     }
@@ -385,11 +437,47 @@ struct DataCenterWorkspaceView: View {
         .frame(height: 42)
     }
 
-    private func rowHeader(_ columns: [(String, CGFloat)], theme: MDTheme) -> some View {
+    private func termHeader(theme: MDTheme) -> some View {
         HStack(spacing: 0) {
-            ForEach(Array(columns.enumerated()), id: \.offset) { _, column in
-                dataCell(column.0, width: column.1, strong: true)
-                    .foregroundStyle(theme.secondaryText)
+            ForEach(TermTableColumn.allCases) { column in
+                MDTableColumnHeader(
+                    title: column.title,
+                    width: column.width,
+                    isSorted: termSortColumn == column,
+                    ascending: termSortAscending,
+                    options: termFilterOptions(for: column),
+                    selectedValues: mdTableFilterSelection(
+                        storage: $termFiltersStorage,
+                        key: column.rawValue
+                    ),
+                    onSort: { toggleTermSort(column) }
+                )
+            }
+            Text("操作")
+                .mdFont(.compactStrong)
+                .foregroundStyle(theme.secondaryText)
+                .frame(width: 70)
+            Spacer(minLength: 0)
+        }
+        .frame(height: 34)
+        .background(theme.subtleSurface)
+    }
+
+    private func holidayHeader(theme: MDTheme) -> some View {
+        HStack(spacing: 0) {
+            ForEach(HolidayTableColumn.allCases) { column in
+                MDTableColumnHeader(
+                    title: column.title,
+                    width: column.width,
+                    isSorted: holidaySortColumn == column,
+                    ascending: holidaySortAscending,
+                    options: holidayFilterOptions(for: column),
+                    selectedValues: mdTableFilterSelection(
+                        storage: $holidayFiltersStorage,
+                        key: column.rawValue
+                    ),
+                    onSort: { toggleHolidaySort(column) }
+                )
             }
             Text("操作")
                 .mdFont(.compactStrong)
@@ -421,10 +509,152 @@ struct DataCenterWorkspaceView: View {
         }
     }
 
-    private var filteredHolidays: [TermHoliday] {
+    private var searchedHolidays: [TermHoliday] {
         filtered(model.termHolidays) {
             [$0.name, $0.notes ?? "", model.term(id: $0.termID)?.name ?? ""]
         }
+    }
+
+    private var searchedTerms: [Term] {
+        filtered(model.terms, text: { [$0.name] })
+    }
+
+    private var visibleTerms: [Term] {
+        var result = searchedTerms.filter(matchesTermFilters)
+        guard let termSortColumn else { return result }
+        result.sort { termOrderedBefore($0, $1, by: termSortColumn) }
+        return result
+    }
+
+    private var visibleHolidays: [TermHoliday] {
+        var result = searchedHolidays.filter(matchesHolidayFilters)
+        guard let holidaySortColumn else { return result }
+        result.sort { holidayOrderedBefore($0, $1, by: holidaySortColumn) }
+        return result
+    }
+
+    private var termSortColumn: TermTableColumn? {
+        get { TermTableColumn(rawValue: termSortColumnStorage) }
+        nonmutating set { termSortColumnStorage = newValue?.rawValue ?? "" }
+    }
+
+    private var holidaySortColumn: HolidayTableColumn? {
+        get { HolidayTableColumn(rawValue: holidaySortColumnStorage) }
+        nonmutating set { holidaySortColumnStorage = newValue?.rawValue ?? "" }
+    }
+
+    private func toggleTermSort(_ column: TermTableColumn) {
+        if termSortColumn == column {
+            termSortAscending.toggle()
+        } else {
+            termSortColumn = column
+            termSortAscending = true
+        }
+    }
+
+    private func toggleHolidaySort(_ column: HolidayTableColumn) {
+        if holidaySortColumn == column {
+            holidaySortAscending.toggle()
+        } else {
+            holidaySortColumn = column
+            holidaySortAscending = true
+        }
+    }
+
+    private func termFilterOptions(for column: TermTableColumn) -> [MDTableFilterOption] {
+        mdTableFilterOptions(
+            searchedTerms,
+            key: { termColumnKey($0, column: column) },
+            label: { termColumnLabel($0, column: column) }
+        )
+    }
+
+    private func holidayFilterOptions(for column: HolidayTableColumn) -> [MDTableFilterOption] {
+        mdTableFilterOptions(
+            searchedHolidays,
+            key: { holidayColumnKey($0, column: column) },
+            label: { holidayColumnLabel($0, column: column) }
+        )
+    }
+
+    private func matchesTermFilters(_ term: Term) -> Bool {
+        TermTableColumn.allCases.allSatisfy { column in
+            let values = MDTableFilterCodec.selection(in: termFiltersStorage, for: column.rawValue)
+            return values.isEmpty || values.contains(termColumnKey(term, column: column))
+        }
+    }
+
+    private func matchesHolidayFilters(_ holiday: TermHoliday) -> Bool {
+        HolidayTableColumn.allCases.allSatisfy { column in
+            let values = MDTableFilterCodec.selection(in: holidayFiltersStorage, for: column.rawValue)
+            return values.isEmpty || values.contains(holidayColumnKey(holiday, column: column))
+        }
+    }
+
+    private func termColumnKey(_ term: Term, column: TermTableColumn) -> String {
+        switch column {
+        case .name: term.name
+        case .startsOn: term.startsOn.formatted(.iso8601.year().month().day())
+        case .endsOn: term.endsOn.formatted(.iso8601.year().month().day())
+        case .status: term.status.rawValue
+        }
+    }
+
+    private func termColumnLabel(_ term: Term, column: TermTableColumn) -> String {
+        switch column {
+        case .name: term.name
+        case .startsOn: shortDate(term.startsOn)
+        case .endsOn: shortDate(term.endsOn)
+        case .status: termStatus(term.status)
+        }
+    }
+
+    private func holidayColumnKey(_ holiday: TermHoliday, column: HolidayTableColumn) -> String {
+        switch column {
+        case .name: holiday.name
+        case .term: holiday.termID.description
+        case .startsOn: holiday.startsOn.formatted(.iso8601.year().month().day())
+        case .endsOn: holiday.endsOn.formatted(.iso8601.year().month().day())
+        }
+    }
+
+    private func holidayColumnLabel(_ holiday: TermHoliday, column: HolidayTableColumn) -> String {
+        switch column {
+        case .name: holiday.name
+        case .term: model.term(id: holiday.termID)?.name ?? "—"
+        case .startsOn: shortDate(holiday.startsOn)
+        case .endsOn: shortDate(holiday.endsOn)
+        }
+    }
+
+    private func termOrderedBefore(_ lhs: Term, _ rhs: Term, by column: TermTableColumn) -> Bool {
+        if column == .startsOn, lhs.startsOn != rhs.startsOn {
+            return termSortAscending ? lhs.startsOn < rhs.startsOn : lhs.startsOn > rhs.startsOn
+        }
+        if column == .endsOn, lhs.endsOn != rhs.endsOn {
+            return termSortAscending ? lhs.endsOn < rhs.endsOn : lhs.endsOn > rhs.endsOn
+        }
+        let comparison = termColumnLabel(lhs, column: column)
+            .localizedStandardCompare(termColumnLabel(rhs, column: column))
+        if comparison == .orderedSame { return lhs.id.description < rhs.id.description }
+        return termSortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+    }
+
+    private func holidayOrderedBefore(
+        _ lhs: TermHoliday,
+        _ rhs: TermHoliday,
+        by column: HolidayTableColumn
+    ) -> Bool {
+        if column == .startsOn, lhs.startsOn != rhs.startsOn {
+            return holidaySortAscending ? lhs.startsOn < rhs.startsOn : lhs.startsOn > rhs.startsOn
+        }
+        if column == .endsOn, lhs.endsOn != rhs.endsOn {
+            return holidaySortAscending ? lhs.endsOn < rhs.endsOn : lhs.endsOn > rhs.endsOn
+        }
+        let comparison = holidayColumnLabel(lhs, column: column)
+            .localizedStandardCompare(holidayColumnLabel(rhs, column: column))
+        if comparison == .orderedSame { return lhs.id.description < rhs.id.description }
+        return holidaySortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
     }
 
     private func shortDate(_ date: Date) -> String {
@@ -480,6 +710,87 @@ struct DataCenterWorkspaceView: View {
 private enum ReferenceTableSort: Equatable {
     case custom
     case column(Int, ascending: Bool)
+
+    init(storageValue: String) {
+        let parts = storageValue.split(separator: ":")
+        guard parts.count == 3,
+              parts[0] == "column",
+              let index = Int(parts[1]) else {
+            self = .custom
+            return
+        }
+        self = .column(index, ascending: parts[2] == "ascending")
+    }
+
+    var storageValue: String {
+        switch self {
+        case .custom: "custom"
+        case let .column(index, ascending):
+            "column:\(index):\(ascending ? "ascending" : "descending")"
+        }
+    }
+
+    func isColumn(_ index: Int) -> Bool {
+        if case let .column(selected, _) = self { return selected == index }
+        return false
+    }
+
+    var isAscending: Bool {
+        if case let .column(_, ascending) = self { return ascending }
+        return true
+    }
+}
+
+private enum TermTableColumn: String, CaseIterable, Identifiable {
+    case name
+    case startsOn
+    case endsOn
+    case status
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .name: "名称"
+        case .startsOn: "开始"
+        case .endsOn: "结束"
+        case .status: "状态"
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .name: 150
+        case .startsOn, .endsOn: 92
+        case .status: 66
+        }
+    }
+}
+
+private enum HolidayTableColumn: String, CaseIterable, Identifiable {
+    case name
+    case term
+    case startsOn
+    case endsOn
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .name: "假期"
+        case .term: "所属学期"
+        case .startsOn: "开始"
+        case .endsOn: "结束"
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .name: 150
+        case .term: 140
+        case .startsOn, .endsOn: 92
+        }
+    }
 }
 
 private enum DataCenterSection: String, CaseIterable, Identifiable {

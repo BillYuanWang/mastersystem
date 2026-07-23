@@ -9,6 +9,15 @@ struct AttendanceWorkspaceView: View {
     @SceneStorage("md-desk.attendance.selected-date") private var selectedDateStorage = Calendar.masterDance.startOfDay(for: Date()).timeIntervalSinceReferenceDate
     @SceneStorage("md-desk.attendance.selected-session-id") private var selectedSessionIDStorage = ""
     @SceneStorage("md-desk.attendance.search") private var searchText = ""
+    @SceneStorage("md-desk.attendance.regular-sort-column") private var regularSortColumnStorage = ""
+    @SceneStorage("md-desk.attendance.regular-sort-ascending") private var regularSortAscending = true
+    @SceneStorage("md-desk.attendance.regular-filters") private var regularFiltersStorage = ""
+    @SceneStorage("md-desk.attendance.trial-sort-column") private var trialSortColumnStorage = ""
+    @SceneStorage("md-desk.attendance.trial-sort-ascending") private var trialSortAscending = true
+    @SceneStorage("md-desk.attendance.trial-filters") private var trialFiltersStorage = ""
+    @SceneStorage("md-desk.attendance.makeup-sort-column") private var makeupSortColumnStorage = ""
+    @SceneStorage("md-desk.attendance.makeup-sort-ascending") private var makeupSortAscending = true
+    @SceneStorage("md-desk.attendance.makeup-filters") private var makeupFiltersStorage = ""
     @State private var addingGuestKind: AttendanceGuestKind?
     @State private var deletingAttendanceID: AttendanceID?
 
@@ -255,7 +264,7 @@ struct AttendanceWorkspaceView: View {
         session: ClassSession,
         theme: MDTheme
     ) -> some View {
-        let filtered = filteredRegularRoster(roster)
+        let filtered = filteredRegularRoster(roster, session: session)
         return VStack(spacing: 0) {
             attendanceSectionHeader(
                 title: "报名学员",
@@ -266,9 +275,20 @@ struct AttendanceWorkspaceView: View {
             )
 
             HStack(spacing: 0) {
-                attendanceHeader("学员", width: AttendanceColumns.student)
-                attendanceHeader("状态", width: AttendanceColumns.regularStatus)
-                attendanceHeader("记录时间", width: AttendanceColumns.time)
+                ForEach(RegularAttendanceColumn.allCases) { column in
+                    MDTableColumnHeader(
+                        title: column.title,
+                        width: column.width,
+                        isSorted: regularSortColumn == column,
+                        ascending: regularSortAscending,
+                        options: regularFilterOptions(roster, session: session, column: column),
+                        selectedValues: mdTableFilterSelection(
+                            storage: $regularFiltersStorage,
+                            key: column.rawValue
+                        ),
+                        onSort: { toggleRegularSort(column) }
+                    )
+                }
                 Spacer()
             }
             .frame(height: 34)
@@ -294,7 +314,7 @@ struct AttendanceWorkspaceView: View {
         records: [Attendance],
         theme: MDTheme
     ) -> some View {
-        let filtered = filteredSpecialRecords(records)
+        let filtered = filteredSpecialRecords(records, kind: kind)
         return VStack(spacing: 0) {
             Rectangle().fill(theme.separator).frame(height: 1)
 
@@ -321,10 +341,17 @@ struct AttendanceWorkspaceView: View {
             .background(kind.color(theme: theme).opacity(colorScheme == .dark ? 0.08 : 0.045))
 
             HStack(spacing: 0) {
-                attendanceHeader("学员", width: AttendanceColumns.student)
-                attendanceHeader("家庭", width: AttendanceColumns.family)
-                attendanceHeader("类型", width: AttendanceColumns.guestStatus)
-                attendanceHeader("记录时间", width: AttendanceColumns.time)
+                ForEach(GuestAttendanceColumn.allCases) { column in
+                    MDTableColumnHeader(
+                        title: column.title,
+                        width: column.width,
+                        isSorted: guestSortColumn(for: kind) == column,
+                        ascending: guestSortAscending(for: kind),
+                        options: guestFilterOptions(records, kind: kind, column: column),
+                        selectedValues: guestFilterSelection(kind: kind, column: column),
+                        onSort: { toggleGuestSort(column, kind: kind) }
+                    )
+                }
                 Spacer()
                 Text("操作")
                     .mdFont(.compactStrong)
@@ -437,15 +464,27 @@ struct AttendanceWorkspaceView: View {
         }
     }
 
-    private func filteredRegularRoster(_ roster: [Enrollment]) -> [Enrollment] {
+    private func filteredRegularRoster(
+        _ roster: [Enrollment],
+        session: ClassSession
+    ) -> [Enrollment] {
         let query = normalizedSearchText
-        guard !query.isEmpty else { return roster }
-        return roster.filter { enrollment in
-            guard let student = model.student(id: enrollment.studentID) else { return false }
-            let guardian = model.guardian(id: student.guardianID)
-            return student.displayName.localizedCaseInsensitiveContains(query)
-                || guardian?.displayName.localizedCaseInsensitiveContains(query) == true
+        var result = roster.filter { enrollment in
+            let matchesSearch: Bool
+            if query.isEmpty {
+                matchesSearch = true
+            } else if let student = model.student(id: enrollment.studentID) {
+                let guardian = model.guardian(id: student.guardianID)
+                matchesSearch = student.displayName.localizedCaseInsensitiveContains(query)
+                    || guardian?.displayName.localizedCaseInsensitiveContains(query) == true
+            } else {
+                matchesSearch = false
+            }
+            return matchesSearch && matchesRegularFilters(enrollment, session: session)
         }
+        guard let regularSortColumn else { return result }
+        result.sort { regularOrderedBefore($0, $1, session: session, by: regularSortColumn) }
+        return result
     }
 
     private func specialRecords(session: ClassSession, status: AttendanceStatus) -> [Attendance] {
@@ -458,15 +497,232 @@ struct AttendanceWorkspaceView: View {
             }
     }
 
-    private func filteredSpecialRecords(_ records: [Attendance]) -> [Attendance] {
+    private func filteredSpecialRecords(
+        _ records: [Attendance],
+        kind: AttendanceGuestKind
+    ) -> [Attendance] {
         let query = normalizedSearchText
-        guard !query.isEmpty else { return records }
-        return records.filter { record in
-            guard let student = model.student(id: record.studentID) else { return false }
-            let guardian = model.guardian(id: student.guardianID)
-            return student.displayName.localizedCaseInsensitiveContains(query)
-                || guardian?.displayName.localizedCaseInsensitiveContains(query) == true
+        var result = records.filter { record in
+            let matchesSearch: Bool
+            if query.isEmpty {
+                matchesSearch = true
+            } else if let student = model.student(id: record.studentID) {
+                let guardian = model.guardian(id: student.guardianID)
+                matchesSearch = student.displayName.localizedCaseInsensitiveContains(query)
+                    || guardian?.displayName.localizedCaseInsensitiveContains(query) == true
+            } else {
+                matchesSearch = false
+            }
+            return matchesSearch && matchesGuestFilters(record, kind: kind)
         }
+        guard let sortColumn = guestSortColumn(for: kind) else { return result }
+        result.sort { guestOrderedBefore($0, $1, kind: kind, by: sortColumn) }
+        return result
+    }
+
+    private var regularSortColumn: RegularAttendanceColumn? {
+        get { RegularAttendanceColumn(rawValue: regularSortColumnStorage) }
+        nonmutating set { regularSortColumnStorage = newValue?.rawValue ?? "" }
+    }
+
+    private func toggleRegularSort(_ column: RegularAttendanceColumn) {
+        if regularSortColumn == column {
+            regularSortAscending.toggle()
+        } else {
+            regularSortColumn = column
+            regularSortAscending = true
+        }
+    }
+
+    private func regularFilterOptions(
+        _ roster: [Enrollment],
+        session: ClassSession,
+        column: RegularAttendanceColumn
+    ) -> [MDTableFilterOption] {
+        mdTableFilterOptions(
+            roster,
+            key: { regularColumnKey($0, session: session, column: column) },
+            label: { regularColumnLabel($0, session: session, column: column) }
+        )
+    }
+
+    private func matchesRegularFilters(_ enrollment: Enrollment, session: ClassSession) -> Bool {
+        RegularAttendanceColumn.allCases.allSatisfy { column in
+            let values = MDTableFilterCodec.selection(in: regularFiltersStorage, for: column.rawValue)
+            return values.isEmpty
+                || values.contains(regularColumnKey(enrollment, session: session, column: column))
+        }
+    }
+
+    private func regularColumnKey(
+        _ enrollment: Enrollment,
+        session: ClassSession,
+        column: RegularAttendanceColumn
+    ) -> String {
+        let record = attendanceRecord(sessionID: session.id, studentID: enrollment.studentID)
+        let leaveRequest = model.leaveRequest(sessionID: session.id, studentID: enrollment.studentID)
+        return switch column {
+        case .student: enrollment.studentID.description
+        case .status:
+            model.effectiveAttendanceStatus(
+                sessionID: session.id,
+                studentID: enrollment.studentID
+            )?.rawValue ?? "unrecorded"
+        case .time:
+            (record?.recordedAt ?? leaveRequest?.submittedAt)?
+                .formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false)) ?? "unrecorded"
+        }
+    }
+
+    private func regularColumnLabel(
+        _ enrollment: Enrollment,
+        session: ClassSession,
+        column: RegularAttendanceColumn
+    ) -> String {
+        let record = attendanceRecord(sessionID: session.id, studentID: enrollment.studentID)
+        let leaveRequest = model.leaveRequest(sessionID: session.id, studentID: enrollment.studentID)
+        return switch column {
+        case .student: model.student(id: enrollment.studentID)?.displayName ?? "—"
+        case .status:
+            model.effectiveAttendanceStatus(
+                sessionID: session.id,
+                studentID: enrollment.studentID
+            ).map(attendanceStatusLabel) ?? "未记录"
+        case .time:
+            (record?.recordedAt ?? leaveRequest?.submittedAt)?
+                .formatted(date: .omitted, time: .shortened) ?? "未记录"
+        }
+    }
+
+    private func regularOrderedBefore(
+        _ lhs: Enrollment,
+        _ rhs: Enrollment,
+        session: ClassSession,
+        by column: RegularAttendanceColumn
+    ) -> Bool {
+        if column == .time {
+            let left = attendanceRecord(sessionID: session.id, studentID: lhs.studentID)?.recordedAt
+                ?? model.leaveRequest(sessionID: session.id, studentID: lhs.studentID)?.submittedAt
+                ?? .distantFuture
+            let right = attendanceRecord(sessionID: session.id, studentID: rhs.studentID)?.recordedAt
+                ?? model.leaveRequest(sessionID: session.id, studentID: rhs.studentID)?.submittedAt
+                ?? .distantFuture
+            if left != right { return regularSortAscending ? left < right : left > right }
+        }
+        let comparison = regularColumnLabel(lhs, session: session, column: column)
+            .localizedStandardCompare(regularColumnLabel(rhs, session: session, column: column))
+        if comparison == .orderedSame { return lhs.id.description < rhs.id.description }
+        return regularSortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+    }
+
+    private func guestSortColumn(for kind: AttendanceGuestKind) -> GuestAttendanceColumn? {
+        let raw = kind == .trial ? trialSortColumnStorage : makeupSortColumnStorage
+        return GuestAttendanceColumn(rawValue: raw)
+    }
+
+    private func guestSortAscending(for kind: AttendanceGuestKind) -> Bool {
+        kind == .trial ? trialSortAscending : makeupSortAscending
+    }
+
+    private func setGuestSortColumn(_ column: GuestAttendanceColumn?, kind: AttendanceGuestKind) {
+        if kind == .trial {
+            trialSortColumnStorage = column?.rawValue ?? ""
+        } else {
+            makeupSortColumnStorage = column?.rawValue ?? ""
+        }
+    }
+
+    private func toggleGuestSort(_ column: GuestAttendanceColumn, kind: AttendanceGuestKind) {
+        if guestSortColumn(for: kind) == column {
+            if kind == .trial {
+                trialSortAscending.toggle()
+            } else {
+                makeupSortAscending.toggle()
+            }
+        } else {
+            setGuestSortColumn(column, kind: kind)
+            if kind == .trial {
+                trialSortAscending = true
+            } else {
+                makeupSortAscending = true
+            }
+        }
+    }
+
+    private func guestFilterStorage(for kind: AttendanceGuestKind) -> Binding<String> {
+        kind == .trial ? $trialFiltersStorage : $makeupFiltersStorage
+    }
+
+    private func guestFilterSelection(
+        kind: AttendanceGuestKind,
+        column: GuestAttendanceColumn
+    ) -> Binding<Set<String>> {
+        mdTableFilterSelection(storage: guestFilterStorage(for: kind), key: column.rawValue)
+    }
+
+    private func guestFilterOptions(
+        _ records: [Attendance],
+        kind: AttendanceGuestKind,
+        column: GuestAttendanceColumn
+    ) -> [MDTableFilterOption] {
+        mdTableFilterOptions(
+            records,
+            key: { guestColumnKey($0, kind: kind, column: column) },
+            label: { guestColumnLabel($0, kind: kind, column: column) }
+        )
+    }
+
+    private func matchesGuestFilters(_ record: Attendance, kind: AttendanceGuestKind) -> Bool {
+        let storage = guestFilterStorage(for: kind).wrappedValue
+        return GuestAttendanceColumn.allCases.allSatisfy { column in
+            let values = MDTableFilterCodec.selection(in: storage, for: column.rawValue)
+            return values.isEmpty || values.contains(guestColumnKey(record, kind: kind, column: column))
+        }
+    }
+
+    private func guestColumnKey(
+        _ record: Attendance,
+        kind: AttendanceGuestKind,
+        column: GuestAttendanceColumn
+    ) -> String {
+        let student = model.student(id: record.studentID)
+        return switch column {
+        case .student: record.studentID.description
+        case .family: student?.guardianID.description ?? "none"
+        case .type: kind.rawValue
+        case .time:
+            record.recordedAt.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
+        }
+    }
+
+    private func guestColumnLabel(
+        _ record: Attendance,
+        kind: AttendanceGuestKind,
+        column: GuestAttendanceColumn
+    ) -> String {
+        let student = model.student(id: record.studentID)
+        return switch column {
+        case .student: student?.displayName ?? "—"
+        case .family: student.flatMap { model.guardian(id: $0.guardianID) }?.displayName ?? "未知家庭"
+        case .type: kind.shortTitle
+        case .time: record.recordedAt.formatted(date: .omitted, time: .shortened)
+        }
+    }
+
+    private func guestOrderedBefore(
+        _ lhs: Attendance,
+        _ rhs: Attendance,
+        kind: AttendanceGuestKind,
+        by column: GuestAttendanceColumn
+    ) -> Bool {
+        let ascending = guestSortAscending(for: kind)
+        if column == .time, lhs.recordedAt != rhs.recordedAt {
+            return ascending ? lhs.recordedAt < rhs.recordedAt : lhs.recordedAt > rhs.recordedAt
+        }
+        let comparison = guestColumnLabel(lhs, kind: kind, column: column)
+            .localizedStandardCompare(guestColumnLabel(rhs, kind: kind, column: column))
+        if comparison == .orderedSame { return lhs.id.description < rhs.id.description }
+        return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
     }
 
     private func guestCandidates(course: Course, session: ClassSession) -> [Student] {
@@ -868,6 +1124,57 @@ private struct AttendanceStudentGroup: Identifiable {
     let guardianName: String
     let contact: String
     let students: [Student]
+}
+
+private enum RegularAttendanceColumn: String, CaseIterable, Identifiable {
+    case student
+    case status
+    case time
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .student: "学员"
+        case .status: "状态"
+        case .time: "记录时间"
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .student: AttendanceColumns.student
+        case .status: AttendanceColumns.regularStatus
+        case .time: AttendanceColumns.time
+        }
+    }
+}
+
+private enum GuestAttendanceColumn: String, CaseIterable, Identifiable {
+    case student
+    case family
+    case type
+    case time
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .student: "学员"
+        case .family: "家庭"
+        case .type: "类型"
+        case .time: "记录时间"
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .student: AttendanceColumns.student
+        case .family: AttendanceColumns.family
+        case .type: AttendanceColumns.guestStatus
+        case .time: AttendanceColumns.time
+        }
+    }
 }
 
 private enum AttendanceGuestKind: String, Identifiable {

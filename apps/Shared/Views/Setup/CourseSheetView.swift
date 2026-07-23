@@ -13,11 +13,11 @@ struct CourseSheetView: View {
     let duplicate: (Course) -> Void
     let delete: (Course) -> Void
 
-    @State private var sortColumn: CourseTableColumn?
-    @State private var sortAscending = true
+    @SceneStorage("md-desk.courses.sort-column") private var sortColumnStorage = ""
+    @SceneStorage("md-desk.courses.sort-ascending") private var sortAscending = true
+    @SceneStorage("md-desk.courses.name-filter") private var courseNameFilter = ""
+    @SceneStorage("md-desk.courses.column-filters") private var selectedFilterValuesStorage = ""
     @State private var activeFilterColumn: CourseTableColumn?
-    @State private var courseNameFilter = ""
-    @State private var selectedFilterValues: [CourseTableColumn: Set<String>] = [:]
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.mdInterfaceFontScale) private var interfaceFontScale
@@ -559,6 +559,23 @@ struct CourseSheetView: View {
         courseNameFilter.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var sortColumn: CourseTableColumn? {
+        get { CourseTableColumn(rawValue: sortColumnStorage) }
+        nonmutating set { sortColumnStorage = newValue?.rawValue ?? "" }
+    }
+
+    private var selectedFilterValues: [CourseTableColumn: Set<String>] {
+        Dictionary(
+            uniqueKeysWithValues: CourseTableColumn.allCases.compactMap { column in
+                let values = MDTableFilterCodec.selection(
+                    in: selectedFilterValuesStorage,
+                    for: column.rawValue
+                )
+                return values.isEmpty ? nil : (column, values)
+            }
+        )
+    }
+
     private var activeFilterCount: Int {
         let selectedCount = selectedFilterValues.values.filter { !$0.isEmpty }.count
         return selectedCount + (trimmedCourseNameFilter.isEmpty ? 0 : 1)
@@ -660,30 +677,36 @@ struct CourseSheetView: View {
     }
 
     private func toggleFilterOption(_ value: String, for column: CourseTableColumn) {
-        var selected = selectedFilterValues[column] ?? []
+        var selected = MDTableFilterCodec.selection(
+            in: selectedFilterValuesStorage,
+            for: column.rawValue
+        )
         if selected.contains(value) {
             selected.remove(value)
         } else {
             selected.insert(value)
         }
-        if selected.isEmpty {
-            selectedFilterValues.removeValue(forKey: column)
-        } else {
-            selectedFilterValues[column] = selected
-        }
+        selectedFilterValuesStorage = MDTableFilterCodec.updating(
+            selected,
+            in: selectedFilterValuesStorage,
+            for: column.rawValue
+        )
     }
 
     private func clearFilter(for column: CourseTableColumn) {
         if column == .name {
             courseNameFilter = ""
         } else {
-            selectedFilterValues.removeValue(forKey: column)
+            selectedFilterValuesStorage = MDTableFilterCodec.clearing(
+                column.rawValue,
+                in: selectedFilterValuesStorage
+            )
         }
     }
 
     private func clearAllFilters() {
         courseNameFilter = ""
-        selectedFilterValues.removeAll()
+        selectedFilterValuesStorage = MDTableFilterCodec.removeAll(from: selectedFilterValuesStorage)
     }
 
     private func filterPopoverBinding(for column: CourseTableColumn) -> Binding<Bool> {

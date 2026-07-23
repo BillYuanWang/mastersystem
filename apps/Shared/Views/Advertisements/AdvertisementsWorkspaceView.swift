@@ -8,9 +8,12 @@ import UniformTypeIdentifiers
 struct AdvertisementsWorkspaceView: View {
     let model: AppModel
 
-    @State private var filter = AdvertisementWorkspaceFilter.all
-    @State private var searchText = ""
-    @State private var selectedAdvertisementID: AdvertisementID?
+    @SceneStorage("md-desk.advertisements.status-filter") private var filterStorage = AdvertisementWorkspaceFilter.all.rawValue
+    @SceneStorage("md-desk.advertisements.search") private var searchText = ""
+    @SceneStorage("md-desk.advertisements.selected-id") private var selectedAdvertisementIDStorage = ""
+    @SceneStorage("md-desk.advertisements.sort-column") private var sortColumnStorage = ""
+    @SceneStorage("md-desk.advertisements.sort-ascending") private var sortAscending = true
+    @SceneStorage("md-desk.advertisements.column-filters") private var columnFiltersStorage = ""
     @State private var editingAdvertisement: Advertisement?
     @State private var showingNewAdvertisement = false
     @State private var deletingAdvertisement: Advertisement?
@@ -84,7 +87,7 @@ struct AdvertisementsWorkspaceView: View {
                     .foregroundStyle(theme.warning)
             }
 
-            Picker("状态", selection: $filter) {
+            Picker("状态", selection: filterSelection) {
                 ForEach(AdvertisementWorkspaceFilter.allCases) { item in
                     Text(item.title).tag(item)
                 }
@@ -122,11 +125,20 @@ struct AdvertisementsWorkspaceView: View {
     private func advertisementTable(theme: MDTheme) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                advertisementCell("广告位", width: 72, strong: true)
-                advertisementCell("客户 / 品牌", width: 190, strong: true)
-                advertisementCell("投放日期", width: 205, strong: true)
-                advertisementCell("状态", width: 88, strong: true)
-                advertisementCell("预计费用", width: 105, strong: true)
+                ForEach(AdvertisementTableColumn.allCases) { column in
+                    MDTableColumnHeader(
+                        title: column.title,
+                        width: column.width,
+                        isSorted: sortColumn == column,
+                        ascending: sortAscending,
+                        options: advertisementFilterOptions(for: column),
+                        selectedValues: mdTableFilterSelection(
+                            storage: $columnFiltersStorage,
+                            key: column.rawValue
+                        ),
+                        onSort: { toggleSort(column) }
+                    )
+                }
                 Spacer(minLength: 0)
             }
             .foregroundStyle(theme.secondaryText)
@@ -269,11 +281,121 @@ struct AdvertisementsWorkspaceView: View {
 
     private var filteredAdvertisements: [Advertisement] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return model.advertisements.filter { advertisement in
+        var result = model.advertisements.filter { advertisement in
             filter.matches(AdvertisementPresentationState(advertisement: advertisement))
                 && (query.isEmpty || [advertisement.advertiserName, advertisement.copyText]
                     .contains { $0.localizedCaseInsensitiveContains(query) })
+                && matchesAdvertisementColumnFilters(advertisement)
         }
+        guard let sortColumn else { return result }
+        result.sort { advertisementOrderedBefore($0, $1, by: sortColumn) }
+        return result
+    }
+
+    private var filter: AdvertisementWorkspaceFilter {
+        get { AdvertisementWorkspaceFilter(rawValue: filterStorage) ?? .all }
+        nonmutating set { filterStorage = newValue.rawValue }
+    }
+
+    private var filterSelection: Binding<AdvertisementWorkspaceFilter> {
+        Binding(get: { filter }, set: { filter = $0 })
+    }
+
+    private var selectedAdvertisementID: AdvertisementID? {
+        get { try? AdvertisementID(uuidString: selectedAdvertisementIDStorage) }
+        nonmutating set { selectedAdvertisementIDStorage = newValue?.description ?? "" }
+    }
+
+    private var sortColumn: AdvertisementTableColumn? {
+        get { AdvertisementTableColumn(rawValue: sortColumnStorage) }
+        nonmutating set { sortColumnStorage = newValue?.rawValue ?? "" }
+    }
+
+    private var advertisementFilterSource: [Advertisement] {
+        model.advertisements.filter {
+            filter.matches(AdvertisementPresentationState(advertisement: $0))
+        }
+    }
+
+    private func toggleSort(_ column: AdvertisementTableColumn) {
+        if sortColumn == column {
+            sortAscending.toggle()
+        } else {
+            sortColumn = column
+            sortAscending = true
+        }
+    }
+
+    private func advertisementFilterOptions(for column: AdvertisementTableColumn) -> [MDTableFilterOption] {
+        mdTableFilterOptions(
+            advertisementFilterSource,
+            key: { advertisementColumnKey($0, column: column) },
+            label: { advertisementColumnLabel($0, column: column) }
+        )
+    }
+
+    private func matchesAdvertisementColumnFilters(_ advertisement: Advertisement) -> Bool {
+        AdvertisementTableColumn.allCases.allSatisfy { column in
+            let values = MDTableFilterCodec.selection(in: columnFiltersStorage, for: column.rawValue)
+            return values.isEmpty || values.contains(advertisementColumnKey(advertisement, column: column))
+        }
+    }
+
+    private func advertisementColumnKey(
+        _ advertisement: Advertisement,
+        column: AdvertisementTableColumn
+    ) -> String {
+        switch column {
+        case .slot: String(advertisement.slotNumber)
+        case .advertiser: advertisement.advertiserName
+        case .dates:
+            advertisement.startsOn.formatted(.iso8601.year().month().day()) + "|"
+                + advertisement.endsOn.formatted(.iso8601.year().month().day())
+        case .status: AdvertisementPresentationState(advertisement: advertisement).storageKey
+        case .estimate: String(advertisement.estimatedTotalCents)
+        }
+    }
+
+    private func advertisementColumnLabel(
+        _ advertisement: Advertisement,
+        column: AdvertisementTableColumn
+    ) -> String {
+        switch column {
+        case .slot: "#\(advertisement.slotNumber)"
+        case .advertiser: advertisement.advertiserName
+        case .dates: dateRange(advertisement)
+        case .status: AdvertisementPresentationState(advertisement: advertisement).title
+        case .estimate: currency(advertisement.estimatedTotalCents)
+        }
+    }
+
+    private func advertisementOrderedBefore(
+        _ lhs: Advertisement,
+        _ rhs: Advertisement,
+        by column: AdvertisementTableColumn
+    ) -> Bool {
+        switch column {
+        case .slot:
+            if lhs.slotNumber != rhs.slotNumber {
+                return sortAscending ? lhs.slotNumber < rhs.slotNumber : lhs.slotNumber > rhs.slotNumber
+            }
+        case .dates:
+            if lhs.startsOn != rhs.startsOn {
+                return sortAscending ? lhs.startsOn < rhs.startsOn : lhs.startsOn > rhs.startsOn
+            }
+        case .estimate:
+            if lhs.estimatedTotalCents != rhs.estimatedTotalCents {
+                return sortAscending
+                    ? lhs.estimatedTotalCents < rhs.estimatedTotalCents
+                    : lhs.estimatedTotalCents > rhs.estimatedTotalCents
+            }
+        default:
+            break
+        }
+        let comparison = advertisementColumnLabel(lhs, column: column)
+            .localizedStandardCompare(advertisementColumnLabel(rhs, column: column))
+        if comparison == .orderedSame { return lhs.id.description < rhs.id.description }
+        return sortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
     }
 
     private var selectedAdvertisement: Advertisement? {
@@ -347,6 +469,36 @@ private enum AdvertisementWorkspaceFilter: String, CaseIterable, Identifiable {
     }
 }
 
+private enum AdvertisementTableColumn: String, CaseIterable, Identifiable {
+    case slot
+    case advertiser
+    case dates
+    case status
+    case estimate
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .slot: "广告位"
+        case .advertiser: "客户 / 品牌"
+        case .dates: "投放日期"
+        case .status: "状态"
+        case .estimate: "预计费用"
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .slot: 72
+        case .advertiser: 190
+        case .dates: 205
+        case .status: 88
+        case .estimate: 105
+        }
+    }
+}
+
 private enum AdvertisementPresentationState: Equatable {
     case active
     case scheduled
@@ -379,6 +531,16 @@ private enum AdvertisementPresentationState: Equatable {
         case .ended: "已结束"
         case .draft: "草稿"
         case .archived: "已撤下"
+        }
+    }
+
+    var storageKey: String {
+        switch self {
+        case .active: "active"
+        case .scheduled: "scheduled"
+        case .ended: "ended"
+        case .draft: "draft"
+        case .archived: "archived"
         }
     }
 

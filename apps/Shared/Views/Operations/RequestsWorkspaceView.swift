@@ -10,6 +10,9 @@ struct RequestsWorkspaceView: View {
         .startOfDay(for: Date())
         .timeIntervalSinceReferenceDate
     @SceneStorage("md-desk.requests.date-filter-enabled") private var dateFilterEnabled = false
+    @SceneStorage("md-desk.requests.sort-column") private var sortColumnStorage = ""
+    @SceneStorage("md-desk.requests.sort-ascending") private var sortAscending = true
+    @SceneStorage("md-desk.requests.column-filters") private var columnFiltersStorage = ""
     @State private var showingNewRequest = false
     @State private var editingRequest: LeaveRequest?
     @State private var deletingRequest: LeaveRequest?
@@ -105,13 +108,7 @@ struct RequestsWorkspaceView: View {
 
     private func leaveList(theme: MDTheme) -> some View {
         VStack(spacing: 0) {
-            requestHeader(
-                [
-                    ("学员", 140), ("课程", 210), ("课次", 180),
-                    ("来源", 90), ("备注", 260), ("操作", 100),
-                ],
-                theme: theme
-            )
+            requestHeader(theme: theme)
 
             if visibleLeaveRequests.isEmpty {
                 ContentUnavailableView(
@@ -158,19 +155,27 @@ struct RequestsWorkspaceView: View {
     }
 
     private var visibleLeaveRequests: [LeaveRequest] {
-        let filtered = dateFilterEnabled
+        var filtered = dateFilteredLeaveRequests.filter(matchesColumnFilters)
+
+        guard let sortColumn else {
+            return filtered.sorted { left, right in
+                let leftDate = model.session(id: left.sessionID)?.startsAt ?? left.submittedAt
+                let rightDate = model.session(id: right.sessionID)?.startsAt ?? right.submittedAt
+                if leftDate == rightDate { return left.submittedAt > right.submittedAt }
+                return dateFilterEnabled ? leftDate < rightDate : leftDate > rightDate
+            }
+        }
+        filtered.sort { requestOrderedBefore($0, $1, by: sortColumn) }
+        return filtered
+    }
+
+    private var dateFilteredLeaveRequests: [LeaveRequest] {
+        dateFilterEnabled
             ? model.leaveRequests.filter { request in
                 guard let session = model.session(id: request.sessionID) else { return false }
                 return Calendar.masterDance.isDate(session.startsAt, inSameDayAs: selectedDate)
             }
             : model.leaveRequests
-
-        return filtered.sorted { left, right in
-            let leftDate = model.session(id: left.sessionID)?.startsAt ?? left.submittedAt
-            let rightDate = model.session(id: right.sessionID)?.startsAt ?? right.submittedAt
-            if leftDate == rightDate { return left.submittedAt > right.submittedAt }
-            return dateFilterEnabled ? leftDate < rightDate : leftDate > rightDate
-        }
     }
 
     private var emptyTitle: String {
@@ -243,16 +248,145 @@ struct RequestsWorkspaceView: View {
         }
     }
 
-    private func requestHeader(_ columns: [(String, CGFloat)], theme: MDTheme) -> some View {
+    private func requestHeader(theme: MDTheme) -> some View {
         HStack(spacing: 0) {
-            ForEach(Array(columns.enumerated()), id: \.offset) { _, column in
-                requestCell(column.0, width: column.1, strong: true)
+            ForEach(LeaveRequestTableColumn.allCases) { column in
+                MDTableColumnHeader(
+                    title: column.title,
+                    width: column.width,
+                    isSorted: sortColumn == column,
+                    ascending: sortAscending,
+                    options: requestFilterOptions(for: column),
+                    selectedValues: mdTableFilterSelection(
+                        storage: $columnFiltersStorage,
+                        key: column.rawValue
+                    ),
+                    onSort: { toggleSort(column) }
+                )
+            }
+            HStack(spacing: 5) {
+                if hasActiveColumnFilters {
+                    Button {
+                        columnFiltersStorage = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(theme.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .help("清除全部列筛选")
+                }
+                Text("操作")
+                    .mdFont(.compactStrong)
                     .foregroundStyle(theme.secondaryText)
             }
+            .frame(width: 100)
             Spacer(minLength: 0)
         }
         .frame(height: 34)
         .background(theme.subtleSurface)
+    }
+
+    private var sortColumn: LeaveRequestTableColumn? {
+        get { LeaveRequestTableColumn(rawValue: sortColumnStorage) }
+        nonmutating set { sortColumnStorage = newValue?.rawValue ?? "" }
+    }
+
+    private var hasActiveColumnFilters: Bool {
+        LeaveRequestTableColumn.allCases.contains {
+            !MDTableFilterCodec.selection(in: columnFiltersStorage, for: $0.rawValue).isEmpty
+        }
+    }
+
+    private func toggleSort(_ column: LeaveRequestTableColumn) {
+        if sortColumn == column {
+            sortAscending.toggle()
+        } else {
+            sortColumn = column
+            sortAscending = true
+        }
+    }
+
+    private func requestFilterOptions(for column: LeaveRequestTableColumn) -> [MDTableFilterOption] {
+        mdTableFilterOptions(
+            dateFilteredLeaveRequests,
+            key: { requestColumnKey($0, column: column) },
+            label: { requestColumnLabel($0, column: column) }
+        )
+    }
+
+    private func matchesColumnFilters(_ request: LeaveRequest) -> Bool {
+        LeaveRequestTableColumn.allCases.allSatisfy { column in
+            let values = MDTableFilterCodec.selection(in: columnFiltersStorage, for: column.rawValue)
+            return values.isEmpty || values.contains(requestColumnKey(request, column: column))
+        }
+    }
+
+    private func requestColumnKey(_ request: LeaveRequest, column: LeaveRequestTableColumn) -> String {
+        let session = model.session(id: request.sessionID)
+        return switch column {
+        case .student: request.studentID.description
+        case .course: session?.courseID.description ?? "none"
+        case .session: request.sessionID.description
+        case .source: request.source.rawValue
+        case .note: request.note ?? ""
+        }
+    }
+
+    private func requestColumnLabel(_ request: LeaveRequest, column: LeaveRequestTableColumn) -> String {
+        let session = model.session(id: request.sessionID)
+        return switch column {
+        case .student: model.student(id: request.studentID)?.displayName ?? "—"
+        case .course: session.flatMap { model.course(id: $0.courseID) }?.name ?? "—"
+        case .session: session?.startsAt.formatted(date: .abbreviated, time: .shortened) ?? "—"
+        case .source: leaveRequestSourceLabel(request.source)
+        case .note: request.note ?? "—"
+        }
+    }
+
+    private func requestOrderedBefore(
+        _ lhs: LeaveRequest,
+        _ rhs: LeaveRequest,
+        by column: LeaveRequestTableColumn
+    ) -> Bool {
+        if column == .session {
+            let left = model.session(id: lhs.sessionID)?.startsAt ?? lhs.submittedAt
+            let right = model.session(id: rhs.sessionID)?.startsAt ?? rhs.submittedAt
+            if left != right { return sortAscending ? left < right : left > right }
+        }
+        let comparison = requestColumnLabel(lhs, column: column)
+            .localizedStandardCompare(requestColumnLabel(rhs, column: column))
+        if comparison == .orderedSame { return lhs.id.description < rhs.id.description }
+        return sortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+    }
+}
+
+private enum LeaveRequestTableColumn: String, CaseIterable, Identifiable {
+    case student
+    case course
+    case session
+    case source
+    case note
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .student: "学员"
+        case .course: "课程"
+        case .session: "课次"
+        case .source: "来源"
+        case .note: "备注"
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .student: 140
+        case .course: 210
+        case .session: 180
+        case .source: 90
+        case .note: 260
+        }
     }
 }
 

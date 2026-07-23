@@ -1,7 +1,7 @@
 # Master Dance
 
-Current local test release: `v0.1.23b` (legacy cleanup release; macOS app version
-0.1.23, build 68; iOS remains build 42).
+Current local test release: `v0.1.23c` (persistent table controls release; macOS
+app version 0.1.23, build 69; iOS remains build 42).
 
 Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
 
@@ -37,6 +37,10 @@ The `web` and `product-research` directories remain migration inputs. The
 `macos-app` directory contains retired reference source only; its old English/CSV
 app bundle has been removed and its build command redirects to the supported
 native app.
+
+Every column in the macOS operational tables now supports sorting and filtering.
+Each tab retains its search, filters, sort column, direction, and applicable
+term/date scope when the administrator moves to another tab and returns.
 
 ## Run MD Desk
 

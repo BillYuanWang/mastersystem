@@ -8,9 +8,12 @@ import UniformTypeIdentifiers
 struct NewsWorkspaceView: View {
     let model: AppModel
 
-    @State private var filter = NewsWorkspaceFilter.all
-    @State private var searchText = ""
-    @State private var selectedArticleID: NewsArticleID?
+    @SceneStorage("md-desk.news.status-filter") private var filterStorage = NewsWorkspaceFilter.all.rawValue
+    @SceneStorage("md-desk.news.search") private var searchText = ""
+    @SceneStorage("md-desk.news.selected-article-id") private var selectedArticleIDStorage = ""
+    @SceneStorage("md-desk.news.sort-column") private var sortColumnStorage = ""
+    @SceneStorage("md-desk.news.sort-ascending") private var sortAscending = true
+    @SceneStorage("md-desk.news.column-filters") private var columnFiltersStorage = ""
     @State private var editingArticle: NewsArticle?
     @State private var showingNewArticle = false
     @State private var deletingArticle: NewsArticle?
@@ -68,7 +71,7 @@ struct NewsWorkspaceView: View {
                 NewsHeaderMetric(title: "草稿", value: draftCount, color: theme.warning)
             }
 
-            Picker("状态", selection: $filter) {
+            Picker("状态", selection: filterSelection) {
                 ForEach(NewsWorkspaceFilter.allCases) { item in
                     Text(item.title).tag(item)
                 }
@@ -106,10 +109,20 @@ struct NewsWorkspaceView: View {
     private func articleTable(theme: MDTheme) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                newsCell("标题", width: 300, strong: true)
-                newsCell("状态", width: 82, strong: true)
-                newsCell("作者", width: 110, strong: true)
-                newsCell("发布日期", width: 145, strong: true)
+                ForEach(NewsTableColumn.allCases) { column in
+                    MDTableColumnHeader(
+                        title: column.title,
+                        width: column.width,
+                        isSorted: sortColumn == column,
+                        ascending: sortAscending,
+                        options: newsFilterOptions(for: column),
+                        selectedValues: mdTableFilterSelection(
+                            storage: $columnFiltersStorage,
+                            key: column.rawValue
+                        ),
+                        onSort: { toggleSort(column) }
+                    )
+                }
                 Spacer(minLength: 0)
             }
             .foregroundStyle(theme.secondaryText)
@@ -231,11 +244,97 @@ struct NewsWorkspaceView: View {
 
     private var filteredArticles: [NewsArticle] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return model.newsArticles.filter { article in
+        var result = model.newsArticles.filter { article in
             filter.matches(article.status)
                 && (query.isEmpty || [article.title, article.authorName, article.previewText]
                     .contains { $0.localizedCaseInsensitiveContains(query) })
+                && matchesNewsColumnFilters(article)
         }
+        guard let sortColumn else { return result }
+        result.sort { newsOrderedBefore($0, $1, by: sortColumn) }
+        return result
+    }
+
+    private var filter: NewsWorkspaceFilter {
+        get { NewsWorkspaceFilter(rawValue: filterStorage) ?? .all }
+        nonmutating set { filterStorage = newValue.rawValue }
+    }
+
+    private var filterSelection: Binding<NewsWorkspaceFilter> {
+        Binding(get: { filter }, set: { filter = $0 })
+    }
+
+    private var selectedArticleID: NewsArticleID? {
+        get { try? NewsArticleID(uuidString: selectedArticleIDStorage) }
+        nonmutating set { selectedArticleIDStorage = newValue?.description ?? "" }
+    }
+
+    private var sortColumn: NewsTableColumn? {
+        get { NewsTableColumn(rawValue: sortColumnStorage) }
+        nonmutating set { sortColumnStorage = newValue?.rawValue ?? "" }
+    }
+
+    private var newsFilterSource: [NewsArticle] {
+        model.newsArticles.filter { filter.matches($0.status) }
+    }
+
+    private func toggleSort(_ column: NewsTableColumn) {
+        if sortColumn == column {
+            sortAscending.toggle()
+        } else {
+            sortColumn = column
+            sortAscending = true
+        }
+    }
+
+    private func newsFilterOptions(for column: NewsTableColumn) -> [MDTableFilterOption] {
+        mdTableFilterOptions(
+            newsFilterSource,
+            key: { newsColumnKey($0, column: column) },
+            label: { newsColumnLabel($0, column: column) }
+        )
+    }
+
+    private func matchesNewsColumnFilters(_ article: NewsArticle) -> Bool {
+        NewsTableColumn.allCases.allSatisfy { column in
+            let values = MDTableFilterCodec.selection(in: columnFiltersStorage, for: column.rawValue)
+            return values.isEmpty || values.contains(newsColumnKey(article, column: column))
+        }
+    }
+
+    private func newsColumnKey(_ article: NewsArticle, column: NewsTableColumn) -> String {
+        switch column {
+        case .title: article.title
+        case .status: article.status.rawValue
+        case .author: article.authorName
+        case .publishedAt:
+            article.publishedAt?.formatted(.iso8601.year().month().day()) ?? "unpublished"
+        }
+    }
+
+    private func newsColumnLabel(_ article: NewsArticle, column: NewsTableColumn) -> String {
+        switch column {
+        case .title: article.title
+        case .status: statusTitle(article.status)
+        case .author: article.authorName
+        case .publishedAt: article.publishedAt?.formatted(date: .abbreviated, time: .omitted) ?? "未发布"
+        }
+    }
+
+    private func newsOrderedBefore(
+        _ lhs: NewsArticle,
+        _ rhs: NewsArticle,
+        by column: NewsTableColumn
+    ) -> Bool {
+        if column == .publishedAt {
+            let left = lhs.publishedAt ?? .distantFuture
+            let right = rhs.publishedAt ?? .distantFuture
+            if left != right { return sortAscending ? left < right : left > right }
+        }
+        let comparison = newsColumnLabel(lhs, column: column)
+            .localizedStandardCompare(newsColumnLabel(rhs, column: column))
+        if comparison == .orderedSame { return lhs.id.description < rhs.id.description }
+        return sortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
     }
 
     private var selectedArticle: NewsArticle? {
@@ -314,6 +413,33 @@ private enum NewsWorkspaceFilter: String, CaseIterable, Identifiable {
         case .published: status == .published
         case .draft: status == .draft
         case .archived: status == .archived
+        }
+    }
+}
+
+private enum NewsTableColumn: String, CaseIterable, Identifiable {
+    case title
+    case status
+    case author
+    case publishedAt
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .title: "标题"
+        case .status: "状态"
+        case .author: "作者"
+        case .publishedAt: "发布日期"
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .title: 300
+        case .status: 82
+        case .author: 110
+        case .publishedAt: 145
         }
     }
 }

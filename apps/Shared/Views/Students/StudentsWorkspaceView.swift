@@ -72,20 +72,33 @@ private enum FamilyTableMetrics {
         + totalEnrollments + termEnrollments
 }
 
+private enum FamilyTableColumn: String, CaseIterable {
+    case guardian
+    case email
+    case phone
+    case learners
+    case account
+    case totalEnrollments
+    case termEnrollments
+}
+
 @MainActor
 struct StudentsWorkspaceView: View {
     let model: AppModel
 
-    @State private var searchText = ""
-    @State private var guardianFilter = ""
-    @State private var emailFilter = ""
-    @State private var phoneFilter = ""
-    @State private var learnerFilter = ""
-    @State private var accountFilter: GuardianAccountFilter = .all
-    @State private var totalEnrollmentFilter: EnrollmentCountFilter = .all
-    @State private var termEnrollmentFilter: EnrollmentCountFilter = .all
-    @State private var selectedTermID: TermID?
-    @State private var selectedGuardianID: GuardianID?
+    @SceneStorage("md-desk.families.search") private var searchText = ""
+    @SceneStorage("md-desk.families.guardian-filter") private var guardianFilter = ""
+    @SceneStorage("md-desk.families.email-filter") private var emailFilter = ""
+    @SceneStorage("md-desk.families.phone-filter") private var phoneFilter = ""
+    @SceneStorage("md-desk.families.learner-filter") private var learnerFilter = ""
+    @SceneStorage("md-desk.families.account-filter") private var accountFilterStorage = GuardianAccountFilter.all.rawValue
+    @SceneStorage("md-desk.families.total-enrollment-filter") private var totalEnrollmentFilterStorage = EnrollmentCountFilter.all.rawValue
+    @SceneStorage("md-desk.families.term-enrollment-filter") private var termEnrollmentFilterStorage = EnrollmentCountFilter.all.rawValue
+    @SceneStorage("md-desk.families.selected-term-id") private var selectedTermIDStorage = ""
+    @SceneStorage("md-desk.families.selected-guardian-id") private var selectedGuardianIDStorage = ""
+    @SceneStorage("md-desk.families.sort-column") private var sortColumnStorage = ""
+    @SceneStorage("md-desk.families.sort-ascending") private var sortAscending = true
+    @State private var activeFilterColumn: FamilyTableColumn?
     @State private var hoveredGuardianID: GuardianID?
     @State private var showingGuardianEditor = false
 
@@ -133,7 +146,7 @@ struct StudentsWorkspaceView: View {
 
             Spacer()
 
-            Picker("统计学期", selection: $selectedTermID) {
+            Picker("统计学期", selection: selectedTermSelection) {
                 Text("选择统计学期").tag(Optional<TermID>.none)
                 ForEach(sortedTerms) { term in
                     Text(term.name).tag(Optional(term.id))
@@ -226,20 +239,22 @@ struct StudentsWorkspaceView: View {
 
     private func tableHeader(theme: MDTheme) -> some View {
         HStack(spacing: 0) {
-            headerCell("监护人", width: FamilyTableMetrics.guardian, theme: theme)
-            headerCell("邮箱", width: FamilyTableMetrics.email, theme: theme)
-            headerCell("电话", width: FamilyTableMetrics.phone, theme: theme)
-            headerCell("学员档案", width: FamilyTableMetrics.learners, theme: theme)
-            headerCell("帐号", width: FamilyTableMetrics.account, theme: theme)
+            headerCell(.guardian, title: "监护人", width: FamilyTableMetrics.guardian, theme: theme)
+            headerCell(.email, title: "邮箱", width: FamilyTableMetrics.email, theme: theme)
+            headerCell(.phone, title: "电话", width: FamilyTableMetrics.phone, theme: theme)
+            headerCell(.learners, title: "学员档案", width: FamilyTableMetrics.learners, theme: theme)
+            headerCell(.account, title: "帐号", width: FamilyTableMetrics.account, theme: theme)
             headerCell(
-                "总报名",
+                .totalEnrollments,
+                title: "总报名",
                 width: FamilyTableMetrics.totalEnrollments,
                 alignment: .center,
                 help: "系统累计报名数，自 2026 年秋季开始",
                 theme: theme
             )
             headerCell(
-                "学期报名",
+                .termEnrollments,
+                title: "学期报名",
                 width: FamilyTableMetrics.termEnrollments,
                 alignment: .center,
                 help: selectedTerm?.name ?? "请先在页眉选择统计学期",
@@ -261,19 +276,19 @@ struct StudentsWorkspaceView: View {
             textFilterCell("筛选电话", text: $phoneFilter, width: FamilyTableMetrics.phone, theme: theme)
             textFilterCell("筛选学员", text: $learnerFilter, width: FamilyTableMetrics.learners, theme: theme)
             menuFilterCell(
-                selection: $accountFilter,
+                selection: accountFilterSelection,
                 values: GuardianAccountFilter.allCases,
                 width: FamilyTableMetrics.account,
                 theme: theme
             )
             menuFilterCell(
-                selection: $totalEnrollmentFilter,
+                selection: totalEnrollmentFilterSelection,
                 values: EnrollmentCountFilter.allCases,
                 width: FamilyTableMetrics.totalEnrollments,
                 theme: theme
             )
             menuFilterCell(
-                selection: $termEnrollmentFilter,
+                selection: termEnrollmentFilterSelection,
                 values: EnrollmentCountFilter.allCases,
                 width: FamilyTableMetrics.termEnrollments,
                 theme: theme
@@ -362,23 +377,135 @@ struct StudentsWorkspaceView: View {
     }
 
     private func headerCell(
-        _ title: String,
+        _ column: FamilyTableColumn,
+        title: String,
         width: CGFloat,
         alignment: Alignment = .leading,
         help: String? = nil,
         theme: MDTheme
     ) -> some View {
-        Text(title)
-            .mdFont(.bodyStrong)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: alignment)
-            .padding(.horizontal, 10)
-            .frame(width: width, height: FamilyTableMetrics.headerHeight)
-            .foregroundStyle(theme.primaryText)
-            .overlay(alignment: .trailing) {
-                Rectangle().fill(theme.faintSeparator).frame(width: 1)
+        HStack(spacing: 3) {
+            Button {
+                toggleSort(column)
+            } label: {
+                HStack(spacing: 4) {
+                    Text(title)
+                        .mdFont(.bodyStrong)
+                        .lineLimit(1)
+                    Image(systemName: sortColumn == column
+                        ? (sortAscending ? "chevron.up" : "chevron.down")
+                        : "arrow.up.arrow.down")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(sortColumn == column ? theme.accent : theme.secondaryText.opacity(0.55))
+                }
+                .frame(maxWidth: .infinity, alignment: alignment)
+                .contentShape(Rectangle())
             }
-            .help(help ?? "按此列筛选")
+            .buttonStyle(.plain)
+            .help("点击按“\(title)”排序")
+
+            Button {
+                activeFilterColumn = column
+            } label: {
+                Image(systemName: isColumnFiltered(column)
+                    ? "line.3.horizontal.decrease.circle.fill"
+                    : "line.3.horizontal.decrease.circle")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(isColumnFiltered(column) ? theme.accent : theme.secondaryText.opacity(0.7))
+                    .frame(width: 15, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help((help.map { $0 + "；" } ?? "") + "筛选\(title)")
+            .popover(isPresented: familyFilterPopoverBinding(for: column), arrowEdge: .bottom) {
+                familyFilterPopover(column: column, title: title, theme: theme)
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(width: width, height: FamilyTableMetrics.headerHeight)
+        .foregroundStyle(theme.primaryText)
+        .overlay(alignment: .trailing) {
+            Rectangle().fill(theme.faintSeparator).frame(width: 1)
+        }
+    }
+
+    @ViewBuilder
+    private func familyFilterPopover(
+        column: FamilyTableColumn,
+        title: String,
+        theme: MDTheme
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .mdFont(.bodyStrong)
+                Spacer()
+                if isColumnFiltered(column) {
+                    Button {
+                        clearFilter(column)
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(MDIconButtonStyle())
+                    .help("清除此列筛选")
+                }
+            }
+
+            Rectangle().fill(theme.separator).frame(height: 1)
+
+            switch column {
+            case .guardian:
+                TextField("筛选姓名", text: $guardianFilter)
+                    .textFieldStyle(.roundedBorder)
+            case .email:
+                TextField("筛选邮箱", text: $emailFilter)
+                    .textFieldStyle(.roundedBorder)
+            case .phone:
+                TextField("筛选电话", text: $phoneFilter)
+                    .textFieldStyle(.roundedBorder)
+            case .learners:
+                TextField("筛选学员", text: $learnerFilter)
+                    .textFieldStyle(.roundedBorder)
+            case .account:
+                Picker("帐号状态", selection: accountFilterSelection) {
+                    ForEach(GuardianAccountFilter.allCases) { value in
+                        Text(value.title).tag(value)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+            case .totalEnrollments:
+                Picker("总报名", selection: totalEnrollmentFilterSelection) {
+                    ForEach(EnrollmentCountFilter.allCases) { value in
+                        Text(value.title).tag(value)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+            case .termEnrollments:
+                Picker("学期报名", selection: termEnrollmentFilterSelection) {
+                    ForEach(EnrollmentCountFilter.allCases) { value in
+                        Text(value.title).tag(value)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+            }
+        }
+        .mdFont(.body)
+        .padding(14)
+        .frame(width: 245)
+        .background(theme.raisedSurface)
+    }
+
+    private func familyFilterPopoverBinding(for column: FamilyTableColumn) -> Binding<Bool> {
+        Binding(
+            get: { activeFilterColumn == column },
+            set: { isPresented in
+                if isPresented {
+                    activeFilterColumn = column
+                } else if activeFilterColumn == column {
+                    activeFilterColumn = nil
+                }
+            }
+        )
     }
 
     private func textFilterCell(
@@ -457,7 +584,7 @@ struct StudentsWorkspaceView: View {
     }
 
     private var filteredGuardians: [Guardian] {
-        model.guardians.filter { guardian in
+        var result = model.guardians.filter { guardian in
             matchesGlobalSearch(guardian)
                 && matches(guardian.displayName, filter: guardianFilter)
                 && matches(guardian.email, filter: emailFilter)
@@ -467,6 +594,9 @@ struct StudentsWorkspaceView: View {
                 && totalEnrollmentFilter.includes(totalEnrollmentCount(for: guardian))
                 && termEnrollmentFilter.includes(termEnrollmentCount(for: guardian))
         }
+        guard let sortColumn else { return result }
+        result.sort { orderedBefore($0, $1, by: sortColumn) }
+        return result
     }
 
     private var visibleGuardianIDs: [GuardianID] {
@@ -479,6 +609,52 @@ struct StudentsWorkspaceView: View {
 
     private var selectedTerm: Term? {
         selectedTermID.flatMap(model.term(id:))
+    }
+
+    private var accountFilter: GuardianAccountFilter {
+        get { GuardianAccountFilter(rawValue: accountFilterStorage) ?? .all }
+        nonmutating set { accountFilterStorage = newValue.rawValue }
+    }
+
+    private var totalEnrollmentFilter: EnrollmentCountFilter {
+        get { EnrollmentCountFilter(rawValue: totalEnrollmentFilterStorage) ?? .all }
+        nonmutating set { totalEnrollmentFilterStorage = newValue.rawValue }
+    }
+
+    private var termEnrollmentFilter: EnrollmentCountFilter {
+        get { EnrollmentCountFilter(rawValue: termEnrollmentFilterStorage) ?? .all }
+        nonmutating set { termEnrollmentFilterStorage = newValue.rawValue }
+    }
+
+    private var accountFilterSelection: Binding<GuardianAccountFilter> {
+        Binding(get: { accountFilter }, set: { accountFilter = $0 })
+    }
+
+    private var totalEnrollmentFilterSelection: Binding<EnrollmentCountFilter> {
+        Binding(get: { totalEnrollmentFilter }, set: { totalEnrollmentFilter = $0 })
+    }
+
+    private var termEnrollmentFilterSelection: Binding<EnrollmentCountFilter> {
+        Binding(get: { termEnrollmentFilter }, set: { termEnrollmentFilter = $0 })
+    }
+
+    private var selectedTermID: TermID? {
+        get { try? TermID(uuidString: selectedTermIDStorage) }
+        nonmutating set { selectedTermIDStorage = newValue?.description ?? "" }
+    }
+
+    private var selectedTermSelection: Binding<TermID?> {
+        Binding(get: { selectedTermID }, set: { selectedTermID = $0 })
+    }
+
+    private var selectedGuardianID: GuardianID? {
+        get { try? GuardianID(uuidString: selectedGuardianIDStorage) }
+        nonmutating set { selectedGuardianIDStorage = newValue?.description ?? "" }
+    }
+
+    private var sortColumn: FamilyTableColumn? {
+        get { FamilyTableColumn(rawValue: sortColumnStorage) }
+        nonmutating set { sortColumnStorage = newValue?.rawValue ?? "" }
     }
 
     private var recordSummary: String {
@@ -525,6 +701,62 @@ struct StudentsWorkspaceView: View {
         selectedGuardianID = visibleGuardianIDs.first
     }
 
+    private func toggleSort(_ column: FamilyTableColumn) {
+        if sortColumn == column {
+            sortAscending.toggle()
+        } else {
+            sortColumn = column
+            sortAscending = true
+        }
+    }
+
+    private func isColumnFiltered(_ column: FamilyTableColumn) -> Bool {
+        switch column {
+        case .guardian: !normalized(guardianFilter).isEmpty
+        case .email: !normalized(emailFilter).isEmpty
+        case .phone: !normalized(phoneFilter).isEmpty
+        case .learners: !normalized(learnerFilter).isEmpty
+        case .account: accountFilter != .all
+        case .totalEnrollments: totalEnrollmentFilter != .all
+        case .termEnrollments: termEnrollmentFilter != .all
+        }
+    }
+
+    private func orderedBefore(
+        _ lhs: Guardian,
+        _ rhs: Guardian,
+        by column: FamilyTableColumn
+    ) -> Bool {
+        let comparison: ComparisonResult
+        switch column {
+        case .totalEnrollments:
+            let left = totalEnrollmentCount(for: lhs)
+            let right = totalEnrollmentCount(for: rhs)
+            if left != right { return sortAscending ? left < right : left > right }
+            comparison = lhs.displayName.localizedStandardCompare(rhs.displayName)
+        case .termEnrollments:
+            let left = termEnrollmentCount(for: lhs)
+            let right = termEnrollmentCount(for: rhs)
+            if left != right { return sortAscending ? left < right : left > right }
+            comparison = lhs.displayName.localizedStandardCompare(rhs.displayName)
+        case .account:
+            let left = lhs.isAccountLinked ? 1 : 0
+            let right = rhs.isAccountLinked ? 1 : 0
+            if left != right { return sortAscending ? left < right : left > right }
+            comparison = lhs.displayName.localizedStandardCompare(rhs.displayName)
+        case .guardian:
+            comparison = lhs.displayName.localizedStandardCompare(rhs.displayName)
+        case .email:
+            comparison = (lhs.email ?? "").localizedStandardCompare(rhs.email ?? "")
+        case .phone:
+            comparison = (lhs.phone ?? "").localizedStandardCompare(rhs.phone ?? "")
+        case .learners:
+            comparison = learnerSummary(for: lhs).localizedStandardCompare(learnerSummary(for: rhs))
+        }
+        if comparison == .orderedSame { return lhs.id.description < rhs.id.description }
+        return sortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+    }
+
     private func clearColumnFilters() {
         guardianFilter = ""
         emailFilter = ""
@@ -533,6 +765,18 @@ struct StudentsWorkspaceView: View {
         accountFilter = .all
         totalEnrollmentFilter = .all
         termEnrollmentFilter = .all
+    }
+
+    private func clearFilter(_ column: FamilyTableColumn) {
+        switch column {
+        case .guardian: guardianFilter = ""
+        case .email: emailFilter = ""
+        case .phone: phoneFilter = ""
+        case .learners: learnerFilter = ""
+        case .account: accountFilter = .all
+        case .totalEnrollments: totalEnrollmentFilter = .all
+        case .termEnrollments: termEnrollmentFilter = .all
+        }
     }
 
     private func matchesGlobalSearch(_ guardian: Guardian) -> Bool {

@@ -7,7 +7,7 @@ struct SetupWorkspaceView: View {
     let model: AppModel
 
     @SceneStorage("md-desk.courses.selected-term-id") private var selectedTermIDStorage = ""
-    @State private var searchText = ""
+    @SceneStorage("md-desk.courses.search") private var searchText = ""
     @State private var showingCourseEditor = false
     @State private var editingCourse: Course?
     @State private var duplicatingCourse: Course?
