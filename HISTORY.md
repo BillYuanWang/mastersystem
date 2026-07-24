@@ -18,6 +18,35 @@ Run `./script/build_tutorial_pdf.sh` after editing the tutorial.
 
 ## Current release
 
+### v0.1.24 - 2026-07-24
+
+- Imported the approved 2026 Fall timetable into production Supabase while
+  preserving 11 courses that were already present.
+- Added 20 missing courses and 340 sessions, bringing the term to 31 courses
+  and 527 sessions; every course has 17 sessions after Thanksgiving week is
+  excluded.
+- Skipped both weekend courses marked as temporary adjustments and left every
+  newly imported price unset. Existing manually entered prices were preserved.
+- Added the `未设置` technical age group for the three private lessons whose
+  source timetable did not specify an age range.
+- Added an idempotent, conflict-checked import record at
+  `supabase/imports/20260724_2026_fall_courses.sql`.
+- Prevented ad-hoc local rebuilds from hanging on an obsolete Keychain access
+  prompt by using a per-user, permission-restricted session file. The local
+  build requires one fresh login after this upgrade; later rebuilds retain it.
+  Formally signed builds continue to use Keychain.
+- Supabase production data changed; the database schema did not change.
+
+### v0.1.23d - 2026-07-23
+
+- Replaced the retired black-and-white icon with the approved full-color Master
+  Dance logo on macOS and iPhone.
+- Added source-controlled full and compact logo assets for authentication,
+  navigation, schedule printing, invoices, and receipts.
+- Added a repeatable asset generator that preserves the approved colors and
+  derives platform-specific crops from one original PNG.
+- No Supabase schema or production cloud data changed in this release.
+
 ### v0.1.23c - 2026-07-22
 
 - Added column sorting and filtering to every macOS operational table: courses,

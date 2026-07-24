@@ -80,9 +80,9 @@ private struct AdminAuthenticationLoadingView: View {
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(spacing: 16) {
-            MasterDanceLogoView()
+            MasterDanceLogoView(.mark)
                 .frame(width: 56, height: 56)
-                .clipShape(Circle())
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             ProgressView()
                 .controlSize(.small)
             Text("MD DESK")

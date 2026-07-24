@@ -6,10 +6,28 @@ import AppKit
 import UIKit
 #endif
 
+enum MasterDanceLogoVariant {
+    case full
+    case mark
+
+    fileprivate var resourceName: String {
+        switch self {
+        case .full: "MasterDanceLogo"
+        case .mark: "MasterDanceLogoMark"
+        }
+    }
+}
+
 struct MasterDanceLogoView: View {
+    private let variant: MasterDanceLogoVariant
+
+    init(_ variant: MasterDanceLogoVariant = .full) {
+        self.variant = variant
+    }
+
     var body: some View {
 #if os(macOS)
-        if let path = Bundle.main.path(forResource: "MasterDanceLogo", ofType: "png"),
+        if let path = Bundle.main.path(forResource: variant.resourceName, ofType: "png"),
            let image = NSImage(contentsOfFile: path) {
             Image(nsImage: image)
                 .renderingMode(.original)
@@ -22,7 +40,7 @@ struct MasterDanceLogoView: View {
                 .padding(8)
         }
 #else
-        if let path = Bundle.main.path(forResource: "MasterDanceLogo", ofType: "png"),
+        if let path = Bundle.main.path(forResource: variant.resourceName, ofType: "png"),
            let image = UIImage(contentsOfFile: path) {
             Image(uiImage: image)
                 .renderingMode(.original)

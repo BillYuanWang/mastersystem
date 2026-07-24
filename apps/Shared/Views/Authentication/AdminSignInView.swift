@@ -23,9 +23,9 @@ struct AdminSignInView: View {
 
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 12) {
-                    MasterDanceLogoView()
+                    MasterDanceLogoView(.mark)
                         .frame(width: 44, height: 44)
-                        .clipShape(Circle())
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     VStack(alignment: .leading, spacing: 3) {
                         Text("MD DESK")
                             .mdFont(.monoStrong)

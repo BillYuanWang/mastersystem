@@ -58,6 +58,29 @@ struct SessionAwareAuthStorageTests {
 
         #expect(backing.value(for: sessionKey) == session)
     }
+
+    @Test("Protected file sessions survive local app rebuilds")
+    func protectedFileStoragePersistsAcrossInstances() throws {
+        let directoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("md-auth-\(UUID().uuidString)", isDirectory: true)
+        let fileURL = directoryURL.appendingPathComponent("session.json")
+        defer { try? FileManager.default.removeItem(at: directoryURL) }
+
+        let session = Data("remembered-session".utf8)
+        let firstInstance = ProtectedFileAuthStorage(fileURL: fileURL)
+        try firstInstance.store(key: sessionKey, value: session)
+
+        let secondInstance = ProtectedFileAuthStorage(fileURL: fileURL)
+        #expect(try secondInstance.retrieve(key: sessionKey) == session)
+
+        let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+        let permissions = (attributes[.posixPermissions] as? NSNumber)?.intValue
+        #expect(permissions == 0o600)
+
+        try secondInstance.remove(key: sessionKey)
+        #expect(try firstInstance.retrieve(key: sessionKey) == nil)
+        #expect(!FileManager.default.fileExists(atPath: fileURL.path))
+    }
 }
 
 private final class FakeAuthStorage: AuthLocalStorage, @unchecked Sendable {

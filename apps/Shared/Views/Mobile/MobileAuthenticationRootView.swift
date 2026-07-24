@@ -116,9 +116,9 @@ private struct MobileSignInAndRegistrationView: View {
                 Spacer(minLength: 34)
 
                 VStack(spacing: 12) {
-                    MasterDanceLogoView()
+                    MasterDanceLogoView(.mark)
                         .frame(width: 72, height: 72)
-                        .clipShape(Circle())
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     Text("MASTER DANCE")
                         .mdFont(size: 18, weight: .bold, design: .monospaced)
                         .foregroundStyle(theme.primaryText)
@@ -378,9 +378,9 @@ private struct MobileGuardianClaimView: View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(spacing: 20) {
             Spacer()
-            MasterDanceLogoView()
+            MasterDanceLogoView(.mark)
                 .frame(width: 64, height: 64)
-                .clipShape(Circle())
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             Text("连接你的家庭")
                 .mdFont(size: 20, weight: .bold)
             Text("向教务老师获取一次性家长邀请码。连接后即可看到这个家庭下的所有学员。")
@@ -682,9 +682,9 @@ private struct MobileAuthenticationLoadingView: View {
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(spacing: 16) {
-            MasterDanceLogoView()
+            MasterDanceLogoView(.mark)
                 .frame(width: 58, height: 58)
-                .clipShape(Circle())
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             ProgressView()
                 .controlSize(.small)
             Text("MASTER DANCE")

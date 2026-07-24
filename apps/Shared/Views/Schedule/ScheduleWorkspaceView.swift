@@ -568,9 +568,17 @@ private struct SchedulePrintDocument: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("MASTER DANCE")
-                    .mdFont(.monoStrong)
+            HStack(spacing: 10) {
+                MasterDanceLogoView(.mark)
+                    .frame(width: 52, height: 42)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("MASTER DANCE")
+                        .mdFont(.monoStrong)
+                    Text("佳美舞蹈")
+                        .mdFont(.compactStrong)
+                }
                 Spacer()
                 Text(ScheduleWeek.rangeLabel(startingAt: weekStart, includesYear: true))
                     .mdFont(.mono)

@@ -241,9 +241,9 @@ private struct ReceiptDocumentView: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 18) {
-            MasterDanceLogoView()
-                .frame(width: 62, height: 62)
-                .clipShape(Circle())
+            MasterDanceLogoView(.full)
+                .frame(width: 78, height: 78)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("MASTER DANCE")

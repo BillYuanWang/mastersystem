@@ -337,9 +337,9 @@ private struct CompactRailView: View {
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(spacing: 9) {
-            MasterDanceLogoView()
+            MasterDanceLogoView(.mark)
                 .frame(width: 38, height: 38)
-                .clipShape(Circle())
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(.top, 12)
                 .padding(.bottom, 8)
                 .help("Master Dance")

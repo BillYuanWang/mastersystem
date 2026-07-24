@@ -1,16 +1,27 @@
 # Master Dance
 
-Current local test release: `v0.1.23c` (persistent table controls release; macOS
-app version 0.1.23, build 69; iOS remains build 42).
+Current local test release: `v0.1.24` (official brand and 2026 Fall production
+course baseline; macOS app version 0.1.24, build 71; iOS remains version
+0.1.22, build 43).
 
 Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
 
 Master Dance formal product backend. / Master Dance 正式产品云端后端。
 
+The production 2026 Fall term currently contains 31 confirmed courses and 527
+sessions. The two weekend temporary-adjustment courses and all unconfirmed
+prices were intentionally excluded from the July 24 timetable import.
+
+The ad-hoc local macOS build stores its remembered Supabase session in a
+per-user `0600` Application Support file so rebuilding the app does not trigger
+repeated Keychain authorization. Formally signed builds continue to use
+Keychain.
+
 ## What is here
 
 - `packages/MasterDanceCore`: Swift 6 domain models, recurring-session generation, preview data, and repository contracts.
 - `apps`: the production MD Desk macOS source, the Master Dance iPhone source, and shared SwiftUI workflows.
+- `brand`: the approved full-color Master Dance logo source and derivative rules.
 - `supabase`: production Postgres schema, RLS, Storage, Realtime, Edge Function, seed, and pgTAP tests.
 - `docs`: architecture, product scope, visual baseline, policy log, migration design, QA evidence, and delivery roadmap.
 
@@ -41,6 +52,11 @@ native app.
 Every column in the macOS operational tables now supports sorting and filtering.
 Each tab retains its search, filters, sort column, direction, and applicable
 term/date scope when the administrator moves to another tab and returns.
+
+Both apps now use the approved full-color Xiaohongshu Master Dance logo. The
+same source image supplies the macOS and iPhone icons, compact in-app mark,
+schedule print header, and billing documents; generated assets must not be
+recolored or replaced independently.
 
 ## Run MD Desk
 

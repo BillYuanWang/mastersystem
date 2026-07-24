@@ -33,6 +33,7 @@ mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 cp "$ROOT_DIR/apps/Shared/Resources/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
 cp "$ROOT_DIR/apps/Shared/Resources/MasterDanceLogo.png" "$APP_RESOURCES/MasterDanceLogo.png"
+cp "$ROOT_DIR/apps/Shared/Resources/MasterDanceLogoMark.png" "$APP_RESOURCES/MasterDanceLogoMark.png"
 chmod +x "$APP_BINARY"
 
 cat >"$INFO_PLIST" <<PLIST
@@ -71,6 +72,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>public.app-category.education</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
+  <key>MDUseProtectedFileAuthStorage</key>
+  <true/>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSPrincipalClass</key>

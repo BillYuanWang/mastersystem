@@ -40,6 +40,8 @@ struct SupabaseConfiguration: Sendable {
         let backing: any AuthLocalStorage
         if ProcessInfo.processInfo.environment["MASTER_DANCE_VOLATILE_AUTH"] == "1" {
             backing = VolatileAuthStorage()
+        } else if usesProtectedFileAuthStorage {
+            backing = ProtectedFileAuthStorage()
         } else {
             backing = KeychainLocalStorage()
         }
@@ -55,6 +57,15 @@ struct SupabaseConfiguration: Sendable {
             )
         )
         return ConfiguredSessionClient(client: client, authStorage: authStorage)
+    }
+
+    private var usesProtectedFileAuthStorage: Bool {
+#if os(macOS)
+        ProcessInfo.processInfo.environment["MASTER_DANCE_FILE_AUTH"] == "1"
+            || (Bundle.main.object(forInfoDictionaryKey: "MDUseProtectedFileAuthStorage") as? Bool) == true
+#else
+        false
+#endif
     }
 }
 
@@ -166,6 +177,82 @@ final class SessionAwareAuthStorage: AuthLocalStorage, @unchecked Sendable {
             values[key] = nil
         }
         try backing.remove(key: key)
+    }
+}
+
+final class ProtectedFileAuthStorage: AuthLocalStorage, @unchecked Sendable {
+    private let fileURL: URL
+    private let lock = NSLock()
+    private let fileManager: FileManager
+
+    init(
+        fileURL: URL = ProtectedFileAuthStorage.defaultFileURL,
+        fileManager: FileManager = .default
+    ) {
+        self.fileURL = fileURL
+        self.fileManager = fileManager
+    }
+
+    func store(key: String, value: Data) throws {
+        try lock.withLock {
+            var values = try loadValues()
+            values[key] = value
+            try saveValues(values)
+        }
+    }
+
+    func retrieve(key: String) throws -> Data? {
+        try lock.withLock {
+            try loadValues()[key]
+        }
+    }
+
+    func remove(key: String) throws {
+        try lock.withLock {
+            var values = try loadValues()
+            values[key] = nil
+            try saveValues(values)
+        }
+    }
+
+    private func loadValues() throws -> [String: Data] {
+        guard fileManager.fileExists(atPath: fileURL.path) else { return [:] }
+        let data = try Data(contentsOf: fileURL)
+        return try JSONDecoder().decode([String: Data].self, from: data)
+    }
+
+    private func saveValues(_ values: [String: Data]) throws {
+        let directoryURL = fileURL.deletingLastPathComponent()
+        try fileManager.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+
+        if values.isEmpty {
+            if fileManager.fileExists(atPath: fileURL.path) {
+                try fileManager.removeItem(at: fileURL)
+            }
+            return
+        }
+
+        let data = try JSONEncoder().encode(values)
+        try data.write(to: fileURL, options: .atomic)
+        try fileManager.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: fileURL.path
+        )
+    }
+
+    private static var defaultFileURL: URL {
+        let baseDirectory = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? FileManager.default.temporaryDirectory
+        return baseDirectory
+            .appendingPathComponent("Master Dance", isDirectory: true)
+            .appendingPathComponent("Local Auth", isDirectory: true)
+            .appendingPathComponent("session.json")
     }
 }
 
