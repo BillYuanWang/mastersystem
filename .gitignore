@@ -9,6 +9,8 @@ xcuserdata/
 .build/
 build/
 DerivedData/
+dist/
+work/
 *.xcodeproj/
 *.xcworkspace/
 *.app

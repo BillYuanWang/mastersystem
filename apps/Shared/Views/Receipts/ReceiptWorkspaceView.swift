@@ -377,7 +377,7 @@ private struct BillingComposerView: View {
                     Text("学员").frame(width: 105, alignment: .leading)
                     Text("项目").frame(maxWidth: .infinity, alignment: .leading)
                     Text("金额").frame(width: 92, alignment: .leading)
-                    Text("应付").frame(width: 38)
+                    Text("计入应付").frame(width: 70)
                     Color.clear.frame(width: 28)
                 }
                 .mdFont(.compactStrong)
@@ -420,8 +420,8 @@ private struct BillingComposerView: View {
             Toggle("", isOn: line.includedInAmountDue)
                 .labelsHidden()
                 .toggleStyle(.checkbox)
-                .frame(width: 38)
-                .help(line.wrappedValue.includedInAmountDue ? "计入本次应付" : "仅展示，不计入应付")
+                .frame(width: 70)
+                .help(line.wrappedValue.includedInAmountDue ? "该项目计入本次应付" : "该项目不计入本次应付")
 
             Button {
                 lines.removeAll { $0.id == line.wrappedValue.id }
@@ -1091,7 +1091,7 @@ private struct BillingHistoryView: View {
                                 }
                                 Spacer()
                                 if !item.includedInAmountDue {
-                                    Text("仅展示")
+                                    Text("不计入应付")
                                         .mdFont(.compact)
                                         .foregroundStyle(theme.secondaryText)
                                 }

@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import MasterDanceCore
 import SwiftUI
 
@@ -11,16 +12,27 @@ struct AdminDesktopShell: View {
     let onSignOut: (() -> Void)?
 
     @State private var selection = AdminSection.schedule
+    @State private var visibleSelection = AdminSection.schedule
+    @State private var loadedSections: Set<AdminSection> = [.schedule]
+    @State private var hasStartedPreloading = false
     @State private var showingGuardianLinkCode = false
 
     @Environment(\.colorScheme) private var colorScheme
+
+    private static let highFrequencyPreloadOrder: [AdminSection] = [
+        .courses,
+        .families,
+        .enrollments,
+        .attendance,
+        .requests
+    ]
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 CompactRailView(
-                    selection: $selection,
+                    selection: sectionSelection,
                     appearanceRawValue: $appearanceRawValue,
                     accountDisplayName: accountDisplayName,
                     onManageAccount: onManageAccount,
@@ -67,14 +79,42 @@ struct AdminDesktopShell: View {
                 GuardianLinkCodeSheet(code: code)
             }
         }
+        .task(priority: .utility) {
+            await preloadCommonWorkspaces()
+        }
+    }
+
+    private var workspace: some View {
+        ZStack {
+            ForEach(AdminSection.allCases) { section in
+                if loadedSections.contains(section) {
+                    workspaceView(for: section)
+                        .opacity(visibleSelection == section ? 1 : 0)
+                        .allowsHitTesting(visibleSelection == section)
+                        .accessibilityHidden(visibleSelection != section)
+                        .zIndex(visibleSelection == section ? 1 : 0)
+                        .onAppear {
+                            revealWorkspaceIfRequested(section)
+                        }
+                }
+            }
+        }
+        .clipped()
+    }
+
+    private var sectionSelection: Binding<AdminSection> {
+        Binding(
+            get: { selection },
+            set: { activateWorkspace($0) }
+        )
     }
 
     @ViewBuilder
-    private var workspace: some View {
-        switch selection {
+    private func workspaceView(for section: AdminSection) -> some View {
+        switch section {
         case .schedule:
             ScheduleWorkspaceView(model: model) { destination in
-                selection = destination
+                activateWorkspace(destination)
             }
         case .courses:
             SetupWorkspaceView(model: model)
@@ -96,6 +136,50 @@ struct AdminDesktopShell: View {
             ContractsWorkspaceView(model: model)
         case .dataCenter:
             DataCenterWorkspaceView(model: model)
+        }
+    }
+
+    private func activateWorkspace(_ section: AdminSection) {
+        guard section != selection || section != visibleSelection else { return }
+
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        let wasLoaded = loadedSections.contains(section)
+        selection = section
+
+        if wasLoaded {
+            visibleSelection = section
+        } else {
+            loadedSections.insert(section)
+        }
+    }
+
+    private func revealWorkspaceIfRequested(_ section: AdminSection) {
+        guard selection == section, visibleSelection != section else { return }
+        visibleSelection = section
+    }
+
+    private func preloadCommonWorkspaces() async {
+        guard !hasStartedPreloading else { return }
+        hasStartedPreloading = true
+
+        do {
+            try await Task.sleep(for: .milliseconds(300))
+        } catch {
+            return
+        }
+
+        for section in Self.highFrequencyPreloadOrder {
+            guard !Task.isCancelled else { return }
+            guard !loadedSections.contains(section) else { continue }
+
+            loadedSections.insert(section)
+            await Task.yield()
+
+            do {
+                try await Task.sleep(for: .milliseconds(140))
+            } catch {
+                return
+            }
         }
     }
 }
@@ -371,7 +455,10 @@ private struct CompactRailView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
                 .accessibilityLabel(section.title)
+                .accessibilityRemoveTraits(.isSelected)
+                .accessibilityAddTraits(selection == section ? [.isSelected] : [])
                 .onHover { isHovering in
                     updateHover(section.id, isHovering: isHovering)
                 }

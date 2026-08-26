@@ -11,10 +11,17 @@ enum MasterDanceLogoVariant {
     case mark
 
     fileprivate var resourceName: String {
+#if os(macOS)
+        switch self {
+        case .full: "MasterDanceMacLogo"
+        case .mark: "MasterDanceMacLogoMark"
+        }
+#else
         switch self {
         case .full: "MasterDanceLogo"
         case .mark: "MasterDanceLogoMark"
         }
+#endif
     }
 }
 
@@ -30,9 +37,10 @@ struct MasterDanceLogoView: View {
         if let path = Bundle.main.path(forResource: variant.resourceName, ofType: "png"),
            let image = NSImage(contentsOfFile: path) {
             Image(nsImage: image)
-                .renderingMode(.original)
+                .renderingMode(variant == .mark ? .template : .original)
                 .resizable()
                 .scaledToFit()
+                .foregroundStyle(.primary)
         } else {
             Image(systemName: "figure.dance")
                 .resizable()

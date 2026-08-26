@@ -1,8 +1,7 @@
 # Master Dance
 
-Current local test release: `v0.1.24` (official brand and 2026 Fall production
-course baseline; macOS app version 0.1.24, build 71; iOS remains version
-0.1.22, build 43).
+Current beta release candidate: `v0.9.0-beta.1` (macOS app version 0.9.0,
+build 75; iOS app version 0.9.0, build 45).
 
 Native MD Desk macOS app, Master Dance iPhone app, and Supabase backend.
 
@@ -11,6 +10,14 @@ Master Dance formal product backend. / Master Dance 正式产品云端后端。
 The production 2026 Fall term currently contains 31 confirmed courses and 527
 sessions. The two weekend temporary-adjustment courses and all unconfirmed
 prices were intentionally excluded from the July 24 timetable import.
+
+MD Desk first renders the schedule, then quietly preloads Courses, Families,
+Enrollments, Attendance, and Leave into RAM one workspace at a time. Those six
+frequent workspaces stay ready in the current window, so switching among them
+does not rebuild rows and controls. Billing, News, Advertisements, Contracts,
+and Data Center remain on-demand. Course conflict checks scan only sessions
+whose time windows can overlap, keeping the first course-table load responsive
+as the timetable grows.
 
 The ad-hoc local macOS build stores its remembered Supabase session in a
 per-user `0600` Application Support file so rebuilding the app does not trigger
@@ -32,6 +39,8 @@ Keychain.
 - [Administrator tutorial (PDF)](TUTORIAL.pdf): the printable and shareable
   edition, with bookmarks and a linked table of contents.
 - [Release history](HISTORY.md): user-visible changes by version.
+- [Installation and distribution](docs/DISTRIBUTION.md): Developer ID,
+  notarization, internal TestFlight, employee installation, and update flow.
 
 `TUTORIAL.md` is the source of truth for the PDF. Regenerate the PDF after every
 user-visible change:
@@ -52,6 +61,10 @@ native app.
 Every column in the macOS operational tables now supports sorting and filtering.
 Each tab retains its search, filters, sort column, direction, and applicable
 term/date scope when the administrator moves to another tab and returns.
+
+Schedule course names shrink further when a narrow room column or long title
+needs more space. The macOS sidebar also exposes exactly one selected tab to
+VoiceOver while preserving the existing icon hover labels.
 
 Both apps now use the approved full-color Xiaohongshu Master Dance logo. The
 same source image supplies the macOS and iPhone icons, compact in-app mark,
@@ -94,6 +107,27 @@ iPhone simulator, then Run. The iPhone app supports administrator attendance,
 guardian and adult-student accounts; it does not target iPad in this release.
 For command-line simulator builds, keep Xcode's local `Sign to Run Locally`
 signature enabled; disabling code signing also removes simulator Keychain access.
+
+## Distribute to employees
+
+Run the unsigned release, privacy-manifest, and test preflight:
+
+```sh
+./script/release_preflight.sh
+```
+
+After Xcode is signed in to the Agentech Developer team and the appropriate
+certificates are installed:
+
+```sh
+TEAM_ID=YOUR_TEAM_ID ./script/release_macos.sh
+TEAM_ID=YOUR_TEAM_ID ./script/release_ios_testflight.sh
+```
+
+The first command produces a Developer ID signed, Apple-notarized Mac ZIP under
+`dist/macos/`. The second uploads an internal-only TestFlight build. Credentials
+stay in Xcode or Keychain and are never stored in the repository. See
+[Distribution guide](docs/DISTRIBUTION.md) for setup and employee steps.
 
 ## Verify Swift
 

@@ -2,6 +2,21 @@
 import AppKit
 import SwiftUI
 
+private enum ReceiptBrand {
+    static let legalName = "Starton EDU Irvine, Inc."
+    static let taxID = "92-1606689"
+    static let publicAddress = "2 Jenner St., Suite 180, Irvine, CA 92618"
+}
+
+private enum ReceiptPalette {
+    static let ink = Color(red: 37 / 255, green: 29 / 255, blue: 33 / 255)
+    static let muted = Color(red: 116 / 255, green: 95 / 255, blue: 105 / 255)
+    static let accent = Color(red: 217 / 255, green: 112 / 255, blue: 157 / 255)
+    static let accentDeep = Color(red: 185 / 255, green: 68 / 255, blue: 118 / 255)
+    static let accentSoft = Color(red: 243 / 255, green: 200 / 255, blue: 218 / 255)
+    static let paper = Color(red: 255 / 255, green: 248 / 255, blue: 251 / 255)
+}
+
 enum ReceiptCurrency: String, CaseIterable, Identifiable {
     case usd = "USD"
     case cny = "CNY"
@@ -235,24 +250,18 @@ private struct ReceiptDocumentView: View {
         }
         .padding(.horizontal, 48)
         .padding(.vertical, 40)
-        .foregroundStyle(Color(red: 0.10, green: 0.11, blue: 0.12))
-        .background(Color.white)
+        .foregroundStyle(ReceiptPalette.ink)
+        .background(ReceiptPalette.paper)
     }
 
     private var header: some View {
         HStack(alignment: .top, spacing: 18) {
-            MasterDanceLogoView(.full)
-                .frame(width: 78, height: 78)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
             VStack(alignment: .leading, spacing: 4) {
-                Text("MASTER DANCE")
-                    .font(.system(size: 23, weight: .bold, design: .monospaced))
-                Text("佳美舞蹈")
-                    .font(.system(size: 16, weight: .semibold))
-                Text("Starton EDU Irvine, Inc. & Master Dance")
+                MasterDanceLogoView(.full)
+                    .frame(width: 300, height: 72, alignment: .leading)
+                Text("Operated by \(ReceiptBrand.legalName)")
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.gray)
+                    .foregroundStyle(ReceiptPalette.muted)
             }
 
             Spacer()
@@ -260,9 +269,10 @@ private struct ReceiptDocumentView: View {
             VStack(alignment: .trailing, spacing: 5) {
                 Text(document.kind.chineseTitle)
                     .font(.system(size: 27, weight: .bold))
+                    .foregroundStyle(ReceiptPalette.accentDeep)
                 Text(document.kind.englishTitle)
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.gray)
+                    .foregroundStyle(ReceiptPalette.muted)
                 meta("编号", value: document.receiptNumber + " · v\(document.version)")
                 meta("日期", value: billingDateText(document.issuedOn))
             }
@@ -271,7 +281,7 @@ private struct ReceiptDocumentView: View {
 
     private var divider: some View {
         Rectangle()
-            .fill(Color(red: 0.12, green: 0.13, blue: 0.14))
+            .fill(ReceiptPalette.accent)
             .frame(height: 2)
     }
 
@@ -302,7 +312,7 @@ private struct ReceiptDocumentView: View {
             .padding(.horizontal, 13)
             .frame(height: 35)
             .foregroundStyle(Color.white)
-            .background(Color(red: 0.12, green: 0.13, blue: 0.14))
+            .background(ReceiptPalette.accentDeep)
 
             ForEach(Array(document.items.enumerated()), id: \.offset) { index, item in
                 HStack(spacing: 12) {
@@ -311,9 +321,9 @@ private struct ReceiptDocumentView: View {
                             Text(item.title)
                                 .lineLimit(1)
                             if !item.includedInAmountDue {
-                                Text("已付 · 仅展示")
+                                Text("不计入应付")
                                     .font(.system(size: max(8, itemFont - 3), weight: .semibold))
-                                    .foregroundStyle(Color.gray)
+                                    .foregroundStyle(ReceiptPalette.muted)
                             }
                         }
                         let detail = [item.learnerName, item.detail]
@@ -322,7 +332,7 @@ private struct ReceiptDocumentView: View {
                         if !detail.isEmpty {
                             Text(detail)
                                 .font(.system(size: max(8, itemFont - 3)))
-                                .foregroundStyle(Color.gray)
+                                .foregroundStyle(ReceiptPalette.muted)
                                 .lineLimit(1)
                         }
                     }
@@ -331,21 +341,25 @@ private struct ReceiptDocumentView: View {
                         .font(.system(size: itemFont, weight: .medium, design: .monospaced))
                         .foregroundStyle(
                             item.includedInAmountDue
-                                ? Color(red: 0.10, green: 0.11, blue: 0.12)
-                                : Color.gray
+                                ? ReceiptPalette.ink
+                                : ReceiptPalette.muted
                         )
                         .frame(width: 160, alignment: .trailing)
                 }
                 .font(.system(size: itemFont))
                 .padding(.horizontal, 13)
                 .frame(height: rowHeight)
-                .background(index.isMultiple(of: 2) ? Color.white : Color.black.opacity(0.035))
+                .background(
+                    index.isMultiple(of: 2)
+                        ? ReceiptPalette.paper
+                        : ReceiptPalette.accentSoft.opacity(0.22)
+                )
                 .overlay(alignment: .bottom) {
-                    Rectangle().fill(Color.black.opacity(0.10)).frame(height: 1)
+                    Rectangle().fill(ReceiptPalette.accentSoft.opacity(0.85)).frame(height: 1)
                 }
             }
         }
-        .overlay(Rectangle().stroke(Color.black.opacity(0.16), lineWidth: 1))
+        .overlay(Rectangle().stroke(ReceiptPalette.accent.opacity(0.42), lineWidth: 1))
     }
 
     private var totals: some View {
@@ -356,6 +370,7 @@ private struct ReceiptDocumentView: View {
                     .font(.system(size: 15, weight: .semibold))
                 Text(document.currency.formatted(document.total))
                     .font(.system(size: 23, weight: .bold, design: .monospaced))
+                    .foregroundStyle(ReceiptPalette.accentDeep)
             }
             if let paymentAmount = document.paymentAmount {
                 totalRow("本次付款", amount: paymentAmount)
@@ -383,19 +398,25 @@ private struct ReceiptDocumentView: View {
 
     private var footer: some View {
         VStack(spacing: 9) {
-            Rectangle().fill(Color.black.opacity(0.14)).frame(height: 1)
-            HStack(alignment: .bottom) {
+            Rectangle().fill(ReceiptPalette.accentSoft).frame(height: 1)
+            HStack(alignment: .top, spacing: 24) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("感谢您选择佳美舞蹈")
                         .font(.system(size: 12, weight: .semibold))
                     Text("Thank you for choosing Master Dance.")
                         .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Color.gray)
+                        .foregroundStyle(ReceiptPalette.muted)
                 }
                 Spacer()
-                Text("STARTON EDU IRVINE, INC.")
-                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.gray)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(ReceiptBrand.legalName.uppercased())
+                        .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                    Text("EIN \(ReceiptBrand.taxID)")
+                        .font(.system(size: 8, weight: .medium, design: .monospaced))
+                    Text("MASTER DANCE · \(ReceiptBrand.publicAddress)")
+                        .font(.system(size: 7.5, weight: .medium, design: .monospaced))
+                }
+                .foregroundStyle(ReceiptPalette.muted)
             }
         }
     }
@@ -408,7 +429,7 @@ private struct ReceiptDocumentView: View {
 
     private func meta(_ label: String, value: String) -> some View {
         HStack(spacing: 6) {
-            Text(label).foregroundStyle(Color.gray)
+            Text(label).foregroundStyle(ReceiptPalette.muted)
             Text(value).lineLimit(1)
         }
         .font(.system(size: 9, weight: .medium, design: .monospaced))
@@ -418,7 +439,7 @@ private struct ReceiptDocumentView: View {
         HStack(alignment: .firstTextBaseline, spacing: 14) {
             Text(label)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.gray)
+                .foregroundStyle(ReceiptPalette.muted)
                 .frame(width: 70, alignment: .leading)
             Text(value)
                 .font(.system(size: 14, weight: .medium))

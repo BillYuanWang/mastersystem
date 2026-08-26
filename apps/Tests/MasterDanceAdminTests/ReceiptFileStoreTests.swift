@@ -55,15 +55,39 @@ struct ReceiptFileStoreTests {
     @MainActor
     func rendersPNG() throws {
         let document = ReceiptDocument(
-            receiptNumber: "MD-TEST-001",
+            kind: .receipt,
+            receiptNumber: "MD-2026-001",
+            version: 2,
+            schoolYearLabel: "2026–2027 学年",
             issuedOn: Date(timeIntervalSince1970: 0),
             guardianName: "测试监护人",
             guardianEmail: "guardian@example.com",
             guardianPhone: "+1 (949) 555-0100",
             learnerName: "测试学员",
             currency: .usd,
-            items: [ReceiptLineItem(title: "秋季学费", amount: 125)],
+            items: [
+                ReceiptLineItem(
+                    title: "2026 秋季学期 · 中国舞基本功",
+                    amount: 595,
+                    learnerName: "测试学员",
+                    detail: "周一 3:30–4:30 PM"
+                ),
+                ReceiptLineItem(
+                    title: "2026–2027 学年注册费",
+                    amount: 50,
+                    learnerName: "测试学员"
+                ),
+                ReceiptLineItem(
+                    title: "上期已付款项目",
+                    amount: 120,
+                    learnerName: "测试学员",
+                    detail: "仅供家庭查阅",
+                    includedInAmountDue: false
+                )
+            ],
             paymentMethod: "Zelle",
+            paymentAmount: 645,
+            outstandingAfterPayment: 0,
             note: "测试收据"
         )
 
@@ -73,6 +97,10 @@ struct ReceiptFileStoreTests {
         #expect(data.starts(with: [0x89, 0x50, 0x4E, 0x47]))
         #expect(bitmap?.pixelsWide == 1_440)
         #expect(bitmap?.pixelsHigh == 1_920)
+
+        if let path = ProcessInfo.processInfo.environment["MD_RECEIPT_DOCUMENT_SNAPSHOT_PATH"] {
+            try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+        }
     }
 
     @Test("Copied receipts expose PNG data to other apps")

@@ -731,6 +731,26 @@ struct AdminSaveEnrollmentParameters: Encodable, Sendable {
         billingNotes = enrollment.billingNotes
         selectedSessionIDs = enrollment.selectedSessionIDs.map(\.rawValue).sorted { $0.uuidString < $1.uuidString }
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(termID, forKey: .termID)
+        try container.encode(courseID, forKey: .courseID)
+        try container.encode(studentID, forKey: .studentID)
+        try container.encode(enrolledAt, forKey: .enrolledAt)
+        try container.encode(status, forKey: .status)
+        try container.encode(registrationMode, forKey: .registrationMode)
+        try container.encode(pricingStatus, forKey: .pricingStatus)
+        try container.encode(billingStartsOn, forKey: .billingStartsOn)
+        try container.encode(unitPriceCents, forKey: .unitPriceCents)
+        try container.encode(trialFeeCents, forKey: .trialFeeCents)
+        try container.encode(discountName, forKey: .discountName)
+        try container.encode(discountKind, forKey: .discountKind)
+        try container.encode(discountValue, forKey: .discountValue)
+        try container.encode(billingNotes, forKey: .billingNotes)
+        try container.encode(selectedSessionIDs, forKey: .selectedSessionIDs)
+    }
 }
 
 struct AttendanceRecordRow: Codable, Sendable {

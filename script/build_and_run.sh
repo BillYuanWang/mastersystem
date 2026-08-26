@@ -32,8 +32,8 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 cp "$ROOT_DIR/apps/Shared/Resources/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
-cp "$ROOT_DIR/apps/Shared/Resources/MasterDanceLogo.png" "$APP_RESOURCES/MasterDanceLogo.png"
-cp "$ROOT_DIR/apps/Shared/Resources/MasterDanceLogoMark.png" "$APP_RESOURCES/MasterDanceLogoMark.png"
+cp "$ROOT_DIR/apps/Shared/Resources/MasterDanceMacLogo.png" "$APP_RESOURCES/MasterDanceMacLogo.png"
+cp "$ROOT_DIR/apps/Shared/Resources/MasterDanceMacLogoMark.png" "$APP_RESOURCES/MasterDanceMacLogoMark.png"
 chmod +x "$APP_BINARY"
 
 cat >"$INFO_PLIST" <<PLIST

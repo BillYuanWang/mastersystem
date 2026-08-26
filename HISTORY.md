@@ -18,6 +18,57 @@ Run `./script/build_tutorial_pdf.sh` after editing the tutorial.
 
 ## Current release
 
+### v0.9.0-beta.1 - 2026-08-26
+
+- Unified the macOS and iPhone beta version at 0.9.0: macOS build 75 and iOS
+  build 45.
+- Kept the six frequent macOS workspaces warm in memory and optimized course
+  conflict scans so switching Tabs remains responsive with the full timetable.
+- Made long schedule course names shrink further before truncation in narrow
+  room columns, and corrected the sidebar VoiceOver selected state.
+- Updated macOS logo rendering, schedule printing, and billing PNGs with the
+  approved school identity, legal name, EIN, public address, and established
+  receipt color system.
+- Fixed nullable enrollment billing fields in Supabase RPC encoding and added
+  regression coverage without changing the production database schema or data.
+- Added the Apple privacy manifest, repeatable release preflight, Developer ID
+  notarization workflow, and internal-only iPhone TestFlight workflow.
+- No Supabase schema or production cloud data changed in this release.
+
+### v0.1.24c - 2026-08-24
+
+- Prepared both native apps for repeatable Apple distribution: macOS 0.1.24
+  build 74 and iOS 0.1.22 build 44.
+- Added an Apple privacy manifest covering app-only UserDefaults use, first-party
+  operational data collection, and the explicit no-tracking declaration.
+- Added one-command release preflight, Developer ID signing and notarization,
+  and internal-only TestFlight archive/upload workflows.
+- Documented employee installation, replacement updates, certificate setup,
+  and the remaining boundary before a public App Store submission.
+- No Supabase schema or production cloud data changed in this release.
+
+### v0.1.24b - 2026-07-24
+
+- Preloaded the six most frequently used macOS workspaces into RAM: Schedule,
+  Courses, Families, Enrollments, Attendance, and Leave.
+- Kept Schedule first and interactive, then warmed the other five workspaces
+  silently and one at a time so startup does not trade tab delay for one large
+  main-thread pause.
+- Left Billing, News, Advertisements, Contracts, and Data Center on-demand to
+  keep the memory budget deliberate.
+- No Supabase schema or production cloud data changed in this release.
+
+### v0.1.24a - 2026-07-24
+
+- Removed the subtle hesitation between macOS tabs after the production
+  timetable grew to 527 sessions.
+- Kept each visited tab alive for the current window, including its current
+  selection, filters, scroll position, and in-progress local UI state.
+- Changed course conflict detection from comparing every pair of sessions to a
+  chronological active-window scan, so the Courses tab no longer does
+  unnecessary whole-term work when it first opens.
+- No Supabase schema or production cloud data changed in this release.
+
 ### v0.1.24 - 2026-07-24
 
 - Imported the approved 2026 Fall timetable into production Supabase while
