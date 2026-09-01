@@ -33,6 +33,15 @@ values (
   'open'
 );
 
+insert into public.term_holidays (organization_id, term_id, name, starts_on, ends_on)
+values (
+  '92000000-0000-0000-0000-000000000001',
+  '92000000-0000-0000-0000-000000000002',
+  'Test Break',
+  '2026-11-23',
+  '2026-11-29'
+);
+
 insert into public.course_categories (id, organization_id, name)
 values (
   '92000000-0000-0000-0000-000000000003',
