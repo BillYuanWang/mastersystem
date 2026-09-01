@@ -38,7 +38,8 @@ begin
      or timezone_value is null
      or big_room_id is null
      or small_room_id is null then
-    raise exception 'Sunday timetable correction stopped: required term or room is missing';
+    raise notice 'Sunday timetable correction skipped: this database does not contain the production term and rooms';
+    return;
   end if;
 
   if (
