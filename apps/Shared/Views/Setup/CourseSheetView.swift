@@ -272,18 +272,74 @@ struct CourseSheetView: View {
         layout: CourseTableLayout
     ) -> some View {
         HStack(spacing: 0) {
-            dataCell(entry.course.name, width: layout[.name], strong: true)
-            dataCell(entry.termName, width: layout[.term])
-            dataCell(entry.ageGroupName, width: layout[.ageGroup])
-            dataCell(entry.roomName, width: layout[.room])
-            dataCell(entry.instructorName, width: layout[.instructor])
-            dataCell(entry.scheduleLabel, width: layout[.schedule])
-            dataCell("\(entry.sessionCount)", width: layout[.sessions], monospaced: true)
-            dataCell(entry.perSessionPriceLabel, width: layout[.perSessionPrice], monospaced: true)
-            dataCell(entry.fullTermPriceLabel, width: layout[.fullTermPrice], monospaced: true)
+            dataCell(
+                entry.course.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? "未设置"
+                    : entry.course.name,
+                width: layout[.name],
+                strong: true,
+                needsAttention: entry.needsAttention(.name),
+                theme: theme
+            )
+            dataCell(
+                entry.termName,
+                width: layout[.term],
+                needsAttention: entry.needsAttention(.term),
+                theme: theme
+            )
+            dataCell(
+                entry.ageGroupName,
+                width: layout[.ageGroup],
+                needsAttention: entry.needsAttention(.ageGroup),
+                theme: theme
+            )
+            dataCell(
+                entry.roomName,
+                width: layout[.room],
+                needsAttention: entry.needsAttention(.room),
+                theme: theme
+            )
+            dataCell(
+                entry.instructorName,
+                width: layout[.instructor],
+                needsAttention: entry.needsAttention(.instructor),
+                theme: theme
+            )
+            dataCell(
+                entry.scheduleLabel,
+                width: layout[.schedule],
+                needsAttention: entry.needsAttention(.schedule),
+                theme: theme
+            )
+            dataCell(
+                "\(entry.sessionCount)",
+                width: layout[.sessions],
+                monospaced: true,
+                needsAttention: entry.needsAttention(.sessions),
+                theme: theme
+            )
+            dataCell(
+                entry.perSessionPriceLabel,
+                width: layout[.perSessionPrice],
+                monospaced: true,
+                needsAttention: entry.needsAttention(.perSessionPrice),
+                theme: theme
+            )
+            dataCell(
+                entry.fullTermPriceLabel,
+                width: layout[.fullTermPrice],
+                monospaced: true,
+                needsAttention: entry.needsAttention(.fullTermPrice),
+                theme: theme
+            )
             courseTypeCell(entry, width: layout[.courseType], theme: theme)
             conflictCell(entry, width: layout[.conflict], theme: theme)
-            dataCell(entry.statusLabel, width: layout[.status])
+            dataCell(
+                entry.statusLabel,
+                width: layout[.status],
+                needsAttention: !entry.course.isActive,
+                theme: theme
+            )
             HStack(spacing: 3) {
                 Button {
                     edit(entry.course)
@@ -310,11 +366,7 @@ struct CourseSheetView: View {
             .frame(width: layout.operationWidth)
         }
         .frame(minHeight: 38)
-        .background(
-            entry.hasConflict
-                ? theme.danger.opacity(colorScheme == .dark ? 0.10 : 0.055)
-                : Color.clear
-        )
+        .background(rowBackground(for: entry, theme: theme))
         .contentShape(Rectangle())
         .help(entry.course.notes ?? "")
         .contextMenu {
@@ -323,6 +375,16 @@ struct CourseSheetView: View {
             Divider()
             Button("删除课程", role: .destructive) { delete(entry.course) }
         }
+    }
+
+    private func rowBackground(for entry: CourseTableEntry, theme: MDTheme) -> Color {
+        if !entry.course.isActive {
+            return theme.danger.opacity(colorScheme == .dark ? 0.20 : 0.105)
+        }
+        if entry.hasConflict {
+            return theme.danger.opacity(colorScheme == .dark ? 0.10 : 0.055)
+        }
+        return .clear
     }
 
     private func conflictCell(
@@ -368,6 +430,7 @@ struct CourseSheetView: View {
                 .mdFont(.compact)
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .foregroundStyle(entry.needsAttention(.courseType) ? theme.danger : theme.primaryText)
         }
         .padding(.leading, 10)
         .padding(.trailing, 5)
@@ -378,12 +441,15 @@ struct CourseSheetView: View {
         _ text: String,
         width: CGFloat,
         strong: Bool = false,
-        monospaced: Bool = false
+        monospaced: Bool = false,
+        needsAttention: Bool = false,
+        theme: MDTheme
     ) -> some View {
         Text(text)
             .mdFont(monospaced ? .mono : (strong ? .bodyStrong : .body))
             .lineLimit(1)
             .truncationMode(.tail)
+            .foregroundStyle(needsAttention ? theme.danger : theme.primaryText)
             .padding(.leading, 10)
             .padding(.trailing, 5)
             .frame(width: width, alignment: .leading)
@@ -475,16 +541,37 @@ struct CourseSheetView: View {
             .map { course in
             let courseSessions = (sessionsByCourse[course.id] ?? []).sorted { $0.startsAt < $1.startsAt }
             let schedule = courseSessions.first.map(scheduleDetails)
-            let typeName = model.courseType(id: course.courseTypeID)?.name ?? "—"
+            let term = model.term(id: course.termID)
+            let ageGroup = model.ageGroup(id: course.ageGroupID)
+            let room = model.room(id: course.defaultRoomID)
+            let instructor = model.instructor(id: course.defaultInstructorID)
+            let courseType = model.courseType(id: course.courseTypeID)
+            let typeName = courseType?.name ?? "未设置"
             let formatToken = course.format == .privateLesson ? "私" : "组"
+            var attentionColumns = Set<CourseTableColumn>()
+            if referenceNeedsAttention(course.name) { attentionColumns.insert(.name) }
+            if referenceNeedsAttention(term?.name) { attentionColumns.insert(.term) }
+            if referenceNeedsAttention(ageGroup?.name) { attentionColumns.insert(.ageGroup) }
+            if referenceNeedsAttention(room?.name) { attentionColumns.insert(.room) }
+            if referenceNeedsAttention(instructor?.displayName) { attentionColumns.insert(.instructor) }
+            if schedule == nil {
+                attentionColumns.formUnion([.schedule, .sessions])
+            }
+            if perSessionPriceNeedsAttention(course) {
+                attentionColumns.insert(.perSessionPrice)
+            }
+            if fullTermPriceNeedsAttention(course) {
+                attentionColumns.insert(.fullTermPrice)
+            }
+            if referenceNeedsAttention(courseType?.name) { attentionColumns.insert(.courseType) }
             return CourseTableEntry(
                 course: course,
-                termName: model.term(id: course.termID)?.name ?? "—",
-                ageGroupName: model.ageGroup(id: course.ageGroupID)?.name ?? "—",
+                termName: term?.name ?? "未设置",
+                ageGroupName: ageGroup?.name ?? "未设置",
                 ageGroupKey: course.ageGroupID.description,
-                roomName: model.room(id: course.defaultRoomID)?.name ?? "—",
+                roomName: room?.name ?? "未设置",
                 roomKey: course.defaultRoomID.description,
-                instructorName: model.instructor(id: course.defaultInstructorID)?.displayName ?? "—",
+                instructorName: instructor?.displayName ?? "未设置",
                 instructorKey: course.defaultInstructorID.description,
                 scheduleLabel: schedule?.label ?? "未排课",
                 scheduleKey: schedule?.key ?? "none",
@@ -501,8 +588,39 @@ struct CourseSheetView: View {
                 courseTypeFilterLabel: "\(formatToken) · \(typeName)",
                 conflicts: conflictsByCourse[course.id] ?? [],
                 statusLabel: course.isActive ? "启用" : "停用",
-                statusKey: course.isActive ? "active" : "inactive"
+                statusKey: course.isActive ? "active" : "inactive",
+                attentionColumns: attentionColumns
             )
+        }
+    }
+
+    private func referenceNeedsAttention(_ value: String?) -> Bool {
+        guard let value else { return true }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.isEmpty
+            || ["未设置", "待定", "未定", "—", "-", "n/a"].contains(normalized)
+    }
+
+    private func perSessionPriceNeedsAttention(_ course: Course) -> Bool {
+        return switch course.pricingStatus {
+        case .pending, .reviewRequired:
+            true
+        case .priced:
+            course.dropInUnitPriceCents == nil
+        case .free:
+            false
+        }
+    }
+
+    private func fullTermPriceNeedsAttention(_ course: Course) -> Bool {
+        guard !course.format.requiresPerSessionEnrollment else { return false }
+        return switch course.pricingStatus {
+        case .pending, .reviewRequired:
+            true
+        case .priced:
+            course.unitPriceCents == nil
+        case .free:
+            false
         }
     }
 
@@ -881,10 +999,15 @@ private struct CourseTableEntry: Identifiable {
     let conflicts: [CourseScheduleConflict]
     let statusLabel: String
     let statusKey: String
+    let attentionColumns: Set<CourseTableColumn>
 
     var id: CourseID { course.id }
 
     var hasConflict: Bool { !conflicts.isEmpty }
+
+    func needsAttention(_ column: CourseTableColumn) -> Bool {
+        attentionColumns.contains(column)
+    }
 
     var conflictOccurrenceCount: Int {
         conflicts.reduce(0) { $0 + $1.overlappingSessionCount }

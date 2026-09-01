@@ -12,6 +12,21 @@ handoff package is requested, then regenerate each PDF from its Markdown source.
 
 ## Current release
 
+### v0.9.0-beta.1o - 2026-09-01
+
+- Made incomplete course setup visible at a glance in the macOS course table.
+  Missing references, the technical `未设置` age group, an unscheduled course,
+  and pending or review-required prices now use strong red cell text.
+- Gave inactive courses a light red whole-row background while preserving the
+  existing schedule-conflict warning. Valid free prices and private-lesson
+  full-term `不适用` values remain neutral.
+- Local macOS is build 88 versus notarized build 79, a distance of nine. Local
+  iOS remains build 48 versus accepted TestFlight build 45, a distance of
+  three. No database migration, notarized package, or TestFlight upload was
+  made in this revision.
+- All 136 Swift tests passed, and both macOS and iOS Release targets completed
+  the unsigned release preflight successfully.
+
 ### v0.9.0-beta.1n - 2026-09-01
 
 - Added administrator-managed adult N-session cards without tying them to a

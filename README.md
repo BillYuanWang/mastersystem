@@ -1,6 +1,6 @@
 # Master Dance
 
-Current local revision: `v0.9.0-beta.1n`. macOS is app version 0.9.0 build 87,
+Current local revision: `v0.9.0-beta.1o`. macOS is app version 0.9.0 build 88,
 while the local iOS app is version 0.9.0 build 48. The latest notarized
 macOS distribution remains build 79, and the accepted iOS TestFlight build
 remains 45.
@@ -80,6 +80,10 @@ native app.
 Every column in the macOS operational tables now supports sorting and filtering.
 Each tab retains its search, filters, sort column, direction, and applicable
 term/date scope when the administrator moves to another tab and returns.
+In the course table, unresolved values such as `未设置`, `未排课`, `待定`,
+and `待复核` use strong red text so staff can scan unfinished setup quickly.
+Inactive courses use a light red whole-row background. Valid `免费` and
+private-lesson `不适用` values remain neutral rather than becoming false alerts.
 
 The macOS navigation icons run across the top of the window, preserving the
 hover labels, appearance/account menus, and exactly one selected tab for
