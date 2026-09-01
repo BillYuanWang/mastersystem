@@ -69,6 +69,7 @@ family linking, guardian invitations, contract publication, media, invoice
 version, and payment tools. Tool descriptions repeat the important invariants:
 
 - money uses integer USD cents;
+- a priced group course derives its per-session rate as its full-term unit rate plus USD 5;
 - private lessons use per-session pricing only;
 - issued invoices, payments, signed contracts, and audit history are immutable;
 - linked records cannot be silently hard deleted;

@@ -737,6 +737,8 @@ final class AppModel {
                (updated.dropInUnitPriceCents ?? 0) <= 0 {
                 throw AppModelError.invalidCourseUnitPrice
             }
+        } else {
+            updated = try applyingGroupCoursePricingPolicy(to: updated)
         }
         try await withCloudActivity(label: "保存课程") {
             try await repository.save(course: updated)
@@ -912,16 +914,7 @@ final class AppModel {
         dropInUnitPriceCents: Int?
     ) {
         let priceText = draft.unitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let dropInPriceText = draft.dropInUnitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let dropInPrice: Int?
-        if dropInPriceText.isEmpty {
-            dropInPrice = nil
-        } else {
-            guard let cents = MoneyTextParser.cents(from: dropInPriceText), cents >= 0 else {
-                throw AppModelError.invalidCourseUnitPrice
-            }
-            dropInPrice = cents
-        }
+        let dropInPrice = try optionalCoursePrice(from: draft.dropInUnitPriceText)
         if isPrivateLesson {
             switch draft.pricingStatus {
             case .pending:
@@ -946,14 +939,59 @@ final class AppModel {
             guard let cents = MoneyTextParser.cents(from: priceText), cents > 0 else {
                 throw AppModelError.invalidCourseUnitPrice
             }
-            return (.priced, cents, dropInPrice)
+            guard let perSessionPrice = CoursePricingPolicy.perSessionUnitPriceCents(
+                fullTermUnitPriceCents: cents
+            ) else {
+                throw AppModelError.invalidCourseUnitPrice
+            }
+            return (.priced, cents, perSessionPrice)
         case .reviewRequired:
             guard !priceText.isEmpty else { return (.reviewRequired, nil, dropInPrice) }
             guard let cents = MoneyTextParser.cents(from: priceText), cents >= 0 else {
                 throw AppModelError.invalidCourseUnitPrice
             }
-            return (.reviewRequired, cents, dropInPrice)
+            let perSessionPrice = CoursePricingPolicy.perSessionUnitPriceCents(
+                fullTermUnitPriceCents: cents
+            ) ?? (cents == 0 ? 0 : dropInPrice)
+            return (.reviewRequired, cents, perSessionPrice)
         }
+    }
+
+    private func optionalCoursePrice(from text: String) throws -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let cents = MoneyTextParser.cents(from: trimmed), cents >= 0 else {
+            throw AppModelError.invalidCourseUnitPrice
+        }
+        return cents
+    }
+
+    private func applyingGroupCoursePricingPolicy(to course: Course) throws -> Course {
+        var updated = course
+        switch updated.pricingStatus {
+        case .pending:
+            break
+        case .free:
+            updated.unitPriceCents = 0
+            updated.dropInUnitPriceCents = 0
+        case .priced:
+            guard let perSessionPrice = CoursePricingPolicy.perSessionUnitPriceCents(
+                fullTermUnitPriceCents: updated.unitPriceCents
+            ) else {
+                throw AppModelError.invalidCourseUnitPrice
+            }
+            updated.dropInUnitPriceCents = perSessionPrice
+        case .reviewRequired:
+            if let fullTermPrice = updated.unitPriceCents {
+                guard fullTermPrice >= 0 else {
+                    throw AppModelError.invalidCourseUnitPrice
+                }
+                updated.dropInUnitPriceCents = CoursePricingPolicy.perSessionUnitPriceCents(
+                    fullTermUnitPriceCents: fullTermPrice
+                ) ?? 0
+            }
+        }
+        return updated
     }
 
     private func validateCourseTermReady(

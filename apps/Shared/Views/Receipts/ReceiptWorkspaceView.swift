@@ -302,7 +302,7 @@ private struct BillingComposerView: View {
                 }
 
                 Button(action: issueInvoice) {
-                    Label(revisionBaseInvoice == nil ? "签发账单" : "签发 v\(version)", systemImage: "paperplane")
+                    Label(revisionBaseInvoice == nil ? "签发账单" : "签发 V\(version)", systemImage: "paperplane")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -399,7 +399,7 @@ private struct BillingComposerView: View {
                         .textFieldStyle(.roundedBorder)
                         .disabled(revisionBaseInvoice != nil)
                         .help(revisionBaseInvoice == nil ? "新账单主线编号" : "同一家庭与学期沿用原账单编号")
-                    Text("v\(version)")
+                    Text("V\(version)")
                         .mdFont(.monoStrong)
                         .foregroundStyle(theme.accent)
                 }
@@ -958,7 +958,7 @@ private struct BillingComposerView: View {
                     artifactUploads: artifactUploads
                 )
                 let store = try ReceiptFileStore.documents()
-                let baseName = "\(billingDateText(bilingualDocument.issuedOn))-\(selectedLearnerNames)-\(bilingualDocument.receiptNumber)-v\(bilingualDocument.version)"
+                let baseName = "\(billingDateText(bilingualDocument.issuedOn))-\(selectedLearnerNames)-\(bilingualDocument.receiptNumber)-V\(bilingualDocument.version)"
                 let bilingualDestination = try store.savePNG(
                     bilingualPNG,
                     learnerName: bilingualDocument.guardianName,
@@ -1250,7 +1250,7 @@ private struct BillingHistoryView: View {
                             .mdFont(.monoStrong)
                     }
                     HStack(spacing: 6) {
-                        Text(invoice.invoiceNumber + " · v\(invoice.version)")
+                        Text(invoice.invoiceNumber + " · V\(invoice.version)")
                         Spacer()
                         Text(invoice.termID.flatMap(model.term(id:))?.name ?? "未分学期")
                             .lineLimit(1)
@@ -1283,7 +1283,7 @@ private struct BillingHistoryView: View {
         return VStack(spacing: 0) {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(invoice.invoiceNumber + " · v\(invoice.version)")
+                    Text(invoice.invoiceNumber + " · V\(invoice.version)")
                         .mdFont(.bodyStrong)
                     Text([
                         model.guardian(id: invoice.guardianID)?.displayName ?? "家庭",
@@ -1299,7 +1299,7 @@ private struct BillingHistoryView: View {
 
                 Picker("历史版本", selection: selectedInvoiceBinding(fallback: invoice.id)) {
                     ForEach(selectedSeries?.invoices ?? [invoice]) { versionInvoice in
-                        Text("v\(versionInvoice.version) · \(billingDateText(versionInvoice.issuedAt))")
+                        Text("V\(versionInvoice.version) · \(billingDateText(versionInvoice.issuedAt))")
                             .tag(versionInvoice.id)
                     }
                 }
@@ -1316,7 +1316,7 @@ private struct BillingHistoryView: View {
                 .controlSize(.small)
                 .help(invoice.id == latestInvoice.id
                     ? "基于当前版本继续修改"
-                    : "将基于最新版 v\(latestInvoice.version) 继续修改")
+                    : "将基于最新版 V\(latestInvoice.version) 继续修改")
 
                 Button {
                     paymentInvoice = invoice
@@ -1410,27 +1410,13 @@ private struct BillingHistoryView: View {
                         }
                     }
 
-                    detailSection("PNG 文件", theme: theme) {
-                        ForEach(model.artifacts(for: invoice.id)) { artifact in
-                            HStack(spacing: 10) {
-                                Image(systemName: artifact.kind == .invoice ? "doc.text.image" : "receipt")
-                                    .foregroundStyle(theme.accent)
-                                Text(artifactTitle(artifact, invoice: invoice))
-                                    .mdFont(.body)
-                                Text(billingDateText(artifact.generatedAt))
-                                    .mdFont(.compact)
-                                    .foregroundStyle(theme.secondaryText)
-                                Spacer()
-                                Button {
-                                    copyArtifact(artifact)
-                                } label: {
-                                    Image(systemName: "doc.on.doc")
-                                }
-                                .buttonStyle(MDIconButtonStyle())
-                                .help("复制 PNG")
-                            }
-                            .frame(minHeight: 38)
-                        }
+                    detailSection("账单与付款收据 PNG", theme: theme) {
+                        BillingVersionDocumentGrid(
+                            invoice: invoice,
+                            payments: payments,
+                            artifacts: model.artifacts(for: invoice.id),
+                            copyArtifact: copyArtifact
+                        )
                     }
                 }
                 .padding(20)
@@ -1491,13 +1477,6 @@ private struct BillingHistoryView: View {
                 errorMessage = error.localizedDescription
             }
         }
-    }
-
-    private func artifactTitle(_ artifact: BillingArtifact, invoice: BillingInvoice) -> String {
-        let language = artifact.resolvedLanguage == .english ? "英文" : "中英"
-        return artifact.kind == .invoice
-            ? "账单 v\(invoice.version) · \(language)"
-            : "付款收据 · \(language)"
     }
 
     private func itemDetail(_ item: BillingInvoiceLineItem) -> String {
@@ -1606,7 +1585,7 @@ private struct BillingPaymentSheet: View {
             HStack {
                 MDSectionTitle(chinese: "记录付款", english: "PAYMENT")
                 Spacer()
-                Text(invoice.invoiceNumber + " · v\(invoice.version)")
+                Text(invoice.invoiceNumber + " · V\(invoice.version)")
                     .mdFont(.monoStrong)
                     .foregroundStyle(theme.secondaryText)
             }
@@ -1679,7 +1658,7 @@ private struct BillingPaymentSheet: View {
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }
-                Button("生成收据并记录") { recordPayment() }
+                Button("生成付款收据并记录") { recordPayment() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!paymentIsValid || isSaving)
@@ -1755,16 +1734,16 @@ private struct BillingPaymentSheet: View {
                     artifactUploads: artifactUploads
                 )
                 let store = try ReceiptFileStore.documents()
-                let baseName = "\(billingDateText(payment.receivedAt))-\(bilingualDocument.learnerName)-\(invoice.invoiceNumber)-v\(invoice.version)"
+                let baseName = "\(billingDateText(payment.receivedAt))-\(bilingualDocument.learnerName)-\(invoice.invoiceNumber)-V\(invoice.version)"
                 _ = try store.savePNG(
                     bilingualPNG,
                     learnerName: bilingualDocument.guardianName,
-                    filenameStem: "收据-\(baseName)-中英"
+                    filenameStem: "付款收据-\(baseName)-中英"
                 )
                 _ = try store.savePNG(
                     englishPNG,
                     learnerName: bilingualDocument.guardianName,
-                    filenameStem: "Receipt-\(baseName)-English"
+                    filenameStem: "Payment-Receipt-\(baseName)-English"
                 )
                 dismiss()
             } catch {
@@ -1778,6 +1757,16 @@ private struct BillingPaymentSheet: View {
         let items = model.billingItems(for: invoice.id)
         let learnerNames = invoice.learnerIDs.compactMap {
             model.student(id: $0)?.displayName
+        }
+        let paymentLedger = (model.payments(for: invoice.id).filter { $0.id != payment.id } + [payment])
+            .sorted { lhs, rhs in
+                if lhs.receivedAt != rhs.receivedAt { return lhs.receivedAt < rhs.receivedAt }
+                return lhs.createdAt < rhs.createdAt
+            }
+        let cumulativePaymentCents = paymentLedger.reduce(0) { $0 + $1.amountCents }
+        let cumulativeFeeCents = paymentLedger.reduce(0) { $0 + $1.processingFeeCents }
+        let methods = paymentLedger.reduce(into: [BillingPaymentMethod]()) { result, entry in
+            if !result.contains(entry.method) { result.append(entry.method) }
         }
         return ReceiptDocument(
             kind: .receipt,
@@ -1802,11 +1791,11 @@ private struct BillingPaymentSheet: View {
                     settlementStatus: item.settlementStatus
                 )
             },
-            paymentMethod: paymentMethodTitle(payment.method),
-            paymentMethodEnglish: paymentMethodEnglishTitle(payment.method),
-            paymentAmount: decimal(cents: payment.amountCents),
-            processingFee: decimal(cents: payment.processingFeeCents),
-            outstandingAfterPayment: decimal(cents: outstandingCents - payment.amountCents),
+            paymentMethod: methods.map(paymentMethodTitle).joined(separator: "、"),
+            paymentMethodEnglish: methods.map(paymentMethodEnglishTitle).joined(separator: " + "),
+            paymentAmount: decimal(cents: cumulativePaymentCents),
+            processingFee: decimal(cents: cumulativeFeeCents),
+            outstandingAfterPayment: decimal(cents: max(0, invoice.amountDueCents - cumulativePaymentCents)),
             note: payment.note ?? invoice.notes ?? ""
         )
     }

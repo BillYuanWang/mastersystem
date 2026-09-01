@@ -113,6 +113,12 @@ amount due now. A waived charge keeps its normal course price visible while
 recording that no payment is required; the waived value is reported separately
 so accounting can reconcile the original price and final balance. Both language
 files are registered together in Supabase and saved together under MD Desk Docs.
+In billing history, every immutable invoice version is presented as one four-slot
+document set: bilingual and English invoices side by side, with that same
+version's bilingual and English payment receipt directly below. An unpaid
+receipt slot is red, a partially paid slot is orange, and a paid-in-full slot is
+green. Multiple payment ledger entries remain immutable, while the latest
+visible receipt pair summarizes cumulative payment for that invoice version.
 
 Both apps now use the approved full-color Xiaohongshu Master Dance logo. The
 same source image supplies the macOS and iPhone icons, compact in-app mark,
@@ -249,5 +255,7 @@ Age groups, rooms, instructors, course types, and course names are user-managed
 data. The legacy course-category field remains hidden for database compatibility.
 Tax, refunds, exceptional rule engines, parent course selection, and teacher
 login are intentionally absent. Group courses may be enrolled for the full term
-or selected sessions when a drop-in price is configured; private lessons are
+or selected sessions. Once a group course has a confirmed full-term unit rate,
+its per-session rate is derived automatically as that rate plus USD 5; pending
+prices are left untouched. Private lessons remain independently priced and are
 always enrolled by selected session.

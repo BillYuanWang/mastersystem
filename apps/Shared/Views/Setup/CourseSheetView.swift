@@ -279,7 +279,8 @@ struct CourseSheetView: View {
             dataCell(entry.instructorName, width: layout[.instructor])
             dataCell(entry.scheduleLabel, width: layout[.schedule])
             dataCell("\(entry.sessionCount)", width: layout[.sessions], monospaced: true)
-            dataCell(entry.pricingLabel, width: layout[.pricing], monospaced: true)
+            dataCell(entry.perSessionPriceLabel, width: layout[.perSessionPrice], monospaced: true)
+            dataCell(entry.fullTermPriceLabel, width: layout[.fullTermPrice], monospaced: true)
             courseTypeCell(entry, width: layout[.courseType], theme: theme)
             conflictCell(entry, width: layout[.conflict], theme: theme)
             dataCell(entry.statusLabel, width: layout[.status])
@@ -437,8 +438,10 @@ struct CourseSheetView: View {
             measuredTextWidth(entry.scheduleLabel, size: 13) + 17
         case .sessions:
             measuredTextWidth("\(entry.sessionCount)", size: 11, monospaced: true) + 17
-        case .pricing:
-            measuredTextWidth(entry.pricingLabel, size: 11, monospaced: true) + 17
+        case .perSessionPrice:
+            measuredTextWidth(entry.perSessionPriceLabel, size: 11, monospaced: true) + 17
+        case .fullTermPrice:
+            measuredTextWidth(entry.fullTermPriceLabel, size: 11, monospaced: true) + 17
         case .courseType:
             measuredTextWidth(entry.courseTypeName, size: 11) + 44
         case .conflict:
@@ -487,9 +490,12 @@ struct CourseSheetView: View {
                 scheduleKey: schedule?.key ?? "none",
                 scheduleSortKey: schedule?.sortKey,
                 sessionCount: courseSessions.count,
-                pricingLabel: pricingLabel(course, sessionCount: courseSessions.count),
-                pricingKey: course.pricingStatus.rawValue,
-                pricingSortValue: String(format: "%012d", course.unitPriceCents ?? -1),
+                perSessionPriceLabel: perSessionPriceLabel(course),
+                perSessionPriceKey: perSessionPriceKey(course),
+                perSessionPriceSortValue: String(format: "%012d", course.dropInUnitPriceCents ?? -1),
+                fullTermPriceLabel: fullTermPriceLabel(course, sessionCount: courseSessions.count),
+                fullTermPriceKey: fullTermPriceKey(course),
+                fullTermPriceSortValue: String(format: "%012d", course.unitPriceCents ?? -1),
                 courseTypeName: typeName,
                 courseTypeKey: "\(course.courseTypeID.description)|\(course.format.rawValue)",
                 courseTypeFilterLabel: "\(formatToken) · \(typeName)",
@@ -500,43 +506,66 @@ struct CourseSheetView: View {
         }
     }
 
-    private func pricingLabel(_ course: Course, sessionCount: Int) -> String {
+    private func perSessionPriceLabel(_ course: Course) -> String {
         if course.format.requiresPerSessionEnrollment {
             return switch course.pricingStatus {
             case .pending:
-                "私课 · 按次待定"
+                "待定"
             case .free:
-                "私课 · 按次免费"
+                "免费"
             case .reviewRequired:
                 course.dropInUnitPriceCents.map {
-                    "私课 · 按次 $\(MoneyTextParser.dollars(from: $0))/节 · 需复核"
-                } ?? "私课 · 按次待复核"
+                    "$\(MoneyTextParser.dollars(from: $0))/节 · 需复核"
+                } ?? "待复核"
             case .priced:
                 course.dropInUnitPriceCents.map {
-                    "私课 · 按次 $\(MoneyTextParser.dollars(from: $0))/节"
-                } ?? "私课 · 按次待定"
+                    "$\(MoneyTextParser.dollars(from: $0))/节"
+                } ?? "待定"
             }
         }
-        let dropIn = course.dropInUnitPriceCents.map {
-            "按次 $\(MoneyTextParser.dollars(from: $0))"
-        } ?? "按次待定"
         switch course.pricingStatus {
         case .pending:
-            return "整期待定 · \(dropIn)"
+            return "待定"
         case .free:
             return "免费"
         case .reviewRequired:
-            return course.unitPriceCents.map {
-                "需复核 · 整期 $\(MoneyTextParser.dollars(from: $0)) · \(dropIn)"
-            } ?? "需复核 · \(dropIn)"
+            return course.dropInUnitPriceCents.map {
+                "$\(MoneyTextParser.dollars(from: $0))/节 · 需复核"
+            } ?? "待复核"
         case .priced:
-            guard let unit = course.unitPriceCents else { return "待定价" }
+            return course.dropInUnitPriceCents.map {
+                "$\(MoneyTextParser.dollars(from: $0))/节"
+            } ?? "待定"
+        }
+    }
+
+    private func fullTermPriceLabel(_ course: Course, sessionCount: Int) -> String {
+        guard !course.format.requiresPerSessionEnrollment else { return "不适用" }
+        switch course.pricingStatus {
+        case .pending:
+            return "待定"
+        case .free:
+            return "$0/节 · 合计 $0"
+        case .reviewRequired, .priced:
+            guard let unit = course.unitPriceCents else {
+                return course.pricingStatus == .reviewRequired ? "待复核" : "待定"
+            }
             let total = BillingCalculator.courseTotalCents(
                 unitPriceCents: unit,
                 scheduledSessionCount: sessionCount
             ) ?? 0
-            return "整期 $\(MoneyTextParser.dollars(from: unit))/节 · \(dropIn) · 合计 $\(MoneyTextParser.dollars(from: total))"
+            let label = "$\(MoneyTextParser.dollars(from: unit))/节 · 合计 $\(MoneyTextParser.dollars(from: total))"
+            return course.pricingStatus == .reviewRequired ? label + " · 需复核" : label
         }
+    }
+
+    private func perSessionPriceKey(_ course: Course) -> String {
+        "\(course.pricingStatus.rawValue)|\(course.dropInUnitPriceCents ?? -1)"
+    }
+
+    private func fullTermPriceKey(_ course: Course) -> String {
+        guard !course.format.requiresPerSessionEnrollment else { return "not_applicable" }
+        return "\(course.pricingStatus.rawValue)|\(course.unitPriceCents ?? -1)"
     }
 
     private func displayedEntries(from entries: [CourseTableEntry]) -> [CourseTableEntry] {
@@ -759,7 +788,8 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
     case instructor
     case schedule
     case sessions
-    case pricing
+    case perSessionPrice
+    case fullTermPrice
     case courseType
     case conflict
     case status
@@ -775,7 +805,8 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
         case .instructor: "老师"
         case .schedule: "每周时间"
         case .sessions: "课次"
-        case .pricing: "课程费用"
+        case .perSessionPrice: "课程按次费用"
+        case .fullTermPrice: "课程按期费用"
         case .courseType: "课程种类"
         case .conflict: "排课检查"
         case .status: "状态"
@@ -791,7 +822,8 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
         case .instructor: 85
         case .schedule: 145
         case .sessions: 68
-        case .pricing: 120
+        case .perSessionPrice: 125
+        case .fullTermPrice: 190
         case .courseType: 100
         case .conflict: 105
         case .status: 68
@@ -803,7 +835,8 @@ private enum CourseTableColumn: String, CaseIterable, Identifiable {
         case .name: 1.4
         case .term: 0.7
         case .schedule: 1
-        case .pricing: 1.5
+        case .perSessionPrice: 0.8
+        case .fullTermPrice: 1.4
         case .courseType: 0.8
         case .ageGroup, .room, .instructor, .sessions, .conflict, .status: 0
         }
@@ -836,9 +869,12 @@ private struct CourseTableEntry: Identifiable {
     let scheduleKey: String
     let scheduleSortKey: Int?
     let sessionCount: Int
-    let pricingLabel: String
-    let pricingKey: String
-    let pricingSortValue: String
+    let perSessionPriceLabel: String
+    let perSessionPriceKey: String
+    let perSessionPriceSortValue: String
+    let fullTermPriceLabel: String
+    let fullTermPriceKey: String
+    let fullTermPriceSortValue: String
     let courseTypeName: String
     let courseTypeKey: String
     let courseTypeFilterLabel: String
@@ -866,7 +902,8 @@ private struct CourseTableEntry: Identifiable {
             roomName,
             instructorName,
             scheduleLabel,
-            pricingLabel,
+            perSessionPriceLabel,
+            fullTermPriceLabel,
             courseTypeFilterLabel,
             conflictLabel,
             statusLabel
@@ -882,7 +919,8 @@ private struct CourseTableEntry: Identifiable {
         case .instructor: instructorKey
         case .schedule: scheduleKey
         case .sessions: String(sessionCount)
-        case .pricing: pricingKey
+        case .perSessionPrice: perSessionPriceKey
+        case .fullTermPrice: fullTermPriceKey
         case .courseType: courseTypeKey
         case .conflict: hasConflict ? "conflict" : "clear"
         case .status: statusKey
@@ -898,7 +936,8 @@ private struct CourseTableEntry: Identifiable {
         case .instructor: instructorName
         case .schedule: scheduleLabel
         case .sessions: "\(sessionCount) 节"
-        case .pricing: pricingLabel
+        case .perSessionPrice: perSessionPriceLabel
+        case .fullTermPrice: fullTermPriceLabel
         case .courseType: courseTypeFilterLabel
         case .conflict: hasConflict ? "有冲突" : "正常"
         case .status: statusLabel
@@ -914,7 +953,8 @@ private struct CourseTableEntry: Identifiable {
         case .instructor: instructorName
         case .schedule: scheduleLabel
         case .sessions: String(sessionCount)
-        case .pricing: pricingSortValue
+        case .perSessionPrice: perSessionPriceSortValue
+        case .fullTermPrice: fullTermPriceSortValue
         case .courseType: courseTypeFilterLabel
         case .conflict: String(format: "%08d", conflictOccurrenceCount)
         case .status: statusLabel

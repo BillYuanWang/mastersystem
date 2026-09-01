@@ -143,7 +143,7 @@ server.registerTool(
   "md_set_course_pricing",
   {
     title: "Set course pricing",
-    description: "Set a course pricing state and integer USD-cent prices. Private lessons accept per-session pricing only.",
+    description: "Set course pricing in integer USD cents. A priced group course derives its per-session rate as the full-term unit rate plus USD 5; private lessons accept per-session pricing only.",
     inputSchema: {
       course_id: z.string().uuid(),
       pricing_status: z.enum(["pending", "priced", "free", "review_required"]),

@@ -12,6 +12,40 @@ handoff package is requested, then regenerate each PDF from its Markdown source.
 
 ## Current release
 
+### v0.9.0-beta.1m - 2026-09-01
+
+- Split the macOS course table fee display into "课程按次费用" and
+  "课程按期费用". The per-session column shows one unit rate; the full-term
+  column shows both its unit rate and the calculated term total.
+- Made every confirmed group-course per-session rate exactly USD 5 higher than
+  its full-term unit rate in the native app, Admin SDK/MCP, and database. Pending
+  full-term prices and private-lesson pricing remain untouched, and existing
+  enrollment price snapshots are not rewritten.
+- Added an additive Supabase migration to normalize existing confirmed group
+  course prices and enforce the same rule for future clients.
+- Local macOS is build 86 versus notarized build 79, a distance of seven. iOS
+  remains local build 47 versus accepted TestFlight build 45, a distance of
+  two. No notarized package or TestFlight upload was made in this revision.
+- All 133 Swift tests and all 9 Admin SDK/MCP tests passed. The migration is
+  deployed and matched locally/remotely, and linked schema lint found no errors.
+  Local pgTAP database tests require Docker and were not run.
+
+### v0.9.0-beta.1l - 2026-09-01
+
+- Paired each immutable invoice version with one visible payment-receipt row in
+  billing history. Bilingual and English files now form two side-by-side
+  columns, with the invoice row above its matching receipt row.
+- Added clear receipt-file states: red for unpaid, orange for partially paid,
+  green for paid in full, and a separate no-payment-required state for waived
+  invoices. Every visible filename now carries the same uppercase version label.
+- Preserved every immutable payment and historical PNG in Supabase while showing
+  the latest receipt pair for the selected invoice version. Later installment
+  receipts summarize cumulative payment, fees, methods, and remaining balance.
+- This is local macOS build 85 versus notarized build 79, a distance of six.
+  iOS remains local build 47 versus accepted TestFlight build 45, a distance of
+  two. No Supabase migration, notarized package, or TestFlight upload was made.
+- All 132 Swift tests passed, including a rendered two-column document-grid check.
+
 ### v0.9.0-beta.1k - 2026-09-01
 
 - Added a third billing line settlement state, "waived", beside unpaid and

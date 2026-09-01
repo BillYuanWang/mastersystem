@@ -117,7 +117,7 @@ struct ReceiptFileStoreTests {
 
         #expect(document.paidItemTotal == 120)
         #expect(document.waivedItemTotal == 300)
-        #expect(document.currentDue == 645)
+        #expect(document.currentDue == 0)
         #expect(data.starts(with: [0x89, 0x50, 0x4E, 0x47]))
         let expectedSize = ReceiptPNGRenderer.canvasSize(for: document)
         #expect(bitmap?.pixelsWide == Int(expectedSize.width * 2))

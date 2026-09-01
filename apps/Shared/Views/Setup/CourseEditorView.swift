@@ -204,10 +204,12 @@ struct CourseEditorView: View {
                                                 Text("$")
                                                     .mdFont(.monoStrong)
                                                     .foregroundStyle(theme.secondaryText)
-                                                TextField("例如 30.00", text: $draft.dropInUnitPriceText)
-                                                    .textFieldStyle(.roundedBorder)
-                                                    .frame(width: 150)
-                                                Text("留空则暂不开放按次报名")
+                                                Text(derivedGroupDropInPriceText ?? "—")
+                                                    .mdFont(.monoStrong)
+                                                    .frame(width: 150, alignment: .leading)
+                                                Text(derivedGroupDropInPriceText == nil
+                                                    ? "整期单价确定后自动生成"
+                                                    : "固定为整期单价 + $5/节")
                                                     .mdFont(.compact)
                                                     .foregroundStyle(theme.secondaryText)
                                             }
@@ -367,8 +369,6 @@ struct CourseEditorView: View {
 
     private var priceIsValid: Bool {
         let dropInText = draft.dropInUnitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let dropInIsValid = dropInText.isEmpty
-            || (MoneyTextParser.cents(from: dropInText) ?? -1) > 0
         if draftIsPrivateLesson {
             return switch draft.pricingStatus {
             case .pending, .free:
@@ -383,11 +383,10 @@ struct CourseEditorView: View {
         case .pending, .free:
             true
         case .priced:
-            (MoneyTextParser.cents(from: draft.unitPriceText) ?? 0) > 0 && dropInIsValid
+            (MoneyTextParser.cents(from: draft.unitPriceText) ?? 0) > 0
         case .reviewRequired:
             (draft.unitPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 || (MoneyTextParser.cents(from: draft.unitPriceText) ?? -1) >= 0)
-                && dropInIsValid
         }
     }
 
@@ -397,7 +396,7 @@ struct CourseEditorView: View {
         }
         switch draft.pricingStatus {
         case .pending:
-            return dropInPriceSummary(prefix: "整期待定价")
+            return "整期与按次价格待定"
         case .free:
             return "\(activeOccurrenceCount) 次 · 免费"
         case .priced, .reviewRequired:
@@ -409,8 +408,23 @@ struct CourseEditorView: View {
                 scheduledSessionCount: activeOccurrenceCount
             ) ?? 0
             let termSummary = "整期 \(activeOccurrenceCount) 次 × $\(MoneyTextParser.dollars(from: cents)) = $\(MoneyTextParser.dollars(from: total))"
-            return dropInPriceSummary(prefix: termSummary)
+            guard let perSessionPrice = CoursePricingPolicy.perSessionUnitPriceCents(
+                fullTermUnitPriceCents: cents
+            ) else {
+                return termSummary + " · 按次待定"
+            }
+            return termSummary + " · 按次 $\(MoneyTextParser.dollars(from: perSessionPrice))/节"
         }
+    }
+
+    private var derivedGroupDropInPriceText: String? {
+        guard let fullTermPrice = MoneyTextParser.cents(from: draft.unitPriceText),
+              let perSessionPrice = CoursePricingPolicy.perSessionUnitPriceCents(
+                  fullTermUnitPriceCents: fullTermPrice
+              ) else {
+            return nil
+        }
+        return MoneyTextParser.dollars(from: perSessionPrice)
     }
 
     private var privateLessonPriceSummary: String {
@@ -426,16 +440,6 @@ struct CourseEditorView: View {
             }
             return "私课 · 按次 $\(MoneyTextParser.dollars(from: cents))/节"
         }
-    }
-
-    private func dropInPriceSummary(prefix: String) -> String {
-        let text = draft.dropInUnitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty,
-              let cents = MoneyTextParser.cents(from: text),
-              cents >= 0 else {
-            return prefix + " · 按次待填写"
-        }
-        return prefix + " · 按次 $\(MoneyTextParser.dollars(from: cents))/节"
     }
 
     private func pricingStatusTitle(_ status: CoursePricingStatus) -> String {

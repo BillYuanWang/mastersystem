@@ -187,6 +187,7 @@ export class MasterDanceAdminSDK {
     }
     if (resource === "courses") {
       payload.category_id = await this.hiddenCourseCategoryID(identity.organizationId);
+      normalizeGroupCoursePricing(payload);
       await this.validateCoursePayload(payload);
     }
     normalizePublishState(resource, payload);
@@ -236,7 +237,12 @@ export class MasterDanceAdminSDK {
     }
     if (resource === "courses") {
       const current = asObject((await this.getRecord("courses", id)).result);
-      await this.validateCoursePayload({ ...current, ...payload });
+      const normalizedCourse = { ...current, ...payload };
+      normalizeGroupCoursePricing(normalizedCourse);
+      payload.pricing_status = normalizedCourse.pricing_status ?? null;
+      payload.unit_price_cents = normalizedCourse.unit_price_cents ?? null;
+      payload.drop_in_unit_price_cents = normalizedCourse.drop_in_unit_price_cents ?? null;
+      await this.validateCoursePayload(normalizedCourse);
     }
     normalizePublishState(resource, payload);
 
@@ -349,6 +355,7 @@ export class MasterDanceAdminSDK {
       unit_price_cents: input.full_term_unit_price_cents ?? null,
       drop_in_unit_price_cents: input.per_session_unit_price_cents ?? null
     };
+    normalizeGroupCoursePricing(payload);
     await this.validateCoursePayload(payload);
     return this.updateRecord("courses", input.course_id, {
       pricing_status: payload.pricing_status ?? null,
@@ -780,6 +787,18 @@ export class MasterDanceAdminSDK {
     if (status === "free" && primaryPrice !== 0) {
       throw new AdminIntegrationError("pricing_state_mismatch", "Free courses require a zero primary course price.");
     }
+    if (
+      format === "group"
+      && ["priced", "review_required"].includes(String(status))
+      && Number.isInteger(fullTerm)
+      && Number(fullTerm) > 0
+      && perSession !== Number(fullTerm) + 500
+    ) {
+      throw new AdminIntegrationError(
+        "group_course_price_spread",
+        "A priced group course per-session rate must be exactly USD 5 above its full-term unit rate."
+      );
+    }
   }
 
   private async hiddenCourseCategoryID(organizationID: string): Promise<string> {
@@ -815,6 +834,14 @@ export class MasterDanceAdminSDK {
 
 function ok(result: JsonValue, warnings: string[] = []): AdminResult<JsonValue> {
   return { ok: true, result, warnings };
+}
+
+function normalizeGroupCoursePricing(payload: JsonObject): void {
+  if (payload.format !== "group") return;
+  if (!["priced", "review_required"].includes(String(payload.pricing_status))) return;
+  const fullTerm = payload.unit_price_cents;
+  if (!Number.isInteger(fullTerm) || Number(fullTerm) <= 0) return;
+  payload.drop_in_unit_price_cents = Number(fullTerm) + 500;
 }
 
 function pickFields(values: JsonObject, allowed: readonly string[]): JsonObject {

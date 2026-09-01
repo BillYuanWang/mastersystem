@@ -77,6 +77,27 @@ public enum BillingInvoiceDisplayStatus: String, Codable, CaseIterable, Sendable
     case superseded
 }
 
+public enum BillingPaymentProgress: String, Codable, CaseIterable, Sendable {
+    case unpaid
+    case partiallyPaid = "partially_paid"
+    case paid
+    case noPaymentRequired = "no_payment_required"
+}
+
+public enum CoursePricingPolicy {
+    public static let perSessionPremiumCents = 500
+
+    public static func perSessionUnitPriceCents(
+        fullTermUnitPriceCents: Int?
+    ) -> Int? {
+        guard let fullTermUnitPriceCents, fullTermUnitPriceCents > 0 else {
+            return nil
+        }
+        let (price, overflow) = fullTermUnitPriceCents.addingReportingOverflow(perSessionPremiumCents)
+        return overflow ? nil : price
+    }
+}
+
 public struct EnrollmentChargeEstimate: Equatable, Sendable {
     public let normalSessionCount: Int
     public let unitPriceCents: Int?
@@ -321,20 +342,30 @@ public struct BillingInvoice: Identifiable, Codable, Equatable, Sendable {
 
     public func displayStatus(payments: [BillingPayment]) -> BillingInvoiceDisplayStatus {
         if supersededByInvoiceID != nil { return .superseded }
+        switch paymentProgress(payments: payments) {
+        case .unpaid: return .issued
+        case .partiallyPaid: return .partiallyPaid
+        case .paid: return .paid
+        case .noPaymentRequired: return .noPaymentRequired
+        }
+    }
+
+    public func paymentProgress(payments: [BillingPayment]) -> BillingPaymentProgress {
         if amountDueCents == 0 { return .noPaymentRequired }
-        let paid = payments
+        let paid = paidCents(payments: payments)
+        if paid >= amountDueCents { return .paid }
+        if paid > 0 { return .partiallyPaid }
+        return .unpaid
+    }
+
+    public func paidCents(payments: [BillingPayment]) -> Int {
+        payments
             .filter { $0.invoiceID == id }
             .reduce(0) { $0 + $1.amountCents }
-        if paid >= amountDueCents, amountDueCents > 0 { return .paid }
-        if paid > 0 { return .partiallyPaid }
-        return .issued
     }
 
     public func outstandingCents(payments: [BillingPayment]) -> Int {
-        let paid = payments
-            .filter { $0.invoiceID == id }
-            .reduce(0) { $0 + $1.amountCents }
-        return max(0, amountDueCents - paid)
+        max(0, amountDueCents - paidCents(payments: payments))
     }
 }
 

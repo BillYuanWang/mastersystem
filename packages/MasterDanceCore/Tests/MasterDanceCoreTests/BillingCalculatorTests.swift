@@ -4,6 +4,14 @@ import Testing
 
 @Suite("Billing calculator")
 struct BillingCalculatorTests {
+    @Test("group per-session price stays five dollars above full-term unit price")
+    func groupPerSessionPremium() {
+        #expect(CoursePricingPolicy.perSessionUnitPriceCents(fullTermUnitPriceCents: 4_000) == 4_500)
+        #expect(CoursePricingPolicy.perSessionUnitPriceCents(fullTermUnitPriceCents: 3_500) == 4_000)
+        #expect(CoursePricingPolicy.perSessionUnitPriceCents(fullTermUnitPriceCents: nil) == nil)
+        #expect(CoursePricingPolicy.perSessionUnitPriceCents(fullTermUnitPriceCents: 0) == nil)
+    }
+
     @Test("full-term tuition uses actual scheduled sessions")
     func fullTermTuition() {
         let fixture = Fixture()
@@ -159,7 +167,45 @@ struct BillingCalculatorTests {
             amountDueCents: 0
         )
 
+        #expect(invoice.paymentProgress(payments: []) == .noPaymentRequired)
         #expect(invoice.displayStatus(payments: []) == .noPaymentRequired)
+    }
+
+    @Test("payment progress stays attached to one invoice version")
+    func invoiceVersionPaymentProgress() {
+        let invoice = BillingInvoice(
+            guardianID: GuardianID(),
+            termID: TermID(),
+            invoiceNumber: "INV-PROGRESS",
+            version: 3,
+            schoolYearLabel: "2026 秋季学期",
+            amountDueCents: 10_000
+        )
+        let unrelated = BillingPayment(
+            invoiceID: BillingInvoiceID(),
+            amountCents: 10_000,
+            processingFeeCents: 0,
+            method: .cash
+        )
+        let first = BillingPayment(
+            invoiceID: invoice.id,
+            amountCents: 4_000,
+            processingFeeCents: 0,
+            method: .zelle
+        )
+        let second = BillingPayment(
+            invoiceID: invoice.id,
+            amountCents: 6_000,
+            processingFeeCents: 0,
+            method: .check
+        )
+
+        #expect(invoice.paymentProgress(payments: [unrelated]) == .unpaid)
+        #expect(invoice.paymentProgress(payments: [first, unrelated]) == .partiallyPaid)
+        #expect(invoice.paidCents(payments: [first, unrelated]) == 4_000)
+        #expect(invoice.outstandingCents(payments: [first, unrelated]) == 6_000)
+        #expect(invoice.paymentProgress(payments: [first, second, unrelated]) == .paid)
+        #expect(invoice.outstandingCents(payments: [first, second, unrelated]) == 0)
     }
 
     @Test("legacy cached invoices decode before learner scopes existed")

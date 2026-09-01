@@ -47,9 +47,9 @@ enum ReceiptDocumentKind: Equatable {
     func title(language: BillingArtifactLanguage) -> String {
         switch (self, language) {
         case (.invoice, .bilingual): "账单 / INVOICE"
-        case (.receipt, .bilingual): "收据 / RECEIPT"
+        case (.receipt, .bilingual): "付款收据 / PAYMENT RECEIPT"
         case (.invoice, .english): "INVOICE"
-        case (.receipt, .english): "RECEIPT"
+        case (.receipt, .english): "PAYMENT RECEIPT"
         }
     }
 }
@@ -227,7 +227,10 @@ struct ReceiptDocument: Equatable {
     }
 
     var currentDue: Decimal {
-        max(
+        if kind == .receipt, let outstandingAfterPayment {
+            return max(.zero, outstandingAfterPayment)
+        }
+        return max(
             .zero,
             items
                 .filter { $0.settlementStatus.contributesToAmountDue }
@@ -412,7 +415,7 @@ private struct ReceiptDocumentView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 3) {
-                    meta(isEnglish ? "NO." : "编号 / NO.", document.receiptNumber + " · v\(document.version)")
+                    meta(isEnglish ? "NO." : "编号 / NO.", document.receiptNumber + " · V\(document.version)")
                     meta(isEnglish ? "DATE" : "日期 / DATE", billingDateText(document.issuedOn))
                 }
             }
@@ -534,10 +537,10 @@ private struct ReceiptDocumentView: View {
         VStack(alignment: .leading, spacing: 7) {
             if let paymentAmount = document.paymentAmount {
                 Rectangle().fill(ReceiptPalette.accentSoft).frame(height: 1)
-                detailRow(isEnglish ? "PAYMENT" : "本次付款 / PAYMENT", value: document.currency.formatted(paymentAmount))
+                detailRow(isEnglish ? "TOTAL PAID" : "累计付款 / TOTAL PAID", value: document.currency.formatted(paymentAmount))
                 if document.processingFee > 0 {
                     detailRow(
-                        isEnglish ? "CARD FEE" : "银行卡手续费 / CARD FEE",
+                        isEnglish ? "TOTAL CARD FEES" : "累计银行卡手续费 / TOTAL CARD FEES",
                         value: document.currency.formatted(document.processingFee)
                     )
                 }
