@@ -27,6 +27,19 @@ public protocol CourseReferenceRepository: Sendable {
     func deleteInstructor(id: InstructorID) async throws
 }
 
+public protocol SessionPassRepository: Sendable {
+    func listSessionPassPlans() async throws -> [SessionPassPlan]
+    func save(sessionPassPlan: SessionPassPlan) async throws
+    func deleteSessionPassPlan(id: SessionPassPlanID) async throws
+    func listStudentSessionPasses(studentID: StudentID?) async throws -> [StudentSessionPass]
+    func save(studentSessionPass: StudentSessionPass) async throws
+    func deleteStudentSessionPass(id: StudentSessionPassID) async throws
+    func listSessionPassUses(
+        studentSessionPassID: StudentSessionPassID?,
+        studentID: StudentID?
+    ) async throws -> [SessionPassUse]
+}
+
 public protocol CourseRepository: Sendable {
     func listCourses(termID: TermID?) async throws -> [Course]
     func save(course: Course) async throws
@@ -130,6 +143,7 @@ public protocol BillingRepository: Sendable {
 
 public typealias MasterDanceRepository = TermRepository
     & CourseReferenceRepository
+    & SessionPassRepository
     & CourseRepository
     & ClassSessionRepository
     & PeopleRepository

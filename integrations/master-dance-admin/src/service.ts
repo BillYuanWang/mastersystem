@@ -8,6 +8,7 @@ import type {
   BillingLineItemInput,
   CoursePricingInput,
   IssueInvoiceInput,
+  IssueSessionPassInput,
   JsonObject,
   JsonValue,
   ListRecordsOptions,
@@ -319,6 +320,8 @@ export class MasterDanceAdminSDK {
         return this.setCoursePricing(input as unknown as CoursePricingInput);
       case "save_enrollment":
         return this.saveEnrollment(input as unknown as SaveEnrollmentInput);
+      case "issue_session_pass":
+        return this.issueSessionPass(input as unknown as IssueSessionPassInput);
       case "set_attendance":
         return this.setAttendance(input as unknown as SetAttendanceInput);
       case "clear_attendance":
@@ -432,6 +435,14 @@ export class MasterDanceAdminSDK {
     if (input.status !== "makeup" && input.makeup_for_session_id) {
       throw new AdminIntegrationError("invalid_makeup_source", "Only makeup attendance may reference a makeup source session.");
     }
+    if (input.uses_session_pass) {
+      if (input.status !== "present" || input.enrollment_id || input.makeup_for_session_id) {
+        throw new AdminIntegrationError(
+          "invalid_session_pass_attendance",
+          "Session-pass attendance requires status=present and cannot reference an enrollment or makeup source."
+        );
+      }
+    }
 
     let id = input.id;
     if (!id) {
@@ -456,6 +467,7 @@ export class MasterDanceAdminSDK {
       student_id: input.student_id,
       enrollment_id: input.enrollment_id ?? null,
       makeup_for_session_id: input.makeup_for_session_id ?? null,
+      uses_session_pass: input.uses_session_pass ?? false,
       status: input.status,
       recorded_at: input.recorded_at ?? new Date().toISOString(),
       recorded_by: identity.userId,
@@ -468,6 +480,35 @@ export class MasterDanceAdminSDK {
       prefer: "resolution=merge-duplicates,return=representation"
     });
     return ok(rows[0] ?? payload);
+  }
+
+  private async issueSessionPass(input: IssueSessionPassInput): Promise<AdminResult<JsonValue>> {
+    assertUUID(input.student_id, "student_id");
+    assertUUID(input.plan_id, "plan_id");
+    const student = asObject((await this.getRecord("students", input.student_id)).result);
+    if (student.kind !== "adult") {
+      throw new AdminIntegrationError("session_pass_requires_adult", "Session passes may be issued only to adult learners.");
+    }
+    const plan = asObject((await this.getRecord("session_pass_plans", input.plan_id)).result);
+    if (plan.is_active !== true) {
+      throw new AdminIntegrationError("inactive_session_pass_plan", "The session-pass plan is inactive.");
+    }
+    const includedSessions = plan.included_sessions;
+    const unitPriceCents = plan.unit_price_cents;
+    if (!Number.isInteger(includedSessions) || Number(includedSessions) <= 0
+        || !Number.isInteger(unitPriceCents) || Number(unitPriceCents) < 0) {
+      throw new AdminIntegrationError("invalid_session_pass_plan", "The session-pass plan has invalid count or price data.");
+    }
+    return this.createRecord("student_session_passes", {
+      id: input.id ?? randomUUID(),
+      student_id: input.student_id,
+      plan_id: input.plan_id,
+      issued_at: input.issued_at ?? new Date().toISOString(),
+      included_sessions: Number(includedSessions),
+      unit_price_cents: Number(unitPriceCents),
+      notes: input.notes ?? null,
+      is_active: true
+    });
   }
 
   private async clearAttendance(input: JsonObject): Promise<AdminResult<JsonValue>> {

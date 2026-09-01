@@ -11,6 +11,9 @@ export const resourceNames = [
   "age_groups",
   "rooms",
   "instructors",
+  "session_pass_plans",
+  "student_session_passes",
+  "session_pass_uses",
   "courses",
   "class_sessions",
   "guardians",
@@ -39,6 +42,7 @@ export type ResourceName = (typeof resourceNames)[number];
 export const actionNames = [
   "set_course_pricing",
   "save_enrollment",
+  "issue_session_pass",
   "set_attendance",
   "clear_attendance",
   "save_leave_request",
@@ -147,9 +151,18 @@ export interface SetAttendanceInput {
   student_id: string;
   enrollment_id?: string | null;
   makeup_for_session_id?: string | null;
+  uses_session_pass?: boolean;
   status: "present" | "absent" | "excused" | "makeup" | "trial";
   recorded_at?: string;
   note?: string | null;
+}
+
+export interface IssueSessionPassInput {
+  id?: string;
+  student_id: string;
+  plan_id: string;
+  issued_at?: string;
+  notes?: string | null;
 }
 
 export interface SaveLeaveRequestInput {

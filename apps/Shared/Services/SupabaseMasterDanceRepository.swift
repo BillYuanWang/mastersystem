@@ -172,6 +172,80 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         try await deleteRecord(kind: "instructor", id: id.rawValue)
     }
 
+    func listSessionPassPlans() async throws -> [SessionPassPlan] {
+        let rows: [SessionPassPlanRow] = try await client
+            .from("session_pass_plans")
+            .select()
+            .order("name")
+            .execute()
+            .value
+        return rows.map { $0.domain() }
+    }
+
+    func save(sessionPassPlan: SessionPassPlan) async throws {
+        try await client.from("session_pass_plans")
+            .upsert(SessionPassPlanRow(sessionPassPlan, organizationID: organizationID))
+            .execute()
+    }
+
+    func deleteSessionPassPlan(id: SessionPassPlanID) async throws {
+        try await client.from("session_pass_plans")
+            .delete()
+            .eq("id", value: id.rawValue)
+            .execute()
+    }
+
+    func listStudentSessionPasses(studentID: StudentID?) async throws -> [StudentSessionPass] {
+        let rows: [StudentSessionPassRow]
+        if let studentID {
+            rows = try await client.from("student_session_passes").select()
+                .eq("student_id", value: studentID.rawValue)
+                .order("issued_at", ascending: false)
+                .execute().value
+        } else {
+            rows = try await client.from("student_session_passes").select()
+                .order("issued_at", ascending: false)
+                .execute().value
+        }
+        return try rows.map { try $0.domain() }
+    }
+
+    func save(studentSessionPass: StudentSessionPass) async throws {
+        try await client.from("student_session_passes")
+            .upsert(StudentSessionPassRow(studentSessionPass, organizationID: organizationID))
+            .execute()
+    }
+
+    func deleteStudentSessionPass(id: StudentSessionPassID) async throws {
+        try await client.from("student_session_passes")
+            .delete()
+            .eq("id", value: id.rawValue)
+            .execute()
+    }
+
+    func listSessionPassUses(
+        studentSessionPassID: StudentSessionPassID?,
+        studentID: StudentID?
+    ) async throws -> [SessionPassUse] {
+        let rows: [SessionPassUseRow]
+        if let studentSessionPassID {
+            rows = try await client.from("session_pass_uses").select()
+                .eq("student_session_pass_id", value: studentSessionPassID.rawValue)
+                .order("used_at", ascending: false)
+                .execute().value
+        } else if let studentID {
+            rows = try await client.from("session_pass_uses").select()
+                .eq("student_id", value: studentID.rawValue)
+                .order("used_at", ascending: false)
+                .execute().value
+        } else {
+            rows = try await client.from("session_pass_uses").select()
+                .order("used_at", ascending: false)
+                .execute().value
+        }
+        return try rows.map { try $0.domain() }
+    }
+
     func listCourses(termID: TermID?) async throws -> [Course] {
         let rows: [CourseRow]
         if let termID {

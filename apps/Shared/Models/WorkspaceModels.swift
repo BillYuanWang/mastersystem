@@ -263,6 +263,9 @@ enum AppModelError: LocalizedError {
     case makeupRequiresSource
     case invalidMakeupSource
     case makeupSourceAlreadyUsed
+    case invalidSessionPassPlan
+    case sessionPassRequiresAdult
+    case noAvailableSessionPass
     case courseTermHasEnrollments
     case courseScheduleHasRecords
     case missingNewsTitle
@@ -305,6 +308,9 @@ enum AppModelError: LocalizedError {
         case .makeupRequiresSource: "请选择这次补课对应的请假或缺席课次。"
         case .invalidMakeupSource: "所选课次不是这名学员可补的请假或缺席。"
         case .makeupSourceAlreadyUsed: "这次请假或缺席已经登记过补课。"
+        case .invalidSessionPassPlan: "请填写有效的次卡名称、次数和单价。"
+        case .sessionPassRequiresAdult: "当前版本只允许成人学员使用次卡。"
+        case .noAvailableSessionPass: "这名学员没有可用次数，请先发放或启用一张次卡。"
         case .courseTermHasEnrollments: "这门课程已有报名，不能更换学期；请先处理报名。"
         case .courseScheduleHasRecords: "这门课程已有签到、请假或按次报名记录，不能整体重排课次。"
         case .missingNewsTitle: "请输入新闻标题。"

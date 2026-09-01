@@ -21,6 +21,7 @@ final class AppModel {
     var termHolidays: [TermHoliday] = []
     private var courseCategories: [CourseCategory] = []
     var courseTypes: [CourseType] = []
+    var sessionPassPlans: [SessionPassPlan] = []
     var ageGroups: [AgeGroup] = []
     var rooms: [Room] = []
     var instructors: [Instructor] = []
@@ -30,6 +31,8 @@ final class AppModel {
     var guardians: [Guardian] = []
     var enrollments: [Enrollment] = []
     var attendance: [Attendance] = []
+    var studentSessionPasses: [StudentSessionPass] = []
+    var sessionPassUses: [SessionPassUse] = []
     var leaveRequests: [LeaveRequest] = []
     var contractDocuments: [ContractDocument] = []
     var contractConsents: [ContractConsent] = []
@@ -117,6 +120,13 @@ final class AppModel {
                 key: .courseTypes,
                 id: { $0.id.description }
             )
+            sessionPassPlans = referenceOrderStore.apply(
+                try await repository.listSessionPassPlans().sorted {
+                    $0.name.localizedCompare($1.name) == .orderedAscending
+                },
+                key: .sessionPassPlans,
+                id: { $0.id.description }
+            )
             ageGroups = referenceOrderStore.apply(
                 try await repository.listAgeGroups().sorted { $0.name.localizedCompare($1.name) == .orderedAscending },
                 key: .ageGroups,
@@ -138,6 +148,11 @@ final class AppModel {
             guardians = try await repository.listGuardians(studentID: nil)
             enrollments = try await repository.listEnrollments(termID: nil, courseID: nil, studentID: nil)
             attendance = try await repository.listAttendance(sessionID: nil, studentID: nil)
+            studentSessionPasses = try await repository.listStudentSessionPasses(studentID: nil)
+            sessionPassUses = try await repository.listSessionPassUses(
+                studentSessionPassID: nil,
+                studentID: nil
+            )
             leaveRequests = try await repository.listLeaveRequests(sessionID: nil, studentID: nil)
             notifications = try await repository.listNotifications(recipientReference: nil)
             contractDocuments = try await repository.listContractDocuments(termID: nil)
@@ -351,6 +366,10 @@ final class AppModel {
         courseTypes.first { $0.id == id }
     }
 
+    func sessionPassPlan(id: SessionPassPlanID) -> SessionPassPlan? {
+        sessionPassPlans.first { $0.id == id }
+    }
+
     func ageGroup(id: AgeGroupID) -> AgeGroup? {
         ageGroups.first { $0.id == id }
     }
@@ -395,6 +414,43 @@ final class AppModel {
         return students
             .filter { $0.guardianID == guardianID }
             .sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+    }
+
+    func sessionPasses(for studentID: StudentID) -> [StudentSessionPass] {
+        studentSessionPasses
+            .filter { $0.studentID == studentID }
+            .sorted {
+                if $0.issuedAt != $1.issuedAt { return $0.issuedAt > $1.issuedAt }
+                return $0.id.description > $1.id.description
+            }
+    }
+
+    func sessionPassUses(for passID: StudentSessionPassID) -> [SessionPassUse] {
+        sessionPassUses
+            .filter { $0.studentSessionPassID == passID }
+            .sorted { $0.usedAt > $1.usedAt }
+    }
+
+    func usedSessionCount(for pass: StudentSessionPass) -> Int {
+        sessionPassUses.lazy.filter { $0.studentSessionPassID == pass.id }.count
+    }
+
+    func remainingSessionCount(for pass: StudentSessionPass) -> Int {
+        max(0, pass.includedSessions - usedSessionCount(for: pass))
+    }
+
+    func availableSessionPass(for studentID: StudentID) -> StudentSessionPass? {
+        studentSessionPasses
+            .filter {
+                $0.studentID == studentID
+                    && $0.isActive
+                    && remainingSessionCount(for: $0) > 0
+            }
+            .sorted {
+                if $0.issuedAt != $1.issuedAt { return $0.issuedAt < $1.issuedAt }
+                return $0.id.description < $1.id.description
+            }
+            .first
     }
 
     var unassignedStudents: [Student] {
@@ -650,6 +706,69 @@ final class AppModel {
         }
     }
 
+    func saveSessionPassPlan(_ plan: SessionPassPlan) async throws {
+        let trimmedName = plan.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty,
+              plan.includedSessions > 0,
+              plan.includedSessions <= 10_000,
+              plan.unitPriceCents >= 0 else {
+            throw AppModelError.invalidSessionPassPlan
+        }
+        var updated = plan
+        updated.name = trimmedName
+        try await withCloudActivity(label: "保存次卡方案") {
+            try await repository.save(sessionPassPlan: updated)
+            await reload()
+        }
+    }
+
+    func deleteSessionPassPlan(id: SessionPassPlanID) async throws {
+        try await withCloudActivity(label: "删除次卡方案") {
+            try await repository.deleteSessionPassPlan(id: id)
+            await reload()
+        }
+    }
+
+    func issueSessionPass(
+        studentID: StudentID,
+        planID: SessionPassPlanID,
+        issuedAt: Date,
+        notes: String?
+    ) async throws {
+        guard student(id: studentID)?.kind == .adult else {
+            throw AppModelError.sessionPassRequiresAdult
+        }
+        guard let plan = sessionPassPlan(id: planID), plan.isActive else {
+            throw AppModelError.invalidSessionPassPlan
+        }
+        let pass = StudentSessionPass(
+            studentID: studentID,
+            planID: planID,
+            issuedAt: issuedAt,
+            includedSessions: plan.includedSessions,
+            unitPriceCents: plan.unitPriceCents,
+            notes: notes
+        )
+        try await withCloudActivity(label: "发放学员次卡") {
+            try await repository.save(studentSessionPass: pass)
+            await reload()
+        }
+    }
+
+    func saveStudentSessionPass(_ pass: StudentSessionPass) async throws {
+        try await withCloudActivity(label: "更新学员次卡") {
+            try await repository.save(studentSessionPass: pass)
+            await reload()
+        }
+    }
+
+    func deleteStudentSessionPass(id: StudentSessionPassID) async throws {
+        try await withCloudActivity(label: "删除学员次卡") {
+            try await repository.deleteStudentSessionPass(id: id)
+            await reload()
+        }
+    }
+
     func saveAgeGroup(_ ageGroup: AgeGroup) async throws {
         try await withCloudActivity(label: "保存年龄段") {
             try await repository.save(ageGroup: ageGroup)
@@ -695,6 +814,11 @@ final class AppModel {
     func moveCourseType(_ sourceID: CourseTypeID, to targetID: CourseTypeID) {
         courseTypes = moving(courseTypes, sourceID: sourceID, to: targetID)
         referenceOrderStore.save(courseTypes, key: .courseTypes, id: { $0.id.description })
+    }
+
+    func moveSessionPassPlan(_ sourceID: SessionPassPlanID, to targetID: SessionPassPlanID) {
+        sessionPassPlans = moving(sessionPassPlans, sourceID: sourceID, to: targetID)
+        referenceOrderStore.save(sessionPassPlans, key: .sessionPassPlans, id: { $0.id.description })
     }
 
     func moveAgeGroup(_ sourceID: AgeGroupID, to targetID: AgeGroupID) {
@@ -1545,12 +1669,21 @@ final class AppModel {
         sessionID: ClassSessionID,
         studentID: StudentID,
         status: AttendanceStatus,
-        makeupForSessionID: ClassSessionID? = nil
+        makeupForSessionID: ClassSessionID? = nil,
+        usesSessionPass: Bool = false
     ) async throws {
         let matchingEnrollmentID = enrollment(forSession: sessionID, studentID: studentID)?.id
-        let enrollmentID = status.isGuestAttendance ? nil : matchingEnrollmentID
-        guard status.isGuestAttendance || enrollmentID != nil else {
+        let isGuestAttendance = status.isGuestAttendance || usesSessionPass
+        let enrollmentID = isGuestAttendance ? nil : matchingEnrollmentID
+        guard isGuestAttendance || enrollmentID != nil else {
             throw AppModelError.attendanceRequiresEnrollment
+        }
+        if usesSessionPass {
+            guard status == .present,
+                  student(id: studentID)?.kind == .adult,
+                  availableSessionPass(for: studentID) != nil else {
+                throw AppModelError.noAvailableSessionPass
+            }
         }
         let validatedMakeupSourceID: ClassSessionID?
         if status == .makeup {
@@ -1572,6 +1705,7 @@ final class AppModel {
                 var updated = existing
                 updated.enrollmentID = enrollmentID
                 updated.makeupForSessionID = validatedMakeupSourceID
+                updated.usesSessionPass = usesSessionPass
                 updated.status = status
                 updated.recordedAt = Date()
                 try await repository.save(attendance: updated)
@@ -1582,6 +1716,7 @@ final class AppModel {
                         studentID: studentID,
                         enrollmentID: enrollmentID,
                         makeupForSessionID: validatedMakeupSourceID,
+                        usesSessionPass: usesSessionPass,
                         status: status,
                         recordedAt: Date()
                     )
@@ -1791,6 +1926,7 @@ final class AppModel {
 
 private enum ReferenceOrderKey: String {
     case courseTypes
+    case sessionPassPlans
     case ageGroups
     case rooms
     case instructors

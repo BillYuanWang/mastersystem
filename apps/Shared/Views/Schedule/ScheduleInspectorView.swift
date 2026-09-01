@@ -177,13 +177,13 @@ struct ScheduleInspectorView: View {
                 ) {
                     ForEach(preview.people) { person in
                         HStack(spacing: 6) {
-                            MDStatusDot(color: statusColor(person.status, theme: theme))
+                            MDStatusDot(color: statusColor(person, theme: theme))
                             Text(person.nickname)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                             Spacer(minLength: 4)
                             Text(person.statusLabel)
-                                .foregroundStyle(statusColor(person.status, theme: theme))
+                                .foregroundStyle(statusColor(person, theme: theme))
                                 .fixedSize()
                         }
                         .mdFont(.compact)
@@ -218,6 +218,7 @@ struct ScheduleInspectorView: View {
                 attendanceMetric("待记录", count: preview.pending.count, color: theme.secondaryText)
                 attendanceMetric("试课", count: preview.people.filter { $0.status == .trial }.count, color: theme.accent)
                 attendanceMetric("补课", count: preview.people.filter { $0.status == .makeup }.count, color: theme.success)
+                attendanceMetric("次卡", count: preview.people.filter(\.usesSessionPass).count, color: theme.warning)
             }
         }
     }
@@ -233,8 +234,9 @@ struct ScheduleInspectorView: View {
         }
     }
 
-    private func statusColor(_ status: AttendanceStatus?, theme: MDTheme) -> Color {
-        switch status {
+    private func statusColor(_ person: CourseAttendancePerson, theme: MDTheme) -> Color {
+        if person.usesSessionPass { return theme.warning }
+        return switch person.status {
         case .present, .makeup: theme.success
         case .trial: theme.accent
         case .excused: theme.warning

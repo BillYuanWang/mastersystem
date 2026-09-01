@@ -12,6 +12,27 @@ handoff package is requested, then regenerate each PDF from its Markdown source.
 
 ## Current release
 
+### v0.9.0-beta.1n - 2026-09-01
+
+- Added administrator-managed adult N-session cards without tying them to a
+  term or fixed course. Data Center now owns reusable card plans, and the adult
+  learner detail panel issues cards and shows remaining sessions and use history.
+- Added a dedicated session-card area to macOS and iPhone administrator
+  attendance. A present check-in consumes the oldest active card with remaining
+  sessions; cancelling that attendance restores the session automatically.
+- Added read-only iPhone balance and use history for guardians/adult learners,
+  plus matching Admin SDK/MCP resources and an explicit issue-card action.
+- Deployed the additive Supabase migration with adult-only validation, price and
+  count snapshots, immutable use history, RLS, Realtime, and backward-compatible
+  attendance markers. Existing production data was not rewritten.
+- Local macOS is build 87 versus notarized build 79, a distance of eight. Local
+  iOS is build 48 versus accepted TestFlight build 45, a distance of three. No
+  notarized package or TestFlight upload was made in this revision.
+- All 136 Swift tests and all 10 Admin SDK/MCP tests passed. Both Xcode app
+  targets built successfully, the linked migration matched locally/remotely,
+  and remote schema lint found no errors. Local pgTAP requires Docker and was
+  not run.
+
 ### v0.9.0-beta.1m - 2026-09-01
 
 - Split the macOS course table fee display into "课程按次费用" and

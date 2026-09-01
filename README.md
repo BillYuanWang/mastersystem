@@ -1,7 +1,7 @@
 # Master Dance
 
-Current local revision: `v0.9.0-beta.1j`. macOS is app version 0.9.0 build 83,
-while the local iOS app is version 0.9.0 build 47. The latest notarized
+Current local revision: `v0.9.0-beta.1n`. macOS is app version 0.9.0 build 87,
+while the local iOS app is version 0.9.0 build 48. The latest notarized
 macOS distribution remains build 79, and the accepted iOS TestFlight build
 remains 45.
 
@@ -154,6 +154,14 @@ only a password. The resulting account can access only its linked family. When
 an administrator publishes revised agreement text, every guardian must read and
 sign that new version before returning to the app.
 
+Adult learners may also hold one or more N-session cards without enrolling in a
+fixed course or term. Administrators define reusable card plans in Data Center,
+issue a card from the learner detail panel, and check the learner in from the
+dedicated session-card area in Attendance. Each check-in consumes the oldest
+active card with remaining sessions; cancelling that attendance restores the
+use. Guardians and adult learners can see their remaining count and immutable
+use history on iPhone, while pricing and issuance remain administrator-only.
+
 ## Run the iPhone app
 
 Open `apps/MasterDance.xcodeproj`, select the `MasterDanceMobile` scheme and an
@@ -238,7 +246,7 @@ See `supabase/README.md` and `docs/backend-operations.md` for deployment and rec
 ## Current boundaries
 
 The MVP supports term enrollment, scheduling, guardian-first learner profiles,
-one-time account linking, course enrollment, attendance, leave handling,
+one-time account linking, course enrollment, adult N-session cards, attendance, leave handling,
 contract-consent records, advertising campaigns, and notification records.
 Administrators can schedule up to five concurrent advertising slots at $99 per
 month with a square thumbnail and a flexible-ratio advertisement poster; guardians see only

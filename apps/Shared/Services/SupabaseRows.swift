@@ -170,6 +170,47 @@ struct CourseTypeRow: Codable, Sendable {
     }
 }
 
+struct SessionPassPlanRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let name: String
+    let includedSessions: Int
+    let unitPriceCents: Int
+    let notes: String?
+    let isActive: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case name
+        case includedSessions = "included_sessions"
+        case unitPriceCents = "unit_price_cents"
+        case notes
+        case isActive = "is_active"
+    }
+
+    init(_ plan: SessionPassPlan, organizationID: UUID) {
+        id = plan.id.rawValue
+        self.organizationID = organizationID
+        name = plan.name
+        includedSessions = plan.includedSessions
+        unitPriceCents = plan.unitPriceCents
+        notes = plan.notes
+        isActive = plan.isActive
+    }
+
+    func domain() -> SessionPassPlan {
+        SessionPassPlan(
+            id: SessionPassPlanID(serverID: id),
+            name: name,
+            includedSessions: includedSessions,
+            unitPriceCents: unitPriceCents,
+            notes: notes,
+            isActive: isActive
+        )
+    }
+}
+
 struct AgeGroupRow: Codable, Sendable {
     let id: UUID
     let organizationID: UUID
@@ -760,6 +801,7 @@ struct AttendanceRecordRow: Codable, Sendable {
     let studentID: UUID
     let enrollmentID: UUID?
     let makeupForSessionID: UUID?
+    let usesSessionPass: Bool
     let status: String
     let recordedAt: String
     let recordedBy: UUID?
@@ -772,6 +814,7 @@ struct AttendanceRecordRow: Codable, Sendable {
         case studentID = "student_id"
         case enrollmentID = "enrollment_id"
         case makeupForSessionID = "makeup_for_session_id"
+        case usesSessionPass = "uses_session_pass"
         case status
         case recordedAt = "recorded_at"
         case recordedBy = "recorded_by"
@@ -785,6 +828,7 @@ struct AttendanceRecordRow: Codable, Sendable {
         studentID = attendance.studentID.rawValue
         enrollmentID = attendance.enrollmentID?.rawValue
         makeupForSessionID = attendance.makeupForSessionID?.rawValue
+        usesSessionPass = attendance.usesSessionPass
         status = attendance.status.rawValue
         recordedAt = SupabaseDateCodec.timestampString(from: attendance.recordedAt)
         self.recordedBy = recordedBy
@@ -801,9 +845,88 @@ struct AttendanceRecordRow: Codable, Sendable {
             studentID: StudentID(serverID: studentID),
             enrollmentID: enrollmentID.map(EnrollmentID.init(serverID:)),
             makeupForSessionID: makeupForSessionID.map(ClassSessionID.init(serverID:)),
+            usesSessionPass: usesSessionPass,
             status: status,
             recordedAt: SupabaseDateCodec.timestamp(from: recordedAt),
             note: note
+        )
+    }
+}
+
+struct StudentSessionPassRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let studentID: UUID
+    let planID: UUID
+    let issuedAt: String
+    let includedSessions: Int
+    let unitPriceCents: Int
+    let notes: String?
+    let isActive: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case studentID = "student_id"
+        case planID = "plan_id"
+        case issuedAt = "issued_at"
+        case includedSessions = "included_sessions"
+        case unitPriceCents = "unit_price_cents"
+        case notes
+        case isActive = "is_active"
+    }
+
+    init(_ pass: StudentSessionPass, organizationID: UUID) {
+        id = pass.id.rawValue
+        self.organizationID = organizationID
+        studentID = pass.studentID.rawValue
+        planID = pass.planID.rawValue
+        issuedAt = SupabaseDateCodec.timestampString(from: pass.issuedAt)
+        includedSessions = pass.includedSessions
+        unitPriceCents = pass.unitPriceCents
+        notes = pass.notes
+        isActive = pass.isActive
+    }
+
+    func domain() throws -> StudentSessionPass {
+        try StudentSessionPass(
+            id: StudentSessionPassID(serverID: id),
+            studentID: StudentID(serverID: studentID),
+            planID: SessionPassPlanID(serverID: planID),
+            issuedAt: SupabaseDateCodec.timestamp(from: issuedAt),
+            includedSessions: includedSessions,
+            unitPriceCents: unitPriceCents,
+            notes: notes,
+            isActive: isActive
+        )
+    }
+}
+
+struct SessionPassUseRow: Decodable, Sendable {
+    let id: UUID
+    let studentSessionPassID: UUID
+    let attendanceID: UUID
+    let sessionID: UUID
+    let studentID: UUID
+    let usedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case studentSessionPassID = "student_session_pass_id"
+        case attendanceID = "attendance_id"
+        case sessionID = "session_id"
+        case studentID = "student_id"
+        case usedAt = "used_at"
+    }
+
+    func domain() throws -> SessionPassUse {
+        try SessionPassUse(
+            id: SessionPassUseID(serverID: id),
+            studentSessionPassID: StudentSessionPassID(serverID: studentSessionPassID),
+            attendanceID: AttendanceID(serverID: attendanceID),
+            sessionID: ClassSessionID(serverID: sessionID),
+            studentID: StudentID(serverID: studentID),
+            usedAt: SupabaseDateCodec.timestamp(from: usedAt)
         )
     }
 }

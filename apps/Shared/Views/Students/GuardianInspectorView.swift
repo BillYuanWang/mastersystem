@@ -66,6 +66,12 @@ struct GuardianInspectorView: View {
 
                         StudentCourseManagerView(model: model, student: selectedStudent)
                             .id(selectedStudent.id)
+
+                        if selectedStudent.kind == .adult {
+                            Divider()
+                            StudentSessionPassManagerView(model: model, student: selectedStudent)
+                                .id("session-pass-\(selectedStudent.id)")
+                        }
                     }
                     .padding(16)
                 }
@@ -415,6 +421,12 @@ struct UnassignedStudentInspectorView: View {
 
                 StudentCourseManagerView(model: model, student: student)
                     .padding(16)
+
+                if student.kind == .adult {
+                    Divider()
+                    StudentSessionPassManagerView(model: model, student: student)
+                        .padding(16)
+                }
             }
         }
         .foregroundStyle(theme.primaryText)

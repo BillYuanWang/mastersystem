@@ -26,6 +26,17 @@ test("issued billing records are immutable", () => {
   assert.equal(actionNames.includes("record_payment"), true);
 });
 
+test("session-pass tracking is exposed without allowing direct use-history mutation", () => {
+  assert.equal(resourceNames.includes("session_pass_plans"), true);
+  assert.equal(resourceNames.includes("student_session_passes"), true);
+  assert.equal(resourceNames.includes("session_pass_uses"), true);
+  assert.equal(resourceSpecs.session_pass_uses.createFields.length, 0);
+  assert.equal(resourceSpecs.session_pass_uses.updateFields.length, 0);
+  assert.equal(resourceSpecs.session_pass_uses.deleteStrategy.kind, "none");
+  assert.equal(resourceSpecs.attendance.readFields.includes("uses_session_pass"), true);
+  assert.equal(actionNames.includes("issue_session_pass"), true);
+});
+
 test("US phone normalization matches the product format", () => {
   assert.equal(normalizeUSPhone("9495550123"), "+1 (949) 555-0123");
   assert.equal(normalizeUSPhone("+1 949-555-0123"), "+1 (949) 555-0123");

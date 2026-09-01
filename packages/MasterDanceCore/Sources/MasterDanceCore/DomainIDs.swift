@@ -42,6 +42,9 @@ public enum StudentIDTag: Sendable {}
 public enum GuardianIDTag: Sendable {}
 public enum EnrollmentIDTag: Sendable {}
 public enum AttendanceIDTag: Sendable {}
+public enum SessionPassPlanIDTag: Sendable {}
+public enum StudentSessionPassIDTag: Sendable {}
+public enum SessionPassUseIDTag: Sendable {}
 public enum LeaveRequestIDTag: Sendable {}
 public enum ContractConsentIDTag: Sendable {}
 public enum ContractDocumentIDTag: Sendable {}
@@ -67,6 +70,9 @@ public typealias StudentID = EntityID<StudentIDTag>
 public typealias GuardianID = EntityID<GuardianIDTag>
 public typealias EnrollmentID = EntityID<EnrollmentIDTag>
 public typealias AttendanceID = EntityID<AttendanceIDTag>
+public typealias SessionPassPlanID = EntityID<SessionPassPlanIDTag>
+public typealias StudentSessionPassID = EntityID<StudentSessionPassIDTag>
+public typealias SessionPassUseID = EntityID<SessionPassUseIDTag>
 public typealias LeaveRequestID = EntityID<LeaveRequestIDTag>
 public typealias ContractConsentID = EntityID<ContractConsentIDTag>
 public typealias ContractDocumentID = EntityID<ContractDocumentIDTag>

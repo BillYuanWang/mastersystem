@@ -130,7 +130,7 @@ struct CourseAttendancePreview {
         let sessionRecords = model.attendance.filter { $0.sessionID == session.id }
         let guestStudentIDs = Set(
             sessionRecords
-                .filter { $0.status.isGuestAttendance }
+                .filter(\.isGuestAttendance)
                 .map(\.studentID)
         )
         let leaveStudentIDs = Set(
@@ -148,12 +148,14 @@ struct CourseAttendancePreview {
             .union(leaveStudentIDs)
             .compactMap { studentID -> CourseAttendancePerson? in
                 guard let student = model.student(id: studentID) else { return nil }
-                let status = recordByStudent[studentID]?.status
+                let record = recordByStudent[studentID]
+                let status = record?.status
                     ?? (leaveStudentIDs.contains(studentID) ? .excused : nil)
                 return CourseAttendancePerson(
                     id: studentID,
                     nickname: student.displayName,
                     status: status,
+                    usesSessionPass: record?.usesSessionPass ?? false,
                     presence: status.map {
                         $0.recordsPhysicalAttendance ? .attended : .notAttended
                     } ?? .pending
@@ -178,10 +180,12 @@ struct CourseAttendancePerson: Identifiable {
     let id: StudentID
     let nickname: String
     let status: AttendanceStatus?
+    let usesSessionPass: Bool
     let presence: CourseAttendancePresence
 
     var marker: String? {
-        switch status {
+        if usesSessionPass { return "卡" }
+        return switch status {
         case .some(.trial): "试"
         case .some(.makeup): "补"
         case .some(.excused): "假"
@@ -191,7 +195,8 @@ struct CourseAttendancePerson: Identifiable {
     }
 
     var statusLabel: String {
-        switch status {
+        if usesSessionPass { return "次卡到课" }
+        return switch status {
         case .some(.present): "出勤"
         case .some(.trial): "试课"
         case .some(.makeup): "补课"

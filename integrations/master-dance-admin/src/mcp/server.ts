@@ -186,16 +186,35 @@ server.registerTool(
 );
 
 server.registerTool(
+  "md_issue_session_pass",
+  {
+    title: "Issue learner session pass",
+    description: "Issue an active N-session plan to an adult learner and snapshot its count and unit price.",
+    inputSchema: {
+      id: z.string().uuid().optional(),
+      student_id: z.string().uuid(),
+      plan_id: z.string().uuid(),
+      issued_at: z.string().datetime().optional(),
+      notes: z.string().max(1000).nullable().optional()
+    },
+    outputSchema: successOutput,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+  },
+  async (input) => execute(() => sdk.runAction("issue_session_pass", toJsonObject(input)))
+);
+
+server.registerTool(
   "md_set_attendance",
   {
     title: "Set attendance",
-    description: "Set or replace one learner's attendance for one class session, including trial and makeup semantics.",
+    description: "Set or replace one learner's attendance for one class session, including trial, makeup, and session-pass semantics.",
     inputSchema: {
       id: z.string().uuid().optional(),
       session_id: z.string().uuid(),
       student_id: z.string().uuid(),
       enrollment_id: z.string().uuid().nullable().optional(),
       makeup_for_session_id: z.string().uuid().nullable().optional(),
+      uses_session_pass: z.boolean().default(false),
       status: z.enum(["present", "absent", "excused", "makeup", "trial"]),
       recorded_at: z.string().datetime().optional(),
       note: z.string().max(1000).nullable().optional()

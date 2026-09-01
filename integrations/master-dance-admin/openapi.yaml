@@ -164,6 +164,9 @@ components:
           - age_groups
           - rooms
           - instructors
+          - session_pass_plans
+          - student_session_passes
+          - session_pass_uses
           - courses
           - class_sessions
           - guardians
@@ -194,6 +197,7 @@ components:
         enum:
           - set_course_pricing
           - save_enrollment
+          - issue_session_pass
           - set_attendance
           - clear_attendance
           - save_leave_request

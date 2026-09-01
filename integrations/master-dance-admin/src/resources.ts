@@ -138,6 +138,50 @@ export const resourceSpecs: Record<ResourceName, ResourceSpec> = {
     deleteStrategy: { kind: "managed", recordKind: "instructor" },
     createDefaults: { is_active: true }
   },
+  session_pass_plans: {
+    table: "session_pass_plans",
+    label: "次卡方案",
+    readFields: [...lifecycle, "name", "included_sessions", "unit_price_cents", "notes", "is_active"],
+    createFields: ["id", "name", "included_sessions", "unit_price_cents", "notes", "is_active"],
+    updateFields: ["name", "included_sessions", "unit_price_cents", "notes", "is_active"],
+    requiredCreate: ["name", "included_sessions", "unit_price_cents"],
+    searchFields: ["name", "notes"],
+    defaultSort: [{ field: "name", ascending: true }],
+    organizationScoped: true,
+    generateId: true,
+    deleteStrategy: { kind: "direct" },
+    createDefaults: { is_active: true },
+    notes: "A plan may be deleted only before any learner card references it; otherwise deactivate it."
+  },
+  student_session_passes: {
+    table: "student_session_passes",
+    label: "学员次卡",
+    readFields: [...lifecycle, "student_id", "plan_id", "issued_at", "included_sessions", "unit_price_cents", "notes", "is_active"],
+    createFields: ["id", "student_id", "plan_id", "issued_at", "included_sessions", "unit_price_cents", "notes", "is_active"],
+    updateFields: ["issued_at", "notes", "is_active"],
+    requiredCreate: ["student_id", "plan_id", "issued_at", "included_sessions", "unit_price_cents"],
+    searchFields: ["notes"],
+    defaultSort: [{ field: "issued_at", ascending: false }],
+    organizationScoped: true,
+    generateId: true,
+    deleteStrategy: { kind: "direct" },
+    createDefaults: { is_active: true },
+    notes: "Prefer issue_session_pass so the plan's session count and unit price are snapshotted automatically. Used cards preserve their identity and pricing snapshot."
+  },
+  session_pass_uses: {
+    table: "session_pass_uses",
+    label: "次卡划卡记录",
+    readFields: [...lifecycle, "student_session_pass_id", "attendance_id", "session_id", "student_id", "used_at"],
+    createFields: [],
+    updateFields: [],
+    requiredCreate: [],
+    searchFields: [],
+    defaultSort: [{ field: "used_at", ascending: false }],
+    organizationScoped: true,
+    generateId: false,
+    deleteStrategy: { kind: "none" },
+    notes: "Generated from session-pass attendance. Clear the matching attendance to undo one use."
+  },
   courses: {
     table: "courses",
     label: "课程",
@@ -240,7 +284,7 @@ export const resourceSpecs: Record<ResourceName, ResourceSpec> = {
   attendance: {
     table: "attendance",
     label: "签到",
-    readFields: [...lifecycle, "session_id", "student_id", "enrollment_id", "makeup_for_session_id", "status", "recorded_at", "recorded_by", "note"],
+    readFields: [...lifecycle, "session_id", "student_id", "enrollment_id", "makeup_for_session_id", "uses_session_pass", "status", "recorded_at", "recorded_by", "note"],
     createFields: [],
     updateFields: [],
     requiredCreate: [],
@@ -249,7 +293,7 @@ export const resourceSpecs: Record<ResourceName, ResourceSpec> = {
     organizationScoped: true,
     generateId: false,
     deleteStrategy: { kind: "direct" },
-    notes: "Use set_attendance and clear_attendance."
+    notes: "Use set_attendance and clear_attendance. Session-pass attendance uses status=present plus uses_session_pass=true."
   },
   leave_requests: {
     table: "leave_requests",
