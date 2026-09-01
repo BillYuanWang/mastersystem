@@ -8,6 +8,12 @@ import Testing
 
 @Suite("Receipt file store")
 struct ReceiptFileStoreTests {
+    @Test("Receipt brand assets resolve outside the running app bundle")
+    func resolvesReceiptBrandAssets() {
+        #expect(MasterDanceImageResource.image(named: "MasterDanceMacLogo") != nil)
+        #expect(MasterDanceImageResource.image(named: "ReceiptWaterSleeveWatermark") != nil)
+    }
+
     @Test("Receipts are grouped by learner and never overwrite")
     func savesUniqueReceiptFiles() throws {
         let root = FileManager.default.temporaryDirectory
@@ -58,7 +64,7 @@ struct ReceiptFileStoreTests {
             kind: .receipt,
             receiptNumber: "MD-2026-001",
             version: 2,
-            schoolYearLabel: "2026–2027 学年",
+            termLabel: "2026 秋季学期",
             issuedOn: Date(timeIntervalSince1970: 0),
             guardianName: "测试监护人",
             guardianEmail: "guardian@example.com",
@@ -67,22 +73,37 @@ struct ReceiptFileStoreTests {
             currency: .usd,
             items: [
                 ReceiptLineItem(
+                    kind: .tuition,
+                    section: .fullTerm,
                     title: "2026 秋季学期 · 中国舞基本功",
+                    englishTitle: "Chinese Dance Fundamentals · Full-Term Tuition",
                     amount: 595,
                     learnerName: "测试学员",
                     detail: "周一 3:30–4:30 PM"
                 ),
                 ReceiptLineItem(
+                    kind: .registration,
                     title: "2026–2027 学年注册费",
+                    englishTitle: "Annual Registration Fee",
                     amount: 50,
                     learnerName: "测试学员"
                 ),
                 ReceiptLineItem(
                     title: "上期已付款项目",
+                    englishTitle: "Previously Paid Item",
                     amount: 120,
                     learnerName: "测试学员",
                     detail: "仅供家庭查阅",
-                    includedInAmountDue: false
+                    isPaid: true
+                ),
+                ReceiptLineItem(
+                    kind: .tuition,
+                    section: .fullTerm,
+                    title: "免付课程",
+                    englishTitle: "Waived Tuition",
+                    amount: 300,
+                    learnerName: "测试学员",
+                    settlementStatus: .waived
                 )
             ],
             paymentMethod: "Zelle",
@@ -94,9 +115,13 @@ struct ReceiptFileStoreTests {
         let data = try ReceiptPNGRenderer.render(document)
         let bitmap = NSBitmapImageRep(data: data)
 
+        #expect(document.paidItemTotal == 120)
+        #expect(document.waivedItemTotal == 300)
+        #expect(document.currentDue == 645)
         #expect(data.starts(with: [0x89, 0x50, 0x4E, 0x47]))
-        #expect(bitmap?.pixelsWide == 1_440)
-        #expect(bitmap?.pixelsHigh == 1_920)
+        let expectedSize = ReceiptPNGRenderer.canvasSize(for: document)
+        #expect(bitmap?.pixelsWide == Int(expectedSize.width * 2))
+        #expect(bitmap?.pixelsHigh == Int(expectedSize.height * 2))
 
         if let path = ProcessInfo.processInfo.environment["MD_RECEIPT_DOCUMENT_SNAPSHOT_PATH"] {
             try data.write(to: URL(fileURLWithPath: path), options: .atomic)
@@ -106,6 +131,7 @@ struct ReceiptFileStoreTests {
     @Test("Copied receipts expose PNG data to other apps")
     @MainActor
     func copiesPNG() throws {
+        _ = NSApplication.shared
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("md-desk-receipt-tests"))
         defer { pasteboard.clearContents() }
         let image = NSImage(size: NSSize(width: 4, height: 4))
@@ -126,7 +152,26 @@ struct ReceiptFileStoreTests {
     @Test("Receipt workspace renders at the default desktop size")
     @MainActor
     func rendersWorkspace() async throws {
-        let model = AppModel(repository: PreviewMasterDanceStore())
+        let guardian = Guardian(
+            displayName: "王渊",
+            email: "guardian@example.com",
+            phone: "+1 (949) 555-0100"
+        )
+        let learners = [
+            Student(guardianID: guardian.id, displayName: "小毛豆", kind: .child),
+            Student(guardianID: guardian.id, displayName: "王渊", kind: .adult),
+        ]
+        let term = Term(
+            name: "2026 年秋季学期",
+            startsOn: Date(timeIntervalSince1970: 1_787_020_800),
+            endsOn: Date(timeIntervalSince1970: 1_797_923_200),
+            status: .open
+        )
+        let model = AppModel(
+            repository: PreviewMasterDanceStore(
+                data: PreviewData(terms: [term], students: learners, guardians: [guardian])
+            )
+        )
         await model.reload()
         let size = NSSize(width: 1_380, height: 812)
         let hostingView = NSHostingView(

@@ -1,0 +1,251 @@
+openapi: 3.1.0
+info:
+  title: Master Dance Local Admin API
+  version: 0.1.0
+  description: >-
+    Localhost-only API over the same protected service used by the Master Dance
+    Admin SDK and MCP server. All writes require an active Supabase administrator
+    and remain subject to RLS, validation, dependency, immutability, and audit rules.
+servers:
+  - url: http://127.0.0.1:4688
+    description: Authorized administrator Mac only
+security:
+  - localBearer: []
+paths:
+  /health:
+    get:
+      security: []
+      operationId: health
+      summary: Check whether the local process is running
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, service, version]
+                properties:
+                  ok: { const: true }
+                  service: { const: master-dance-admin-api }
+                  version: { type: string }
+  /v1/capabilities:
+    get:
+      operationId: capabilities
+      summary: List resources, actions, identity, and protected invariants
+      responses:
+        "200": { $ref: "#/components/responses/AdminSuccess" }
+        "401": { $ref: "#/components/responses/AdminError" }
+  /v1/resources/{resource}:
+    parameters:
+      - $ref: "#/components/parameters/Resource"
+    get:
+      operationId: listRecords
+      summary: Query an allowed resource
+      parameters:
+        - name: filters
+          in: query
+          description: JSON array of field/operator/value filters
+          schema: { type: string }
+        - name: sort
+          in: query
+          description: JSON array of field/ascending sort rules
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200": { $ref: "#/components/responses/AdminSuccess" }
+        "400": { $ref: "#/components/responses/AdminError" }
+        "401": { $ref: "#/components/responses/AdminError" }
+    post:
+      operationId: createRecord
+      summary: Create a generically mutable resource
+      parameters:
+        - $ref: "#/components/parameters/IncompleteGuardianContact"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JsonObject" }
+      responses:
+        "201": { $ref: "#/components/responses/AdminSuccess" }
+        "400": { $ref: "#/components/responses/AdminError" }
+        "401": { $ref: "#/components/responses/AdminError" }
+        "403": { $ref: "#/components/responses/AdminError" }
+  /v1/resources/{resource}/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Resource"
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, minLength: 1, maxLength: 200 }
+    get:
+      operationId: getRecord
+      summary: Read one record by stable id
+      responses:
+        "200": { $ref: "#/components/responses/AdminSuccess" }
+        "404": { $ref: "#/components/responses/AdminError" }
+    patch:
+      operationId: updateRecord
+      summary: Apply the smallest supported field patch
+      parameters:
+        - $ref: "#/components/parameters/IncompleteGuardianContact"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JsonObject" }
+      responses:
+        "200": { $ref: "#/components/responses/AdminSuccess" }
+        "400": { $ref: "#/components/responses/AdminError" }
+        "403": { $ref: "#/components/responses/AdminError" }
+        "404": { $ref: "#/components/responses/AdminError" }
+    delete:
+      operationId: deleteRecord
+      summary: Run dependency-aware deletion for a supported resource
+      responses:
+        "200": { $ref: "#/components/responses/AdminSuccess" }
+        "400": { $ref: "#/components/responses/AdminError" }
+        "403": { $ref: "#/components/responses/AdminError" }
+  /v1/actions/{action}:
+    parameters:
+      - $ref: "#/components/parameters/Action"
+    post:
+      operationId: runAction
+      summary: Run a protected domain action
+      description: >-
+        Input shape depends on the selected action. Use the exported TypeScript
+        contracts or MCP tool schema for exact fields.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JsonObject" }
+      responses:
+        "200": { $ref: "#/components/responses/AdminSuccess" }
+        "400": { $ref: "#/components/responses/AdminError" }
+        "401": { $ref: "#/components/responses/AdminError" }
+        "403": { $ref: "#/components/responses/AdminError" }
+components:
+  securitySchemes:
+    localBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: random-local-keychain-token
+  parameters:
+    IncompleteGuardianContact:
+      name: allow_incomplete_guardian_contact
+      in: query
+      required: false
+      description: >-
+        Admin-only explicit exception for unlinked guardians. When true, email
+        or phone may temporarily be null; invitation codes must wait until both
+        are valid.
+      schema: { type: boolean, default: false }
+    Resource:
+      name: resource
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+          - organizations
+          - profiles
+          - terms
+          - term_holidays
+          - course_types
+          - age_groups
+          - rooms
+          - instructors
+          - courses
+          - class_sessions
+          - guardians
+          - students
+          - guardian_students
+          - enrollments
+          - enrollment_session_selections
+          - attendance
+          - leave_requests
+          - contract_documents
+          - contract_consents
+          - contract_consent_signatures
+          - news_articles
+          - news_article_images
+          - advertisements
+          - notifications
+          - billing_invoices
+          - billing_invoice_items
+          - billing_payments
+          - billing_artifacts
+          - audit_events
+    Action:
+      name: action
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+          - set_course_pricing
+          - save_enrollment
+          - set_attendance
+          - clear_attendance
+          - save_leave_request
+          - create_student_for_guardian
+          - link_student_to_guardian
+          - issue_guardian_link_code
+          - publish_contract_revision
+          - update_profile_access
+          - upload_media
+          - remove_media
+          - issue_invoice
+          - record_payment
+  schemas:
+    JsonObject:
+      type: object
+      additionalProperties: true
+    AdminSuccess:
+      type: object
+      required: [ok, result, warnings]
+      properties:
+        ok: { const: true }
+        result: {}
+        warnings:
+          type: array
+          items: { type: string }
+    AdminError:
+      type: object
+      required: [ok, error]
+      properties:
+        ok: { const: false }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: {}
+  responses:
+    AdminSuccess:
+      description: Successful protected operation
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/AdminSuccess" }
+    AdminError:
+      description: Authentication, validation, dependency, or request failure
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/AdminError" }
+x-master-dance-invariants:
+  - Money is integer USD cents.
+  - Issued invoices and payments are immutable.
+  - Signed legal and audit records are immutable.
+  - Linked data uses dependency-aware deletion.
+  - Private lessons use per-session registration and pricing.
+  - Course category is hidden compatibility data.

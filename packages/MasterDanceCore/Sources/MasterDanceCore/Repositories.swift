@@ -119,13 +119,11 @@ public protocol BillingRepository: Sendable {
     func issueBillingInvoice(
         invoice: BillingInvoice,
         lineItems: [BillingInvoiceLineItem],
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingInvoice
     func recordBillingPayment(
         payment: BillingPayment,
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingPayment
     func billingArtifactData(storagePath: String) async throws -> Data
 }

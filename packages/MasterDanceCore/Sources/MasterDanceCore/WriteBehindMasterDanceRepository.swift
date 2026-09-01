@@ -573,16 +573,14 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
     public func issueBillingInvoice(
         invoice: BillingInvoice,
         lineItems: [BillingInvoiceLineItem],
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingInvoice {
         try await ensureSnapshot()
         _ = try await synchronizeIfNeeded()
         let saved = try await remote.issueBillingInvoice(
             invoice: invoice,
             lineItems: lineItems,
-            artifact: artifact,
-            pngData: pngData
+            artifactUploads: artifactUploads
         )
         try await replaceWithRemoteSnapshot()
         return saved
@@ -590,15 +588,13 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 
     public func recordBillingPayment(
         payment: BillingPayment,
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingPayment {
         try await ensureSnapshot()
         _ = try await synchronizeIfNeeded()
         let saved = try await remote.recordBillingPayment(
             payment: payment,
-            artifact: artifact,
-            pngData: pngData
+            artifactUploads: artifactUploads
         )
         try await replaceWithRemoteSnapshot()
         return saved

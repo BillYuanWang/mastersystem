@@ -201,8 +201,6 @@ extension View {
 }
 
 enum MDMetrics {
-    static let railWidth: CGFloat = 58
-    static let inspectorWidth: CGFloat = 294
     static let statusBarHeight: CGFloat = 34
     static let radius: CGFloat = 7
     static let controlHeight: CGFloat = 30

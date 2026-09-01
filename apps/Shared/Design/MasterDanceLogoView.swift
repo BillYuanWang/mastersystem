@@ -34,8 +34,7 @@ struct MasterDanceLogoView: View {
 
     var body: some View {
 #if os(macOS)
-        if let path = Bundle.main.path(forResource: variant.resourceName, ofType: "png"),
-           let image = NSImage(contentsOfFile: path) {
+        if let image = MasterDanceImageResource.image(named: variant.resourceName) {
             Image(nsImage: image)
                 .renderingMode(variant == .mark ? .template : .original)
                 .resizable()
@@ -48,8 +47,7 @@ struct MasterDanceLogoView: View {
                 .padding(8)
         }
 #else
-        if let path = Bundle.main.path(forResource: variant.resourceName, ofType: "png"),
-           let image = UIImage(contentsOfFile: path) {
+        if let image = MasterDanceImageResource.image(named: variant.resourceName) {
             Image(uiImage: image)
                 .renderingMode(.original)
                 .resizable()
@@ -61,5 +59,31 @@ struct MasterDanceLogoView: View {
                 .padding(8)
         }
 #endif
+    }
+}
+
+enum MasterDanceImageResource {
+#if os(macOS)
+    static func image(named name: String) -> NSImage? {
+        candidateBundles.lazy.compactMap { bundle in
+            guard let path = bundle.path(forResource: name, ofType: "png") else { return nil }
+            return NSImage(contentsOfFile: path)
+        }.first
+    }
+#else
+    static func image(named name: String) -> UIImage? {
+        candidateBundles.lazy.compactMap { bundle in
+            guard let path = bundle.path(forResource: name, ofType: "png") else { return nil }
+            return UIImage(contentsOfFile: path)
+        }.first
+    }
+#endif
+
+    private static var candidateBundles: [Bundle] {
+        var bundles = [Bundle.main]
+#if SWIFT_PACKAGE
+        bundles.append(.module)
+#endif
+        return bundles
     }
 }

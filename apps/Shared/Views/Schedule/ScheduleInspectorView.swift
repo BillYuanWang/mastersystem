@@ -6,193 +6,240 @@ import SwiftUI
 struct ScheduleInspectorView: View {
     let model: AppModel
     let sessionID: ClassSessionID?
+    let isCollapsed: Bool
+    let headerHeight: CGFloat
+    let toggleCollapsed: () -> Void
     let openCourse: () -> Void
     let startAttendance: (ClassSessionID) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.mdInterfaceFontScale) private var interfaceScale
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
-        Group {
-            if let sessionID, let session = model.session(id: sessionID), let course = model.course(id: session.courseID) {
-                inspector(session: session, course: course, theme: theme)
-            } else {
-                ContentUnavailableView(
-                    "选择一门课",
-                    systemImage: "cursorarrow.click",
-                    description: Text("课程详情、报名学生和签到入口会显示在这里。")
-                )
+        let session = sessionID.flatMap { model.session(id: $0) }
+        let course = session.flatMap { model.course(id: $0.courseID) }
+
+        VStack(spacing: 0) {
+            header(session: session, course: course, theme: theme)
+                .frame(height: headerHeight)
+
+            if !isCollapsed {
+                Divider()
+
+                if let session, let course {
+                    details(session: session, course: course, theme: theme)
+                } else {
+                    Label("未选择课程", systemImage: "cursorarrow.click")
+                        .mdFont(.compact)
+                        .foregroundStyle(theme.secondaryText)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .foregroundStyle(theme.primaryText)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(theme.surface)
+        .clipped()
+        .accessibilityIdentifier("md.schedule.details")
     }
 
-    private func inspector(session: ClassSession, course: Course, theme: MDTheme) -> some View {
-        let roster = model.enrollments(forSession: session.id)
-        let records = model.attendance.filter { $0.sessionID == session.id }
-        let presentCount = records.filter { $0.status == .present }.count
-        let leaveCount = records.filter { $0.status == .excused }.count
-        let trialCount = records.filter { $0.status == .trial }.count
-        let makeupCount = records.filter { $0.status == .makeup }.count
+    private func header(session: ClassSession?, course: Course?, theme: MDTheme) -> some View {
+        HStack(spacing: 10) {
+            Text(course?.name ?? "课程详情")
+                .mdFont(.bodyStrong)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(course?.name ?? "课程详情")
 
-        return VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(course.name)
-                                    .mdFont(.bodyStrong)
-                                Text((model.courseType(id: course.courseTypeID)?.name ?? "课程种类").uppercased())
-                                    .mdFont(.monoStrong)
-                                    .foregroundStyle(theme.secondaryText)
-                            }
-                            Spacer()
-                            Text(course.format == .privateLesson ? "私" : "组")
-                                .mdFont(.compactStrong)
-                                .frame(width: 25, height: 25)
-                                .overlay(Circle().stroke(theme.primaryText.opacity(0.72), lineWidth: 1))
-                        }
+            if let course {
+                Text(course.format == .privateLesson ? "私" : "组")
+                    .mdFont(.compactStrong)
+                    .frame(width: 21, height: 21)
+                    .overlay(Circle().stroke(theme.secondaryText, lineWidth: 1))
+                    .accessibilityLabel(course.format == .privateLesson ? "私课" : "组课")
 
-                        Label(
-                            model.effectiveInstructor(for: session)?.displayName ?? "未设置老师",
-                            systemImage: "person"
-                        )
-                        Label(
-                            session.startsAt.formatted(.dateTime.weekday(.abbreviated).month().day())
-                                + "  " + sessionTime(session),
-                            systemImage: "calendar"
-                        )
-                        Label(
-                            model.effectiveRoom(for: session)?.name ?? "未设置教室",
-                            systemImage: "mappin.and.ellipse"
-                        )
-                    }
+                Text([
+                    model.courseType(id: course.courseTypeID)?.name,
+                    model.ageGroup(id: course.ageGroupID)?.name
+                ].compactMap { $0 }.joined(separator: " · "))
                     .mdFont(.compact)
-                    .padding(16)
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("报名学生")
-                                .mdFont(.bodyStrong)
-                            Spacer()
-                            Text("\(roster.count)")
-                                .mdFont(.monoStrong)
-                                .foregroundStyle(theme.secondaryText)
-                        }
-
-                        if roster.isEmpty {
-                            Text("暂无报名学生")
-                                .mdFont(.compact)
-                                .foregroundStyle(theme.secondaryText)
-                        } else {
-                            ForEach(roster.prefix(7)) { enrollment in
-                                HStack(spacing: 8) {
-                                    MDStatusDot(color: statusColor(for: enrollment, session: session, theme: theme))
-                                    Text(model.student(id: enrollment.studentID)?.displayName ?? "学生")
-                                        .mdFont(.compact)
-                                    Spacer()
-                                    Text(statusLabel(for: enrollment, session: session))
-                                        .mdFont(.compact)
-                                        .foregroundStyle(theme.secondaryText)
-                                }
-                            }
-                            if roster.count > 7 {
-                                Text("查看全部 \(roster.count)")
-                                    .mdFont(.compactStrong)
-                                    .foregroundStyle(theme.accent)
-                                    .frame(maxWidth: .infinity, alignment: .trailing)
-                            }
-                        }
-                    }
-                    .padding(16)
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        inspectorRow("年龄", model.ageGroup(id: course.ageGroupID)?.name ?? "未设置", theme: theme)
-                        inspectorRow("本学期", "\(model.sessions(forCourse: course.id).count) 周", theme: theme)
-                        inspectorRow("状态", sessionStatus(session.status), theme: theme)
-
-                        Text("课次由起止日期自动生成；休息周可在课程设置中单独移除。")
-                            .mdFont(.compact)
-                            .foregroundStyle(theme.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(16)
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("本次签到")
-                                .mdFont(.bodyStrong)
-                            Spacer()
-                            Text("\(presentCount)/\(roster.count)")
-                                .mdFont(.monoStrong)
-                        }
-                        ProgressView(value: Double(presentCount), total: Double(max(1, roster.count)))
-                            .tint(theme.accent)
-                        HStack(spacing: 12) {
-                            Label("出勤 \(presentCount)", systemImage: "circle.fill")
-                                .foregroundStyle(theme.success)
-                            Label("请假 \(leaveCount)", systemImage: "circle.fill")
-                                .foregroundStyle(theme.warning)
-                        }
-                        .mdFont(.compact)
-                        if trialCount > 0 || makeupCount > 0 {
-                            HStack(spacing: 12) {
-                                Label("试课 \(trialCount)", systemImage: "sparkles")
-                                    .foregroundStyle(theme.accent)
-                                Label("补课 \(makeupCount)", systemImage: "arrow.clockwise")
-                                    .foregroundStyle(theme.success)
-                            }
-                            .mdFont(.compact)
-                        }
-                    }
-                    .padding(16)
-                }
+                    .foregroundStyle(theme.secondaryText)
+                    .lineLimit(1)
             }
 
-            Divider()
+            Spacer(minLength: 10)
 
-            VStack(spacing: 0) {
+            if let session, course != nil {
                 Button(action: openCourse) {
                     Label("打开课程", systemImage: "books.vertical")
-                        .mdFont(.body)
-                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16)
-
-                Divider()
-                    .padding(.leading, 16)
+                .buttonStyle(MDHeaderActionButtonStyle(isActive: false))
 
                 Button {
                     startAttendance(session.id)
                 } label: {
                     Label("开始签到", systemImage: "checkmark.circle")
-                        .mdFont(.body)
-                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16)
+                .buttonStyle(MDHeaderActionButtonStyle(isActive: false))
             }
+
+            Button(action: toggleCollapsed) {
+                Image(systemName: isCollapsed ? "chevron.up" : "chevron.down")
+            }
+            .buttonStyle(MDIconButtonStyle())
+            .accessibilityLabel(isCollapsed ? "展开课程详情" : "收起课程详情")
+            .help(isCollapsed ? "展开课程详情" : "收起课程详情")
         }
-        .foregroundStyle(theme.primaryText)
+        .padding(.horizontal, 14)
     }
 
-    private func inspectorRow(_ label: String, _ value: String, theme: MDTheme) -> some View {
-        HStack {
-            Text(label)
-                .mdFont(.compact)
-                .foregroundStyle(theme.secondaryText)
-            Spacer()
-            Text(value)
+    private func details(session: ClassSession, course: Course, theme: MDTheme) -> some View {
+        let preview = CourseAttendancePreview(model: model, session: session)
+
+        return HStack(alignment: .top, spacing: 0) {
+            ScrollView {
+                courseInformation(session: session, course: course, theme: theme)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            }
+            .frame(width: 290 * interfaceScale)
+
+            Divider()
+
+            ScrollView {
+                roster(preview: preview, theme: theme)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            }
+            .frame(maxWidth: .infinity)
+            .id(session.id)
+
+            Divider()
+
+            ScrollView {
+                attendanceSummary(preview: preview, theme: theme)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            }
+            .frame(width: 240 * interfaceScale)
+        }
+    }
+
+    private func courseInformation(session: ClassSession, course: Course, theme: MDTheme) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("课程信息")
                 .mdFont(.compactStrong)
+
+            Label(
+                session.startsAt.formatted(.dateTime.month().day().weekday(.abbreviated)),
+                systemImage: "calendar"
+            )
+            Label(sessionTime(session), systemImage: "clock")
+
+            HStack(alignment: .top, spacing: 14) {
+                Label(model.effectiveInstructor(for: session)?.displayName ?? "未设置老师", systemImage: "person")
+                Label(model.effectiveRoom(for: session)?.name ?? "未设置教室", systemImage: "door.left.hand.open")
+            }
+
+            Text([
+                model.terms.first(where: { $0.id == course.termID })?.name ?? "未设置学期",
+                "\(model.sessions(forCourse: course.id).count) 节",
+                sessionStatus(session.status)
+            ].joined(separator: " · "))
+            .foregroundStyle(theme.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .mdFont(.compact)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func roster(preview: CourseAttendancePreview, theme: MDTheme) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("学员名单")
+                    .mdFont(.compactStrong)
+                Text("\(preview.totalCount) 人")
+                    .mdFont(.mono)
+                    .foregroundStyle(theme.secondaryText)
+                Spacer()
+            }
+
+            if preview.people.isEmpty {
+                Text("暂无学员")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+            } else {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 140 * interfaceScale), spacing: 14)],
+                    alignment: .leading,
+                    spacing: 6
+                ) {
+                    ForEach(preview.people) { person in
+                        HStack(spacing: 6) {
+                            MDStatusDot(color: statusColor(person.status, theme: theme))
+                            Text(person.nickname)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Spacer(minLength: 4)
+                            Text(person.statusLabel)
+                                .foregroundStyle(statusColor(person.status, theme: theme))
+                                .fixedSize()
+                        }
+                        .mdFont(.compact)
+                        .frame(minHeight: 22)
+                        .help("\(person.nickname) · \(person.statusLabel)")
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+        }
+    }
+
+    private func attendanceSummary(preview: CourseAttendancePreview, theme: MDTheme) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("本次签到")
+                    .mdFont(.compactStrong)
+                Spacer()
+                Text("已到 \(preview.attended.count)/\(preview.totalCount)")
+                    .mdFont(.mono)
+                    .foregroundStyle(theme.secondaryText)
+            }
+
+            ProgressView(value: Double(preview.attended.count), total: Double(max(1, preview.totalCount)))
+                .tint(theme.success)
+                .accessibilityLabel("本次已到学员")
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
+                attendanceMetric("出勤", count: preview.people.filter { $0.status == .present }.count, color: theme.success)
+                attendanceMetric("请假", count: preview.people.filter { $0.status == .excused }.count, color: theme.warning)
+                attendanceMetric("缺席", count: preview.people.filter { $0.status == .absent }.count, color: theme.danger)
+                attendanceMetric("待记录", count: preview.pending.count, color: theme.secondaryText)
+                attendanceMetric("试课", count: preview.people.filter { $0.status == .trial }.count, color: theme.accent)
+                attendanceMetric("补课", count: preview.people.filter { $0.status == .makeup }.count, color: theme.success)
+            }
+        }
+    }
+
+    private func attendanceMetric(_ title: String, count: Int, color: Color) -> some View {
+        HStack(spacing: 5) {
+            MDStatusDot(color: color)
+            Text(title)
+                .mdFont(.compact)
+            Spacer(minLength: 2)
+            Text("\(count)")
+                .mdFont(.mono)
+        }
+    }
+
+    private func statusColor(_ status: AttendanceStatus?, theme: MDTheme) -> Color {
+        switch status {
+        case .present, .makeup: theme.success
+        case .trial: theme.accent
+        case .excused: theme.warning
+        case .absent: theme.danger
+        case nil: theme.secondaryText
         }
     }
 
@@ -205,31 +252,6 @@ struct ScheduleInspectorView: View {
         case .scheduled: "已排课"
         case .cancelled: "已取消"
         case .completed: "已完成"
-        }
-    }
-
-    private func attendanceRecord(for enrollment: Enrollment, session: ClassSession) -> Attendance? {
-        model.attendance.first { $0.sessionID == session.id && $0.studentID == enrollment.studentID }
-    }
-
-    private func statusLabel(for enrollment: Enrollment, session: ClassSession) -> String {
-        guard let record = attendanceRecord(for: enrollment, session: session) else { return "待签到" }
-        return switch record.status {
-        case .present: "出勤"
-        case .absent: "缺席"
-        case .excused: "请假"
-        case .makeup: "补课"
-        case .trial: "试课"
-        }
-    }
-
-    private func statusColor(for enrollment: Enrollment, session: ClassSession, theme: MDTheme) -> Color {
-        guard let record = attendanceRecord(for: enrollment, session: session) else { return theme.secondaryText }
-        return switch record.status {
-        case .present, .makeup: theme.success
-        case .trial: theme.accent
-        case .excused: theme.warning
-        case .absent: theme.danger
         }
     }
 }

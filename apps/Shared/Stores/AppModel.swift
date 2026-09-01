@@ -14,8 +14,6 @@ final class AppModel {
     @ObservationIgnored private let referenceOrderStore = ReferenceOrderStore()
     @ObservationIgnored private var pendingBackgroundOperations: [PendingBackgroundOperation] = []
     @ObservationIgnored private var pendingCloudOperations: [PendingCloudOperation] = []
-    @ObservationIgnored private var newsMediaCache: [String: Data] = [:]
-    @ObservationIgnored private var advertisementMediaCache: [String: Data] = [:]
     @ObservationIgnored private var billingArtifactCache: [String: Data] = [:]
     @ObservationIgnored private var syncNoticeGeneration = UUID()
 
@@ -152,20 +150,11 @@ final class AppModel {
                 ($0.publishedAt ?? $0.updatedAt) > ($1.publishedAt ?? $1.updatedAt)
             }
             newsArticleImages = try await repository.listNewsArticleImages(articleID: nil)
-            let validPaths = Set(newsArticleImages.map(\.storagePath))
-            newsMediaCache = newsMediaCache.filter { validPaths.contains($0.key) }
             advertisements = try await repository.listAdvertisements().sorted {
                 if $0.slotNumber != $1.slotNumber { return $0.slotNumber < $1.slotNumber }
                 return $0.startsOn > $1.startsOn
             }
-            let validAdvertisementPaths = Set(
-                advertisements.flatMap { advertisement in
-                    [advertisement.thumbnail?.storagePath, advertisement.poster?.storagePath].compactMap { $0 }
-                }
-            )
-            advertisementMediaCache = advertisementMediaCache.filter {
-                validAdvertisementPaths.contains($0.key)
-            }
+            prunePersistentMediaCache()
             billingInvoices = try await repository.listBillingInvoices(guardianID: nil).sorted {
                 $0.issuedAt > $1.issuedAt
             }
@@ -1055,7 +1044,22 @@ final class AppModel {
     }
 
     func issueGuardianLinkCode(guardianID: GuardianID) async throws -> GuardianLinkCode {
-        try await withImmediateCloudActivity(label: "生成监护人码") {
+        guard let guardian = guardian(id: guardianID) else {
+            throw AppModelError.missingGuardianName
+        }
+        guard let email = guardian.email, !email.isEmpty else {
+            throw AppModelError.missingGuardianEmail
+        }
+        guard GuardianContact.normalizedEmail(email) != nil else {
+            throw AppModelError.invalidGuardianEmail
+        }
+        guard let phone = guardian.phone, !phone.isEmpty else {
+            throw AppModelError.missingGuardianPhone
+        }
+        guard GuardianContact.formattedUSPhone(phone) != nil else {
+            throw AppModelError.invalidGuardianPhone
+        }
+        return try await withImmediateCloudActivity(label: "生成监护人码") {
             let code = try await repository.issueGuardianLinkCode(guardianID: guardianID)
             await reload()
             return code
@@ -1198,15 +1202,8 @@ final class AppModel {
         newsArticleImages.first { $0.articleID == articleID && $0.kind == .cover }
     }
 
-    func newsMediaData(storagePath: String) async -> Data? {
-        if let cached = newsMediaCache[storagePath] { return cached }
-        do {
-            let data = try await repository.newsMediaData(storagePath: storagePath)
-            newsMediaCache[storagePath] = data
-            return data
-        } catch {
-            return nil
-        }
+    func downloadNewsMediaData(storagePath: String) async throws -> Data {
+        try await repository.newsMediaData(storagePath: storagePath)
     }
 
     func saveNewsArticle(
@@ -1242,17 +1239,13 @@ final class AppModel {
                     id: image.id,
                     storagePath: image.storagePath
                 )
-                newsMediaCache.removeValue(forKey: image.storagePath)
             }
 
             for upload in images {
-                let saved = try await repository.save(
+                _ = try await repository.save(
                     newsArticleImage: upload.image,
                     fileData: upload.fileData
                 )
-                if let data = upload.fileData {
-                    newsMediaCache[saved.storagePath] = data
-                }
             }
 
             _ = try await repository.save(newsArticle: finalArticle)
@@ -1262,9 +1255,7 @@ final class AppModel {
 
     func deleteNewsArticle(_ article: NewsArticle) async throws {
         try await withImmediateCloudActivity(label: "删除新闻") {
-            let paths = newsImages(for: article.id).map(\.storagePath)
             try await repository.deleteNewsArticle(id: article.id)
-            paths.forEach { newsMediaCache.removeValue(forKey: $0) }
             await reload()
         }
     }
@@ -1281,15 +1272,8 @@ final class AppModel {
             }
     }
 
-    func advertisementMediaData(storagePath: String) async -> Data? {
-        if let cached = advertisementMediaCache[storagePath] { return cached }
-        do {
-            let data = try await repository.advertisementMediaData(storagePath: storagePath)
-            advertisementMediaCache[storagePath] = data
-            return data
-        } catch {
-            return nil
-        }
+    func downloadAdvertisementMediaData(storagePath: String) async throws -> Data {
+        try await repository.advertisementMediaData(storagePath: storagePath)
     }
 
     func saveAdvertisement(
@@ -1345,17 +1329,11 @@ final class AppModel {
         }
 
         try await withImmediateCloudActivity(label: "保存广告") {
-            let stored = try await repository.save(
+            _ = try await repository.save(
                 advertisement: saved,
                 thumbnailData: thumbnailData,
                 posterData: posterData
             )
-            if let thumbnailData, let path = stored.thumbnail?.storagePath {
-                advertisementMediaCache[path] = thumbnailData
-            }
-            if let posterData, let path = stored.poster?.storagePath {
-                advertisementMediaCache[path] = posterData
-            }
             await reload()
         }
     }
@@ -1363,12 +1341,6 @@ final class AppModel {
     func deleteAdvertisement(_ advertisement: Advertisement) async throws {
         try await withImmediateCloudActivity(label: "删除广告") {
             try await repository.deleteAdvertisement(id: advertisement.id)
-            if let path = advertisement.thumbnail?.storagePath {
-                advertisementMediaCache.removeValue(forKey: path)
-            }
-            if let path = advertisement.poster?.storagePath {
-                advertisementMediaCache.removeValue(forKey: path)
-            }
             await reload()
         }
     }
@@ -1494,17 +1466,16 @@ final class AppModel {
     func issueBillingInvoice(
         _ invoice: BillingInvoice,
         lineItems: [BillingInvoiceLineItem],
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingInvoice {
         guard invoice.termID != nil else { throw AppModelError.missingBillingTerm }
+        guard !invoice.learnerIDs.isEmpty else { throw AppModelError.missingBillingLearners }
         guard !lineItems.isEmpty else { throw AppModelError.missingBillingItems }
         return try await withImmediateCloudActivity(label: "签发账单") {
             let saved = try await repository.issueBillingInvoice(
                 invoice: invoice,
                 lineItems: lineItems,
-                artifact: artifact,
-                pngData: pngData
+                artifactUploads: artifactUploads
             )
             await reload()
             return saved
@@ -1513,14 +1484,12 @@ final class AppModel {
 
     func recordBillingPayment(
         _ payment: BillingPayment,
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingPayment {
         try await withImmediateCloudActivity(label: "记录付款") {
             let saved = try await repository.recordBillingPayment(
                 payment: payment,
-                artifact: artifact,
-                pngData: pngData
+                artifactUploads: artifactUploads
             )
             await reload()
             return saved
@@ -1703,6 +1672,34 @@ final class AppModel {
                 return
             }
             self.backgroundSync.notice = nil
+        }
+    }
+
+    private func prunePersistentMediaCache() {
+        let articleRevisions = Dictionary(
+            uniqueKeysWithValues: newsArticles.map { ($0.id, $0.updatedAt) }
+        )
+        var retainedKeys = Set(newsArticleImages.map { image in
+            PersistentMediaCache.resourceKey(
+                namespace: "news",
+                storagePath: image.storagePath,
+                revision: articleRevisions[image.articleID]
+            )
+        })
+        for advertisement in advertisements {
+            for media in [advertisement.thumbnail, advertisement.poster].compactMap({ $0 }) {
+                retainedKeys.insert(
+                    PersistentMediaCache.resourceKey(
+                        namespace: "advertisement",
+                        storagePath: media.storagePath,
+                        revision: advertisement.updatedAt
+                    )
+                )
+            }
+        }
+
+        Task {
+            await PersistentMediaCache.shared.pruneExpired(keeping: retainedKeys)
         }
     }
 

@@ -248,6 +248,7 @@ enum AppModelError: LocalizedError {
     case privateLessonRequiresPerSessionEnrollment
     case invalidEnrollmentBilling
     case missingBillingTerm
+    case missingBillingLearners
     case missingBillingItems
     case holidayOutsideTerm
     case invalidTermRange
@@ -289,6 +290,7 @@ enum AppModelError: LocalizedError {
         case .privateLessonRequiresPerSessionEnrollment: "私课仅支持按次报名，请选择具体课次。"
         case .invalidEnrollmentBilling: "请检查报名计费起始日、单价、试课费和折扣。"
         case .missingBillingTerm: "请选择账单所属学期。"
+        case .missingBillingLearners: "请至少选择一名账单学员。"
         case .missingBillingItems: "账单至少需要一个收费项目。"
         case .invalidTermRange: "结束日期必须晚于开始日期。"
         case .holidayOutsideTerm: "假期日期必须位于所选学期内。"

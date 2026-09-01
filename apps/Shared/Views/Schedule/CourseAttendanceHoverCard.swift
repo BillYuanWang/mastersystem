@@ -119,9 +119,10 @@ struct CourseAttendanceHoverCard: View {
 struct CourseAttendancePreview {
     let courseName: String
     let sessionTime: String
-    fileprivate let attended: [CourseAttendancePerson]
-    fileprivate let notAttended: [CourseAttendancePerson]
-    fileprivate let pending: [CourseAttendancePerson]
+    let people: [CourseAttendancePerson]
+    let attended: [CourseAttendancePerson]
+    let notAttended: [CourseAttendancePerson]
+    let pending: [CourseAttendancePerson]
 
     init(model: AppModel, session: ClassSession) {
         let activeEnrollments = model.enrollments(forSession: session.id)
@@ -161,6 +162,7 @@ struct CourseAttendancePreview {
             .sorted { $0.nickname.localizedCompare($1.nickname) == .orderedAscending }
 
         courseName = model.course(id: session.courseID)?.name ?? "课程"
+        self.people = people
         sessionTime = "\(session.startsAt.formatted(date: .omitted, time: .shortened))–\(session.endsAt.formatted(date: .omitted, time: .shortened))"
         attended = people.filter { $0.presence == .attended }
         notAttended = people.filter { $0.presence == .notAttended }
@@ -172,7 +174,7 @@ struct CourseAttendancePreview {
     }
 }
 
-private struct CourseAttendancePerson: Identifiable {
+struct CourseAttendancePerson: Identifiable {
     let id: StudentID
     let nickname: String
     let status: AttendanceStatus?
@@ -200,7 +202,7 @@ private struct CourseAttendancePerson: Identifiable {
     }
 }
 
-private enum CourseAttendancePresence: Equatable {
+enum CourseAttendancePresence: Equatable {
     case attended
     case notAttended
     case pending

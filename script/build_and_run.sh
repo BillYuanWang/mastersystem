@@ -34,6 +34,7 @@ cp "$BUILD_BINARY" "$APP_BINARY"
 cp "$ROOT_DIR/apps/Shared/Resources/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
 cp "$ROOT_DIR/apps/Shared/Resources/MasterDanceMacLogo.png" "$APP_RESOURCES/MasterDanceMacLogo.png"
 cp "$ROOT_DIR/apps/Shared/Resources/MasterDanceMacLogoMark.png" "$APP_RESOURCES/MasterDanceMacLogoMark.png"
+cp "$ROOT_DIR/apps/Shared/Resources/ReceiptWaterSleeveWatermark.png" "$APP_RESOURCES/ReceiptWaterSleeveWatermark.png"
 chmod +x "$APP_BINARY"
 
 cat >"$INFO_PLIST" <<PLIST

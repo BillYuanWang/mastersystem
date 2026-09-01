@@ -6,17 +6,189 @@ in [TUTORIAL.md](TUTORIAL.md), with a printable copy in
 
 ## Documentation rule
 
-Every user-visible feature, workflow, rule, limitation, or release change must
-update these four root artifacts together:
-
-1. `README.md` for the current product boundary and release number.
-2. `HISTORY.md` for what changed.
-3. `TUTORIAL.md` for how an administrator uses the changed behavior.
-4. `TUTORIAL.pdf`, regenerated from the Markdown source.
-
-Run `./script/build_tutorial_pdf.sh` after editing the tutorial.
+Update `README.md` and `HISTORY.md` for each user-visible release. Update the
+administrator tutorial and employee acceptance guide only when a current staff
+handoff package is requested, then regenerate each PDF from its Markdown source.
 
 ## Current release
+
+### v0.9.0-beta.1k - 2026-09-01
+
+- Added a third billing line settlement state, "waived", beside unpaid and
+  paid. Waived courses keep their standard price for accounting but contribute
+  zero to the current amount due.
+- Replaced the paid checkbox in the macOS billing composer with a compact
+  unpaid, paid, or waived selector. Billing history and both PNG languages now
+  identify waived lines and report the waived total separately.
+- Applied an additive, backward-compatible Supabase migration. Existing rows
+  retain their prior paid/unpaid meaning, old clients remain usable, and no
+  issued invoice, payment, amount, or PNG was rewritten.
+- Local macOS is build 84 versus notarized build 79, a distance of five. iOS
+  remains local build 47 versus accepted TestFlight build 45, a distance of
+  two. No notarized package or TestFlight upload was made in this revision.
+- All 128 Swift tests passed; the linked Supabase migration and remote schema
+  lint also passed.
+
+### v0.9.0-beta.1j - 2026-08-31
+
+- Restored the established black Master Dance receipt/invoice logo and the
+  faint pink water-sleeve dancer background without changing billing layout,
+  amounts, payment state, or production records.
+- Fixed resource resolution so SwiftPM previews and the ad-hoc macOS app use
+  the same packaged brand assets instead of falling back to a system figure.
+- Re-rendered and replaced the eight local Mila and Zimeng Li invoice/receipt
+  PNGs under MD Desk Docs with the corrected visual assets.
+- Local macOS is build 83 versus notarized build 79, a distance of four. iOS
+  remains local build 47 versus accepted TestFlight build 45, a distance of
+  two. No notarized package or TestFlight upload was made in this revision.
+- All 125 Swift tests passed.
+
+### v0.9.0-beta.1i - 2026-08-31
+
+- Extended the version-aware news and advertisement image cache to macOS and
+  made the hard-drive copy under Application Support the source of truth on
+  both platforms. Removed the separate image-byte dictionaries from AppModel.
+- Previously loaded images now survive app restarts and remain available
+  offline for 180 days on both Mac and iPhone; stale images stay visible while
+  a changed cloud revision is refreshed.
+- Issued and fully paid the requested Fall 2026 invoices for Mila and Zimeng Li
+  in production. Each invoice has bilingual and English invoice/receipt PNGs,
+  Zelle payment records, and a zero outstanding balance.
+- Local macOS is build 82 versus notarized build 79, a distance of three. Local
+  iOS is build 47 versus accepted TestFlight build 45, a distance of two. No
+  notarized package or TestFlight upload was made in this revision.
+- All 124 Swift tests passed.
+
+### v0.9.0-beta.1h - 2026-08-31
+
+- Kept macOS guardian creation and editing strict: email and phone remain
+  required. Families deliberately inserted through the trusted Codex/SDK/MCP
+  exception now show each missing contact field in red and remain editable.
+- Stored unavailable contact values as null rather than fake placeholders and
+  blocked guardian invitation-code creation until both a valid email and phone
+  are present.
+- Added the same deliberate exception to the TypeScript SDK, MCP tools, and
+  localhost API as `allowIncompleteGuardianContact` or
+  `allow_incomplete_guardian_contact`; ordinary calls remain strict by default.
+- Used the explicit exception once for the requested unlinked production
+  guardian, preserving null email and phone rather than fake data. No database
+  migration was required.
+- This is local macOS build 81 versus notarized build 79, a distance of two.
+  iOS remains local build 46 versus accepted TestFlight build 45. No notarized
+  package or TestFlight upload was made in this revision.
+
+### v0.9.0-beta.1g - 2026-08-31
+
+- Added a local TypeScript Master Dance Admin SDK, a bearer-protected localhost
+  HTTP API with an OpenAPI 3.1 contract, and a project-scoped STDIO MCP server.
+- Exposed focused tools for current resource CRUD, course pricing, enrollment,
+  attendance, leave, family links, guardian invitation codes, contract
+  revisions, media, immutable invoice versions, and immutable payments.
+- Kept authentication on the ordinary Admin account and existing Supabase RLS,
+  validation, dependency-aware deletion, and audit path. Secrets are read from
+  macOS Keychain and are not stored in Codex configuration or source control.
+- Preserved hidden course-category compatibility and immutable billing/legal
+  history. The package passed strict TypeScript checks and five automated tests,
+  including a real MCP initialization/list-tools protocol smoke test.
+- This is a local integration and documentation revision only. macOS remains
+  local build 80 versus notarized build 79; iOS remains local build 46 versus
+  accepted TestFlight build 45. No native app build, Supabase schema, or
+  production data changed.
+
+### v0.9.0-beta.1f - 2026-08-31
+
+- Local iOS revision, app version 0.9.0 build 46. The accepted TestFlight build
+  remains 45; macOS remains local build 80 and notarized build 79.
+- Added a version-aware persistent disk cache for news covers, news body images,
+  advertisement thumbnails, and advertisement posters on iPhone.
+- Previously loaded media now appears immediately after relaunch and remains
+  available offline. Changed cloud media downloads once, then replaces the old
+  image without clearing the visible fallback first.
+- Current media remains refreshable after 180 days, concurrent views share one
+  download, and expired unreferenced versions are cleaned up separately.
+- All 123 Swift tests and an unsigned iPhone Simulator SDK build passed. No
+  Supabase schema or production data changed in this revision.
+
+### v0.9.0-beta.1e - 2026-08-31
+
+- Local macOS UI revision, app version 0.9.0 build 80. The latest notarized
+  employee package remains build 79, and iOS/TestFlight remain build 45.
+- Added a focused-day timetable layout: clicking a date gives that day one
+  quarter of the available schedule width while all seven days and both rooms
+  remain visible.
+- Nonfocused days preserve every course in its time position but simplify each
+  block to its course name, age-group color, and group/private badge. The
+  focused day keeps the full teacher, age, time, and price presentation.
+- Clicking the focused date restores equal widths. The choice persists across
+  tab changes, does not reflow on hover, and does not alter the equal-width
+  print layout.
+- All 119 Swift tests passed. No Supabase schema, production data, or iOS code
+  changed in this revision.
+
+### v0.9.0-beta.1d - 2026-08-31
+
+- Released macOS app version 0.9.0 build 79 as a Developer ID signed and Apple
+  notarized employee ZIP. The iOS app and accepted TestFlight build remain 45.
+- Kept invoices owned by the guardian and term, but added an explicit learner
+  scope. Administrators can select one learner for an individual invoice or
+  several learners from the same family for one combined invoice.
+- Gave every exact guardian, term, and learner selection its own immutable
+  invoice version history, preventing one sibling's invoice from overwriting or
+  merging into another sibling's series.
+- Added learner checkboxes, select-all and clear actions, selected-learner course
+  loading, scoped invoice previews, learner-aware history labels, and filenames.
+- Migrated existing Supabase invoices in place without deleting production data,
+  retained compatibility for the previously distributed app, and added atomic
+  dual-language issuance for the new learner-scoped workflow.
+- All 114 Swift tests, the Release build, Supabase schema lint, Apple notarization,
+  stapling, Gatekeeper assessment, and ZIP integrity checks passed.
+
+### v0.9.0-beta.1c - 2026-08-31
+
+- Local macOS billing revision, app version 0.9.0 build 78; distributed packages
+  remain unchanged.
+- Replaced the old “included in amount due” control with explicit paid/unpaid
+  line states. Paid charges remain visible and are subtracted from the amount
+  due now; discounts and credits remain direct adjustments.
+- Required every active enrollment for the selected family and term to appear
+  before an invoice can be issued. Reloading enrollments preserves manually
+  entered registration, merchandise, competition, balance, and other charges.
+- Generates Chinese-primary bilingual and English editions for every invoice
+  and receipt, previews the two narrow documents side by side, saves both to
+  MD Desk Docs, and registers both cloud files in one database transaction.
+- Grouped long-form documents into full-term enrollment, per-session
+  enrollment, other charges, and discounts/credits. Updated the visual system
+  to pink-magenta with a faint water-sleeve dancer watermark.
+- Added a backward-compatible Supabase RPC migration; existing invoices,
+  payments, artifacts, and production school data are not rewritten.
+- No iOS app code or iOS build number changed.
+
+### v0.9.0-beta.1b - 2026-08-27
+
+- Local macOS UI revision, app version 0.9.0 build 77; distributed packages
+  remain unchanged.
+- Changed timetable block colors from instructor to age group, including the
+  shared print preview. Row reordering, renaming, and deactivation keep each
+  existing age identity's palette position within the reference list.
+- Preserved opaque light/dark fills, instructor text, age labels, group/private
+  badges, selection outlines, and conflict warnings. No second visual code was
+  added to the already compact course blocks.
+- No iOS code, Supabase schema, or production cloud data changed.
+
+### v0.9.0-beta.1a - 2026-08-27
+
+- Local macOS UI revision, app version 0.9.0 build 76. The distributed macOS
+  build 75 and iOS TestFlight build 45 are unchanged until explicitly republished.
+- Moved the administrator icon navigation to the top, preserving its hover
+  animation, Chinese labels, selected state, and account/appearance controls.
+- Gave the seven-day schedule the full window width by moving the selected
+  course inspector below it, above the unchanged school enrollment status bar.
+- Arranged course information, the complete learner roster, and attendance
+  summary horizontally. Details can be resized or collapsed, with their state
+  retained alongside the existing week, room, zoom, and tab selections.
+- Reused the hover-card roster for bottom details so trial, makeup, and guardian
+  leave appear consistently without a seven-learner truncation.
+- No iOS code, Supabase schema, or production cloud data changed.
 
 ### v0.9.0-beta.1 - 2026-08-26
 

@@ -102,10 +102,23 @@ def parse_table_row(line: str) -> list[str]:
 
 
 class ManualDocTemplate(BaseDocTemplate):
-    def __init__(self, filename: str, *, version: str, updated: str, source_hash: str) -> None:
+    def __init__(
+        self,
+        filename: str,
+        *,
+        version: str,
+        updated: str,
+        source_hash: str,
+        document_title: str = "MD Desk 教务老师使用手册",
+        running_header: str = "MD DESK · 教务老师使用手册",
+        source_name: str = "TUTORIAL.md",
+    ) -> None:
         self.version = version
         self.updated = updated
         self.source_hash = source_hash
+        self.document_title = document_title
+        self.running_header = running_header
+        self.source_name = source_name
         super().__init__(
             filename,
             pagesize=A4,
@@ -113,9 +126,9 @@ class ManualDocTemplate(BaseDocTemplate):
             rightMargin=18 * mm,
             topMargin=19 * mm,
             bottomMargin=18 * mm,
-            title="MD Desk 教务老师使用手册",
+            title=document_title,
             author="Starton EDU Irvine, Inc. & Master Dance",
-            subject=f"Generated from TUTORIAL.md sha256:{source_hash}",
+            subject=f"Generated from {source_name} sha256:{source_hash}",
         )
         frame = Frame(
             self.leftMargin,
@@ -132,14 +145,14 @@ class ManualDocTemplate(BaseDocTemplate):
 
     def draw_page(self, canvas, doc) -> None:
         canvas.saveState()
-        canvas.setTitle("MD Desk 教务老师使用手册")
+        canvas.setTitle(self.document_title)
         canvas.setAuthor("Starton EDU Irvine, Inc. & Master Dance")
-        canvas.setSubject(f"TUTORIAL.md sha256:{self.source_hash}")
+        canvas.setSubject(f"{self.source_name} sha256:{self.source_hash}")
         page = canvas.getPageNumber()
         if page > 1:
             canvas.setFont(FONT_BOLD, 7.7)
             canvas.setFillColor(MUTED)
-            canvas.drawString(self.leftMargin, A4[1] - 11 * mm, "MD DESK · 教务老师使用手册")
+            canvas.drawString(self.leftMargin, A4[1] - 11 * mm, self.running_header)
             canvas.drawRightString(A4[0] - self.rightMargin, A4[1] - 11 * mm, self.version)
             canvas.setStrokeColor(SEPARATOR)
             canvas.setLineWidth(0.45)
@@ -288,6 +301,8 @@ def table_widths(column_count: int, available_width: float) -> list[float]:
         ratios = [0.31, 0.69]
     elif column_count == 3:
         ratios = [0.25, 0.25, 0.50]
+    elif column_count == 4:
+        ratios = [0.08, 0.40, 0.36, 0.16]
     else:
         ratios = [1 / column_count] * column_count
     return [available_width * ratio for ratio in ratios]
@@ -385,7 +400,7 @@ def markdown_story(source: str, doc: ManualDocTemplate, styles) -> list:
             while index < len(lines) and lines[index].strip().startswith(">"):
                 quote_lines.append(lines[index].strip()[1:].strip())
                 index += 1
-            quote = Paragraph(inline_markup(" ".join(quote_lines)), styles["callout"])
+            quote = Paragraph("<br/>".join(inline_markup(line) for line in quote_lines), styles["callout"])
             callout = Table([["", quote]], colWidths=[3.2, doc.width - 3.2], hAlign="LEFT")
             callout.setStyle(
                 TableStyle(

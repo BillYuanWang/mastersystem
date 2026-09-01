@@ -674,8 +674,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
     public func issueBillingInvoice(
         invoice: BillingInvoice,
         lineItems: [BillingInvoiceLineItem],
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) throws -> BillingInvoice {
         guard data.guardians.contains(where: { $0.id == invoice.guardianID }) else {
             throw PreviewRepositoryError.guardianNotFound
@@ -683,10 +682,23 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         guard invoice.termID != nil else {
             throw PreviewRepositoryError.recordInUse("账单必须属于一个学期。")
         }
-        guard !lineItems.isEmpty,
+        let learnerIDs = Set(invoice.learnerIDs)
+        guard !learnerIDs.isEmpty,
+              learnerIDs.allSatisfy({ learnerID in
+                  data.students.contains {
+                      $0.id == learnerID && $0.guardianID == invoice.guardianID
+                  }
+              }),
+              !lineItems.isEmpty,
               lineItems.allSatisfy({ $0.invoiceID == invoice.id }),
-              artifact.invoiceID == invoice.id,
-              artifact.kind == .invoice else {
+              lineItems.allSatisfy({ item in
+                  item.studentID.map(learnerIDs.contains) ?? true
+              }),
+              artifactUploads.count == BillingArtifactLanguage.allCases.count,
+              Set(artifactUploads.map(\.artifact.resolvedLanguage)) == Set(BillingArtifactLanguage.allCases),
+              artifactUploads.allSatisfy({
+                  $0.artifact.invoiceID == invoice.id && $0.artifact.kind == .invoice
+              }) else {
             throw PreviewRepositoryError.recordInUse("账单资料不完整。")
         }
         let calculatedTotal = lineItems
@@ -705,6 +717,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
                 previous.supersededByInvoiceID == nil,
                 previous.guardianID == invoice.guardianID,
                 previous.termID == invoice.termID,
+                previous.learnerIDs == invoice.learnerIDs,
                 previous.invoiceNumber == invoice.invoiceNumber,
                 previous.version + 1 == invoice.version
             else {
@@ -714,6 +727,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
                 id: previous.id,
                 guardianID: previous.guardianID,
                 termID: previous.termID,
+                learnerIDs: previous.learnerIDs,
                 invoiceNumber: previous.invoiceNumber,
                 version: previous.version,
                 schoolYearLabel: previous.schoolYearLabel,
@@ -732,25 +746,28 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
             let alreadyExists = data.billingInvoices.contains {
                 $0.guardianID == invoice.guardianID
                     && $0.termID == invoice.termID
+                    && $0.learnerIDs == invoice.learnerIDs
                     && $0.supersedesInvoiceID == nil
             }
             guard !alreadyExists else {
-                throw PreviewRepositoryError.recordInUse("这个家庭在该学期已有账单，请创建新版本。")
+                throw PreviewRepositoryError.recordInUse("所选学员在该学期已有账单，请创建新版本。")
             }
         }
 
         upsert(invoice, in: &data.billingInvoices)
         data.billingInvoiceLineItems.removeAll { $0.invoiceID == invoice.id }
         data.billingInvoiceLineItems.append(contentsOf: lineItems)
-        upsert(artifact, in: &data.billingArtifacts)
-        billingMedia[artifact.storagePath] = pngData
+        for upload in artifactUploads {
+            let artifact = storedPreviewArtifact(upload.artifact)
+            upsert(artifact, in: &data.billingArtifacts)
+            billingMedia[artifact.storagePath] = upload.pngData
+        }
         return invoice
     }
 
     public func recordBillingPayment(
         payment: BillingPayment,
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) throws -> BillingPayment {
         guard let invoice = data.billingInvoices.first(where: { $0.id == payment.invoiceID }) else {
             throw PreviewRepositoryError.recordInUse("找不到这份账单。")
@@ -763,14 +780,21 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
             ? BillingCalculator.cardFeeCents(for: payment.amountCents)
             : 0
         guard payment.processingFeeCents == expectedFee,
-              artifact.invoiceID == payment.invoiceID,
-              artifact.paymentID == payment.id,
-              artifact.kind == .receipt else {
+              artifactUploads.count == BillingArtifactLanguage.allCases.count,
+              Set(artifactUploads.map(\.artifact.resolvedLanguage)) == Set(BillingArtifactLanguage.allCases),
+              artifactUploads.allSatisfy({
+                  $0.artifact.invoiceID == payment.invoiceID
+                      && $0.artifact.paymentID == payment.id
+                      && $0.artifact.kind == .receipt
+              }) else {
             throw PreviewRepositoryError.recordInUse("付款或收据资料不正确。")
         }
         upsert(payment, in: &data.billingPayments)
-        upsert(artifact, in: &data.billingArtifacts)
-        billingMedia[artifact.storagePath] = pngData
+        for upload in artifactUploads {
+            let artifact = storedPreviewArtifact(upload.artifact)
+            upsert(artifact, in: &data.billingArtifacts)
+            billingMedia[artifact.storagePath] = upload.pngData
+        }
         return payment
     }
 
@@ -779,6 +803,20 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
             throw PreviewRepositoryError.recordInUse("预览账单图片尚未下载。")
         }
         return data
+    }
+
+    private func storedPreviewArtifact(_ artifact: BillingArtifact) -> BillingArtifact {
+        guard artifact.storagePath.isEmpty else { return artifact }
+        return BillingArtifact(
+            id: artifact.id,
+            invoiceID: artifact.invoiceID,
+            paymentID: artifact.paymentID,
+            kind: artifact.kind,
+            storagePath: "preview/billing/\(artifact.id)-\(artifact.resolvedLanguage.storageSuffix).png",
+            mimeType: artifact.mimeType,
+            generatedAt: artifact.generatedAt,
+            language: artifact.resolvedLanguage
+        )
     }
 
     public static func sample(now: Date = Date()) -> PreviewMasterDanceStore {

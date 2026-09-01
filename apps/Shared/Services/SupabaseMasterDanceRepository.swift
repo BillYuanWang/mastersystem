@@ -968,49 +968,79 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
     func issueBillingInvoice(
         invoice: BillingInvoice,
         lineItems: [BillingInvoiceLineItem],
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingInvoice {
         guard let termID = invoice.termID else {
             throw SupabaseRepositoryError.server("请选择账单所属学期。")
         }
-        guard !lineItems.isEmpty,
+        let learnerIDs = Set(invoice.learnerIDs)
+        guard !learnerIDs.isEmpty,
+              !lineItems.isEmpty,
               lineItems.allSatisfy({ $0.invoiceID == invoice.id }),
-              artifact.invoiceID == invoice.id,
-              artifact.kind == .invoice else {
+              lineItems.allSatisfy({ item in
+                  item.studentID.map(learnerIDs.contains) ?? true
+              }),
+              artifactUploads.count == BillingArtifactLanguage.allCases.count,
+              Set(artifactUploads.map(\.artifact.resolvedLanguage)) == Set(BillingArtifactLanguage.allCases),
+              artifactUploads.allSatisfy({
+                  $0.artifact.invoiceID == invoice.id && $0.artifact.kind == .invoice
+              }) else {
             throw SupabaseRepositoryError.server("账单资料不完整。")
         }
-        let storagePath = artifact.storagePath.isEmpty
-            ? billingStoragePath(
-                guardianID: invoice.guardianID,
-                invoiceID: invoice.id,
-                filename: "invoice-v\(invoice.version).png"
-            )
-            : artifact.storagePath
-
-        try await client.storage
-            .from("billing-documents")
-            .upload(
-                storagePath,
-                data: pngData,
-                options: FileOptions(contentType: "image/png", upsert: false)
-            )
+        let preparedUploads = artifactUploads.map { upload in
+            let language = upload.artifact.resolvedLanguage
+            let storagePath = upload.artifact.storagePath.isEmpty
+                ? billingStoragePath(
+                    guardianID: invoice.guardianID,
+                    invoiceID: invoice.id,
+                    filename: "invoice-v\(invoice.version)-\(language.storageSuffix).png"
+                )
+                : upload.artifact.storagePath
+            return (upload: upload, storagePath: storagePath)
+        }
+        var uploadedPaths: [String] = []
+        do {
+            for prepared in preparedUploads {
+                try await client.storage
+                    .from("billing-documents")
+                    .upload(
+                        prepared.storagePath,
+                        data: prepared.upload.pngData,
+                        options: FileOptions(contentType: "image/png", upsert: false)
+                    )
+                uploadedPaths.append(prepared.storagePath)
+            }
+        } catch {
+            if !uploadedPaths.isEmpty {
+                _ = try? await client.storage.from("billing-documents").remove(paths: uploadedPaths)
+            }
+            throw error
+        }
+        let bilingual = preparedUploads.first {
+            $0.upload.artifact.resolvedLanguage == .bilingual
+        }!
+        let english = preparedUploads.first {
+            $0.upload.artifact.resolvedLanguage == .english
+        }!
         do {
             let stored: BillingInvoiceRow = try await client
                 .rpc(
-                    "admin_issue_billing_invoice",
-                    params: IssueBillingInvoiceParameters(
+                    "admin_issue_billing_invoice_scoped_dual_v2",
+                    params: IssueDualBillingInvoiceParameters(
                         invoiceID: invoice.id.rawValue,
                         guardianID: invoice.guardianID.rawValue,
                         termID: termID.rawValue,
+                        learnerIDs: invoice.learnerIDs.map(\.rawValue),
                         invoiceNumber: invoice.invoiceNumber,
                         version: invoice.version,
                         schoolYearLabel: invoice.schoolYearLabel,
                         issuedAt: SupabaseDateCodec.timestampString(from: invoice.issuedAt),
                         notes: invoice.notes ?? "",
                         supersedesInvoiceID: invoice.supersedesInvoiceID?.rawValue,
-                        artifactID: artifact.id.rawValue,
-                        storagePath: storagePath,
+                        bilingualArtifactID: bilingual.upload.artifact.id.rawValue,
+                        bilingualStoragePath: bilingual.storagePath,
+                        englishArtifactID: english.upload.artifact.id.rawValue,
+                        englishStoragePath: english.storagePath,
                         items: lineItems.map(BillingInvoiceItemPayload.init)
                     )
                 )
@@ -1027,45 +1057,70 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
                 .value {
                 return try recovered.domain()
             }
-            _ = try? await client.storage.from("billing-documents").remove(paths: [storagePath])
+            _ = try? await client.storage.from("billing-documents").remove(
+                paths: preparedUploads.map(\.storagePath)
+            )
             throw originalError
         }
     }
 
     func recordBillingPayment(
         payment: BillingPayment,
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingPayment {
-        guard artifact.invoiceID == payment.invoiceID,
-              artifact.paymentID == payment.id,
-              artifact.kind == .receipt else {
+        guard artifactUploads.count == BillingArtifactLanguage.allCases.count,
+              Set(artifactUploads.map(\.artifact.resolvedLanguage)) == Set(BillingArtifactLanguage.allCases),
+              artifactUploads.allSatisfy({
+                  $0.artifact.invoiceID == payment.invoiceID
+                      && $0.artifact.paymentID == payment.id
+                      && $0.artifact.kind == .receipt
+              }) else {
             throw SupabaseRepositoryError.server("付款收据资料不完整。")
         }
         guard let invoice = try await listBillingInvoices(guardianID: nil)
             .first(where: { $0.id == payment.invoiceID }) else {
             throw SupabaseRepositoryError.server("找不到这份账单。")
         }
-        let storagePath = artifact.storagePath.isEmpty
-            ? billingStoragePath(
-                guardianID: invoice.guardianID,
-                invoiceID: invoice.id,
-                filename: "receipt-\(payment.id.rawValue.uuidString.lowercased()).png"
-            )
-            : artifact.storagePath
-
-        try await client.storage
-            .from("billing-documents")
-            .upload(
-                storagePath,
-                data: pngData,
-                options: FileOptions(contentType: "image/png", upsert: false)
-            )
+        let preparedUploads = artifactUploads.map { upload in
+            let language = upload.artifact.resolvedLanguage
+            let storagePath = upload.artifact.storagePath.isEmpty
+                ? billingStoragePath(
+                    guardianID: invoice.guardianID,
+                    invoiceID: invoice.id,
+                    filename: "receipt-\(payment.id.rawValue.uuidString.lowercased())-\(language.storageSuffix).png"
+                )
+                : upload.artifact.storagePath
+            return (upload: upload, storagePath: storagePath)
+        }
+        var uploadedPaths: [String] = []
+        do {
+            for prepared in preparedUploads {
+                try await client.storage
+                    .from("billing-documents")
+                    .upload(
+                        prepared.storagePath,
+                        data: prepared.upload.pngData,
+                        options: FileOptions(contentType: "image/png", upsert: false)
+                    )
+                uploadedPaths.append(prepared.storagePath)
+            }
+        } catch {
+            if !uploadedPaths.isEmpty {
+                _ = try? await client.storage.from("billing-documents").remove(paths: uploadedPaths)
+            }
+            throw error
+        }
+        let bilingual = preparedUploads.first {
+            $0.upload.artifact.resolvedLanguage == .bilingual
+        }!
+        let english = preparedUploads.first {
+            $0.upload.artifact.resolvedLanguage == .english
+        }!
         do {
             let stored: BillingPaymentRow = try await client
                 .rpc(
-                    "admin_record_billing_payment",
-                    params: RecordBillingPaymentParameters(
+                    "admin_record_billing_payment_dual",
+                    params: RecordDualBillingPaymentParameters(
                         paymentID: payment.id.rawValue,
                         invoiceID: payment.invoiceID.rawValue,
                         amountCents: payment.amountCents,
@@ -1073,8 +1128,10 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
                         method: payment.method.rawValue,
                         receivedAt: SupabaseDateCodec.timestampString(from: payment.receivedAt),
                         note: payment.note ?? "",
-                        artifactID: artifact.id.rawValue,
-                        storagePath: storagePath
+                        bilingualArtifactID: bilingual.upload.artifact.id.rawValue,
+                        bilingualStoragePath: bilingual.storagePath,
+                        englishArtifactID: english.upload.artifact.id.rawValue,
+                        englishStoragePath: english.storagePath
                     )
                 )
                 .execute()
@@ -1090,7 +1147,9 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
                 .value {
                 return try recovered.domain()
             }
-            _ = try? await client.storage.from("billing-documents").remove(paths: [storagePath])
+            _ = try? await client.storage.from("billing-documents").remove(
+                paths: preparedUploads.map(\.storagePath)
+            )
             throw originalError
         }
     }
