@@ -14,8 +14,6 @@ final class AppModel {
     @ObservationIgnored private let referenceOrderStore = ReferenceOrderStore()
     @ObservationIgnored private var pendingBackgroundOperations: [PendingBackgroundOperation] = []
     @ObservationIgnored private var pendingCloudOperations: [PendingCloudOperation] = []
-    @ObservationIgnored private var newsMediaCache: [String: Data] = [:]
-    @ObservationIgnored private var advertisementMediaCache: [String: Data] = [:]
     @ObservationIgnored private var billingArtifactCache: [String: Data] = [:]
     @ObservationIgnored private var syncNoticeGeneration = UUID()
 
@@ -23,6 +21,7 @@ final class AppModel {
     var termHolidays: [TermHoliday] = []
     private var courseCategories: [CourseCategory] = []
     var courseTypes: [CourseType] = []
+    var sessionPassPlans: [SessionPassPlan] = []
     var ageGroups: [AgeGroup] = []
     var rooms: [Room] = []
     var instructors: [Instructor] = []
@@ -32,6 +31,8 @@ final class AppModel {
     var guardians: [Guardian] = []
     var enrollments: [Enrollment] = []
     var attendance: [Attendance] = []
+    var studentSessionPasses: [StudentSessionPass] = []
+    var sessionPassUses: [SessionPassUse] = []
     var leaveRequests: [LeaveRequest] = []
     var contractDocuments: [ContractDocument] = []
     var contractConsents: [ContractConsent] = []
@@ -119,6 +120,13 @@ final class AppModel {
                 key: .courseTypes,
                 id: { $0.id.description }
             )
+            sessionPassPlans = referenceOrderStore.apply(
+                try await repository.listSessionPassPlans().sorted {
+                    $0.name.localizedCompare($1.name) == .orderedAscending
+                },
+                key: .sessionPassPlans,
+                id: { $0.id.description }
+            )
             ageGroups = referenceOrderStore.apply(
                 try await repository.listAgeGroups().sorted { $0.name.localizedCompare($1.name) == .orderedAscending },
                 key: .ageGroups,
@@ -140,6 +148,11 @@ final class AppModel {
             guardians = try await repository.listGuardians(studentID: nil)
             enrollments = try await repository.listEnrollments(termID: nil, courseID: nil, studentID: nil)
             attendance = try await repository.listAttendance(sessionID: nil, studentID: nil)
+            studentSessionPasses = try await repository.listStudentSessionPasses(studentID: nil)
+            sessionPassUses = try await repository.listSessionPassUses(
+                studentSessionPassID: nil,
+                studentID: nil
+            )
             leaveRequests = try await repository.listLeaveRequests(sessionID: nil, studentID: nil)
             notifications = try await repository.listNotifications(recipientReference: nil)
             contractDocuments = try await repository.listContractDocuments(termID: nil)
@@ -152,20 +165,11 @@ final class AppModel {
                 ($0.publishedAt ?? $0.updatedAt) > ($1.publishedAt ?? $1.updatedAt)
             }
             newsArticleImages = try await repository.listNewsArticleImages(articleID: nil)
-            let validPaths = Set(newsArticleImages.map(\.storagePath))
-            newsMediaCache = newsMediaCache.filter { validPaths.contains($0.key) }
             advertisements = try await repository.listAdvertisements().sorted {
                 if $0.slotNumber != $1.slotNumber { return $0.slotNumber < $1.slotNumber }
                 return $0.startsOn > $1.startsOn
             }
-            let validAdvertisementPaths = Set(
-                advertisements.flatMap { advertisement in
-                    [advertisement.thumbnail?.storagePath, advertisement.poster?.storagePath].compactMap { $0 }
-                }
-            )
-            advertisementMediaCache = advertisementMediaCache.filter {
-                validAdvertisementPaths.contains($0.key)
-            }
+            prunePersistentMediaCache()
             billingInvoices = try await repository.listBillingInvoices(guardianID: nil).sorted {
                 $0.issuedAt > $1.issuedAt
             }
@@ -362,6 +366,10 @@ final class AppModel {
         courseTypes.first { $0.id == id }
     }
 
+    func sessionPassPlan(id: SessionPassPlanID) -> SessionPassPlan? {
+        sessionPassPlans.first { $0.id == id }
+    }
+
     func ageGroup(id: AgeGroupID) -> AgeGroup? {
         ageGroups.first { $0.id == id }
     }
@@ -406,6 +414,43 @@ final class AppModel {
         return students
             .filter { $0.guardianID == guardianID }
             .sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+    }
+
+    func sessionPasses(for studentID: StudentID) -> [StudentSessionPass] {
+        studentSessionPasses
+            .filter { $0.studentID == studentID }
+            .sorted {
+                if $0.issuedAt != $1.issuedAt { return $0.issuedAt > $1.issuedAt }
+                return $0.id.description > $1.id.description
+            }
+    }
+
+    func sessionPassUses(for passID: StudentSessionPassID) -> [SessionPassUse] {
+        sessionPassUses
+            .filter { $0.studentSessionPassID == passID }
+            .sorted { $0.usedAt > $1.usedAt }
+    }
+
+    func usedSessionCount(for pass: StudentSessionPass) -> Int {
+        sessionPassUses.lazy.filter { $0.studentSessionPassID == pass.id }.count
+    }
+
+    func remainingSessionCount(for pass: StudentSessionPass) -> Int {
+        max(0, pass.includedSessions - usedSessionCount(for: pass))
+    }
+
+    func availableSessionPass(for studentID: StudentID) -> StudentSessionPass? {
+        studentSessionPasses
+            .filter {
+                $0.studentID == studentID
+                    && $0.isActive
+                    && remainingSessionCount(for: $0) > 0
+            }
+            .sorted {
+                if $0.issuedAt != $1.issuedAt { return $0.issuedAt < $1.issuedAt }
+                return $0.id.description < $1.id.description
+            }
+            .first
     }
 
     var unassignedStudents: [Student] {
@@ -661,6 +706,69 @@ final class AppModel {
         }
     }
 
+    func saveSessionPassPlan(_ plan: SessionPassPlan) async throws {
+        let trimmedName = plan.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty,
+              plan.includedSessions > 0,
+              plan.includedSessions <= 10_000,
+              plan.unitPriceCents >= 0 else {
+            throw AppModelError.invalidSessionPassPlan
+        }
+        var updated = plan
+        updated.name = trimmedName
+        try await withCloudActivity(label: "保存次卡方案") {
+            try await repository.save(sessionPassPlan: updated)
+            await reload()
+        }
+    }
+
+    func deleteSessionPassPlan(id: SessionPassPlanID) async throws {
+        try await withCloudActivity(label: "删除次卡方案") {
+            try await repository.deleteSessionPassPlan(id: id)
+            await reload()
+        }
+    }
+
+    func issueSessionPass(
+        studentID: StudentID,
+        planID: SessionPassPlanID,
+        issuedAt: Date,
+        notes: String?
+    ) async throws {
+        guard student(id: studentID)?.kind == .adult else {
+            throw AppModelError.sessionPassRequiresAdult
+        }
+        guard let plan = sessionPassPlan(id: planID), plan.isActive else {
+            throw AppModelError.invalidSessionPassPlan
+        }
+        let pass = StudentSessionPass(
+            studentID: studentID,
+            planID: planID,
+            issuedAt: issuedAt,
+            includedSessions: plan.includedSessions,
+            unitPriceCents: plan.unitPriceCents,
+            notes: notes
+        )
+        try await withCloudActivity(label: "发放学员次卡") {
+            try await repository.save(studentSessionPass: pass)
+            await reload()
+        }
+    }
+
+    func saveStudentSessionPass(_ pass: StudentSessionPass) async throws {
+        try await withCloudActivity(label: "更新学员次卡") {
+            try await repository.save(studentSessionPass: pass)
+            await reload()
+        }
+    }
+
+    func deleteStudentSessionPass(id: StudentSessionPassID) async throws {
+        try await withCloudActivity(label: "删除学员次卡") {
+            try await repository.deleteStudentSessionPass(id: id)
+            await reload()
+        }
+    }
+
     func saveAgeGroup(_ ageGroup: AgeGroup) async throws {
         try await withCloudActivity(label: "保存年龄段") {
             try await repository.save(ageGroup: ageGroup)
@@ -708,6 +816,11 @@ final class AppModel {
         referenceOrderStore.save(courseTypes, key: .courseTypes, id: { $0.id.description })
     }
 
+    func moveSessionPassPlan(_ sourceID: SessionPassPlanID, to targetID: SessionPassPlanID) {
+        sessionPassPlans = moving(sessionPassPlans, sourceID: sourceID, to: targetID)
+        referenceOrderStore.save(sessionPassPlans, key: .sessionPassPlans, id: { $0.id.description })
+    }
+
     func moveAgeGroup(_ sourceID: AgeGroupID, to targetID: AgeGroupID) {
         ageGroups = moving(ageGroups, sourceID: sourceID, to: targetID)
         referenceOrderStore.save(ageGroups, key: .ageGroups, id: { $0.id.description })
@@ -748,6 +861,8 @@ final class AppModel {
                (updated.dropInUnitPriceCents ?? 0) <= 0 {
                 throw AppModelError.invalidCourseUnitPrice
             }
+        } else {
+            updated = try applyingGroupCoursePricingPolicy(to: updated)
         }
         try await withCloudActivity(label: "保存课程") {
             try await repository.save(course: updated)
@@ -923,16 +1038,7 @@ final class AppModel {
         dropInUnitPriceCents: Int?
     ) {
         let priceText = draft.unitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let dropInPriceText = draft.dropInUnitPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let dropInPrice: Int?
-        if dropInPriceText.isEmpty {
-            dropInPrice = nil
-        } else {
-            guard let cents = MoneyTextParser.cents(from: dropInPriceText), cents >= 0 else {
-                throw AppModelError.invalidCourseUnitPrice
-            }
-            dropInPrice = cents
-        }
+        let dropInPrice = try optionalCoursePrice(from: draft.dropInUnitPriceText)
         if isPrivateLesson {
             switch draft.pricingStatus {
             case .pending:
@@ -957,14 +1063,59 @@ final class AppModel {
             guard let cents = MoneyTextParser.cents(from: priceText), cents > 0 else {
                 throw AppModelError.invalidCourseUnitPrice
             }
-            return (.priced, cents, dropInPrice)
+            guard let perSessionPrice = CoursePricingPolicy.perSessionUnitPriceCents(
+                fullTermUnitPriceCents: cents
+            ) else {
+                throw AppModelError.invalidCourseUnitPrice
+            }
+            return (.priced, cents, perSessionPrice)
         case .reviewRequired:
             guard !priceText.isEmpty else { return (.reviewRequired, nil, dropInPrice) }
             guard let cents = MoneyTextParser.cents(from: priceText), cents >= 0 else {
                 throw AppModelError.invalidCourseUnitPrice
             }
-            return (.reviewRequired, cents, dropInPrice)
+            let perSessionPrice = CoursePricingPolicy.perSessionUnitPriceCents(
+                fullTermUnitPriceCents: cents
+            ) ?? (cents == 0 ? 0 : dropInPrice)
+            return (.reviewRequired, cents, perSessionPrice)
         }
+    }
+
+    private func optionalCoursePrice(from text: String) throws -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let cents = MoneyTextParser.cents(from: trimmed), cents >= 0 else {
+            throw AppModelError.invalidCourseUnitPrice
+        }
+        return cents
+    }
+
+    private func applyingGroupCoursePricingPolicy(to course: Course) throws -> Course {
+        var updated = course
+        switch updated.pricingStatus {
+        case .pending:
+            break
+        case .free:
+            updated.unitPriceCents = 0
+            updated.dropInUnitPriceCents = 0
+        case .priced:
+            guard let perSessionPrice = CoursePricingPolicy.perSessionUnitPriceCents(
+                fullTermUnitPriceCents: updated.unitPriceCents
+            ) else {
+                throw AppModelError.invalidCourseUnitPrice
+            }
+            updated.dropInUnitPriceCents = perSessionPrice
+        case .reviewRequired:
+            if let fullTermPrice = updated.unitPriceCents {
+                guard fullTermPrice >= 0 else {
+                    throw AppModelError.invalidCourseUnitPrice
+                }
+                updated.dropInUnitPriceCents = CoursePricingPolicy.perSessionUnitPriceCents(
+                    fullTermUnitPriceCents: fullTermPrice
+                ) ?? 0
+            }
+        }
+        return updated
     }
 
     private func validateCourseTermReady(
@@ -1055,7 +1206,22 @@ final class AppModel {
     }
 
     func issueGuardianLinkCode(guardianID: GuardianID) async throws -> GuardianLinkCode {
-        try await withImmediateCloudActivity(label: "生成监护人码") {
+        guard let guardian = guardian(id: guardianID) else {
+            throw AppModelError.missingGuardianName
+        }
+        guard let email = guardian.email, !email.isEmpty else {
+            throw AppModelError.missingGuardianEmail
+        }
+        guard GuardianContact.normalizedEmail(email) != nil else {
+            throw AppModelError.invalidGuardianEmail
+        }
+        guard let phone = guardian.phone, !phone.isEmpty else {
+            throw AppModelError.missingGuardianPhone
+        }
+        guard GuardianContact.formattedUSPhone(phone) != nil else {
+            throw AppModelError.invalidGuardianPhone
+        }
+        return try await withImmediateCloudActivity(label: "生成监护人码") {
             let code = try await repository.issueGuardianLinkCode(guardianID: guardianID)
             await reload()
             return code
@@ -1198,15 +1364,8 @@ final class AppModel {
         newsArticleImages.first { $0.articleID == articleID && $0.kind == .cover }
     }
 
-    func newsMediaData(storagePath: String) async -> Data? {
-        if let cached = newsMediaCache[storagePath] { return cached }
-        do {
-            let data = try await repository.newsMediaData(storagePath: storagePath)
-            newsMediaCache[storagePath] = data
-            return data
-        } catch {
-            return nil
-        }
+    func downloadNewsMediaData(storagePath: String) async throws -> Data {
+        try await repository.newsMediaData(storagePath: storagePath)
     }
 
     func saveNewsArticle(
@@ -1242,17 +1401,13 @@ final class AppModel {
                     id: image.id,
                     storagePath: image.storagePath
                 )
-                newsMediaCache.removeValue(forKey: image.storagePath)
             }
 
             for upload in images {
-                let saved = try await repository.save(
+                _ = try await repository.save(
                     newsArticleImage: upload.image,
                     fileData: upload.fileData
                 )
-                if let data = upload.fileData {
-                    newsMediaCache[saved.storagePath] = data
-                }
             }
 
             _ = try await repository.save(newsArticle: finalArticle)
@@ -1262,9 +1417,7 @@ final class AppModel {
 
     func deleteNewsArticle(_ article: NewsArticle) async throws {
         try await withImmediateCloudActivity(label: "删除新闻") {
-            let paths = newsImages(for: article.id).map(\.storagePath)
             try await repository.deleteNewsArticle(id: article.id)
-            paths.forEach { newsMediaCache.removeValue(forKey: $0) }
             await reload()
         }
     }
@@ -1281,15 +1434,8 @@ final class AppModel {
             }
     }
 
-    func advertisementMediaData(storagePath: String) async -> Data? {
-        if let cached = advertisementMediaCache[storagePath] { return cached }
-        do {
-            let data = try await repository.advertisementMediaData(storagePath: storagePath)
-            advertisementMediaCache[storagePath] = data
-            return data
-        } catch {
-            return nil
-        }
+    func downloadAdvertisementMediaData(storagePath: String) async throws -> Data {
+        try await repository.advertisementMediaData(storagePath: storagePath)
     }
 
     func saveAdvertisement(
@@ -1345,17 +1491,11 @@ final class AppModel {
         }
 
         try await withImmediateCloudActivity(label: "保存广告") {
-            let stored = try await repository.save(
+            _ = try await repository.save(
                 advertisement: saved,
                 thumbnailData: thumbnailData,
                 posterData: posterData
             )
-            if let thumbnailData, let path = stored.thumbnail?.storagePath {
-                advertisementMediaCache[path] = thumbnailData
-            }
-            if let posterData, let path = stored.poster?.storagePath {
-                advertisementMediaCache[path] = posterData
-            }
             await reload()
         }
     }
@@ -1363,12 +1503,6 @@ final class AppModel {
     func deleteAdvertisement(_ advertisement: Advertisement) async throws {
         try await withImmediateCloudActivity(label: "删除广告") {
             try await repository.deleteAdvertisement(id: advertisement.id)
-            if let path = advertisement.thumbnail?.storagePath {
-                advertisementMediaCache.removeValue(forKey: path)
-            }
-            if let path = advertisement.poster?.storagePath {
-                advertisementMediaCache.removeValue(forKey: path)
-            }
             await reload()
         }
     }
@@ -1494,17 +1628,16 @@ final class AppModel {
     func issueBillingInvoice(
         _ invoice: BillingInvoice,
         lineItems: [BillingInvoiceLineItem],
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingInvoice {
         guard invoice.termID != nil else { throw AppModelError.missingBillingTerm }
+        guard !invoice.learnerIDs.isEmpty else { throw AppModelError.missingBillingLearners }
         guard !lineItems.isEmpty else { throw AppModelError.missingBillingItems }
         return try await withImmediateCloudActivity(label: "签发账单") {
             let saved = try await repository.issueBillingInvoice(
                 invoice: invoice,
                 lineItems: lineItems,
-                artifact: artifact,
-                pngData: pngData
+                artifactUploads: artifactUploads
             )
             await reload()
             return saved
@@ -1513,14 +1646,12 @@ final class AppModel {
 
     func recordBillingPayment(
         _ payment: BillingPayment,
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingPayment {
         try await withImmediateCloudActivity(label: "记录付款") {
             let saved = try await repository.recordBillingPayment(
                 payment: payment,
-                artifact: artifact,
-                pngData: pngData
+                artifactUploads: artifactUploads
             )
             await reload()
             return saved
@@ -1538,12 +1669,21 @@ final class AppModel {
         sessionID: ClassSessionID,
         studentID: StudentID,
         status: AttendanceStatus,
-        makeupForSessionID: ClassSessionID? = nil
+        makeupForSessionID: ClassSessionID? = nil,
+        usesSessionPass: Bool = false
     ) async throws {
         let matchingEnrollmentID = enrollment(forSession: sessionID, studentID: studentID)?.id
-        let enrollmentID = status.isGuestAttendance ? nil : matchingEnrollmentID
-        guard status.isGuestAttendance || enrollmentID != nil else {
+        let isGuestAttendance = status.isGuestAttendance || usesSessionPass
+        let enrollmentID = isGuestAttendance ? nil : matchingEnrollmentID
+        guard isGuestAttendance || enrollmentID != nil else {
             throw AppModelError.attendanceRequiresEnrollment
+        }
+        if usesSessionPass {
+            guard status == .present,
+                  student(id: studentID)?.kind == .adult,
+                  availableSessionPass(for: studentID) != nil else {
+                throw AppModelError.noAvailableSessionPass
+            }
         }
         let validatedMakeupSourceID: ClassSessionID?
         if status == .makeup {
@@ -1565,6 +1705,7 @@ final class AppModel {
                 var updated = existing
                 updated.enrollmentID = enrollmentID
                 updated.makeupForSessionID = validatedMakeupSourceID
+                updated.usesSessionPass = usesSessionPass
                 updated.status = status
                 updated.recordedAt = Date()
                 try await repository.save(attendance: updated)
@@ -1575,6 +1716,7 @@ final class AppModel {
                         studentID: studentID,
                         enrollmentID: enrollmentID,
                         makeupForSessionID: validatedMakeupSourceID,
+                        usesSessionPass: usesSessionPass,
                         status: status,
                         recordedAt: Date()
                     )
@@ -1706,6 +1848,34 @@ final class AppModel {
         }
     }
 
+    private func prunePersistentMediaCache() {
+        let articleRevisions = Dictionary(
+            uniqueKeysWithValues: newsArticles.map { ($0.id, $0.updatedAt) }
+        )
+        var retainedKeys = Set(newsArticleImages.map { image in
+            PersistentMediaCache.resourceKey(
+                namespace: "news",
+                storagePath: image.storagePath,
+                revision: articleRevisions[image.articleID]
+            )
+        })
+        for advertisement in advertisements {
+            for media in [advertisement.thumbnail, advertisement.poster].compactMap({ $0 }) {
+                retainedKeys.insert(
+                    PersistentMediaCache.resourceKey(
+                        namespace: "advertisement",
+                        storagePath: media.storagePath,
+                        revision: advertisement.updatedAt
+                    )
+                )
+            }
+        }
+
+        Task {
+            await PersistentMediaCache.shared.pruneExpired(keeping: retainedKeys)
+        }
+    }
+
     private func generatedSessions(
         for courseID: CourseID,
         termID: TermID,
@@ -1756,6 +1926,7 @@ final class AppModel {
 
 private enum ReferenceOrderKey: String {
     case courseTypes
+    case sessionPassPlans
     case ageGroups
     case rooms
     case instructors

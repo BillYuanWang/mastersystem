@@ -119,9 +119,10 @@ struct CourseAttendanceHoverCard: View {
 struct CourseAttendancePreview {
     let courseName: String
     let sessionTime: String
-    fileprivate let attended: [CourseAttendancePerson]
-    fileprivate let notAttended: [CourseAttendancePerson]
-    fileprivate let pending: [CourseAttendancePerson]
+    let people: [CourseAttendancePerson]
+    let attended: [CourseAttendancePerson]
+    let notAttended: [CourseAttendancePerson]
+    let pending: [CourseAttendancePerson]
 
     init(model: AppModel, session: ClassSession) {
         let activeEnrollments = model.enrollments(forSession: session.id)
@@ -129,7 +130,7 @@ struct CourseAttendancePreview {
         let sessionRecords = model.attendance.filter { $0.sessionID == session.id }
         let guestStudentIDs = Set(
             sessionRecords
-                .filter { $0.status.isGuestAttendance }
+                .filter(\.isGuestAttendance)
                 .map(\.studentID)
         )
         let leaveStudentIDs = Set(
@@ -147,12 +148,14 @@ struct CourseAttendancePreview {
             .union(leaveStudentIDs)
             .compactMap { studentID -> CourseAttendancePerson? in
                 guard let student = model.student(id: studentID) else { return nil }
-                let status = recordByStudent[studentID]?.status
+                let record = recordByStudent[studentID]
+                let status = record?.status
                     ?? (leaveStudentIDs.contains(studentID) ? .excused : nil)
                 return CourseAttendancePerson(
                     id: studentID,
                     nickname: student.displayName,
                     status: status,
+                    usesSessionPass: record?.usesSessionPass ?? false,
                     presence: status.map {
                         $0.recordsPhysicalAttendance ? .attended : .notAttended
                     } ?? .pending
@@ -161,6 +164,7 @@ struct CourseAttendancePreview {
             .sorted { $0.nickname.localizedCompare($1.nickname) == .orderedAscending }
 
         courseName = model.course(id: session.courseID)?.name ?? "课程"
+        self.people = people
         sessionTime = "\(session.startsAt.formatted(date: .omitted, time: .shortened))–\(session.endsAt.formatted(date: .omitted, time: .shortened))"
         attended = people.filter { $0.presence == .attended }
         notAttended = people.filter { $0.presence == .notAttended }
@@ -172,14 +176,16 @@ struct CourseAttendancePreview {
     }
 }
 
-private struct CourseAttendancePerson: Identifiable {
+struct CourseAttendancePerson: Identifiable {
     let id: StudentID
     let nickname: String
     let status: AttendanceStatus?
+    let usesSessionPass: Bool
     let presence: CourseAttendancePresence
 
     var marker: String? {
-        switch status {
+        if usesSessionPass { return "卡" }
+        return switch status {
         case .some(.trial): "试"
         case .some(.makeup): "补"
         case .some(.excused): "假"
@@ -189,7 +195,8 @@ private struct CourseAttendancePerson: Identifiable {
     }
 
     var statusLabel: String {
-        switch status {
+        if usesSessionPass { return "次卡到课" }
+        return switch status {
         case .some(.present): "出勤"
         case .some(.trial): "试课"
         case .some(.makeup): "补课"
@@ -200,7 +207,7 @@ private struct CourseAttendancePerson: Identifiable {
     }
 }
 
-private enum CourseAttendancePresence: Equatable {
+enum CourseAttendancePresence: Equatable {
     case attended
     case notAttended
     case pending

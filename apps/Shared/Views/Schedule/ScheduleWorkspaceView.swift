@@ -14,56 +14,75 @@ struct ScheduleWorkspaceView: View {
     @SceneStorage("md-desk.schedule.selected-session-id") private var selectedSessionIDStorage = ""
     @SceneStorage("md-desk.schedule.zoom") private var zoom = 1.0
     @SceneStorage("md-desk.schedule.font-scale") private var fontScale = 1.0
+    @SceneStorage("md-desk.schedule.focused-day-index") private var focusedDayIndexStorage = -1
+    @SceneStorage("md-desk.schedule.detail-height") private var detailHeight = Double(ScheduleDetailLayout.defaultHeight)
+    @SceneStorage("md-desk.schedule.details-collapsed") private var detailsCollapsed = false
+    @State private var detailDragStart: CGFloat?
     @State private var showingWeekPicker = false
     @State private var showingRoomPicker = false
     @State private var showingPrintPreview = false
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.mdInterfaceFontScale) private var interfaceScale
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                toolbar
-
-                Rectangle()
-                    .fill(theme.separator)
-                    .frame(height: 1)
-
-                if visibleRooms.isEmpty {
-                    ContentUnavailableView(
-                        "请先添加教室",
-                        systemImage: "door.left.hand.open",
-                        description: Text("课程资料中的教室完全由你维护。")
-                    )
-                } else {
-                    ScheduleGridView(
-                        model: model,
-                        weekStart: weekStart,
-                        rooms: visibleRooms,
-                        sessions: filteredSessions,
-                        selectedSessionID: selectedSessionSelection,
-                        zoom: zoom,
-                        fontScale: fontScale
-                    )
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            toolbar
 
             Rectangle()
                 .fill(theme.separator)
-                .frame(width: 1)
+                .frame(height: 1)
 
-            ScheduleInspectorView(
-                model: model,
-                sessionID: selectedSessionID,
-                openCourse: { navigate(.courses) },
-                startAttendance: { sessionID in
-                    model.focusedSessionID = sessionID
-                    navigate(.attendance)
+            GeometryReader { geometry in
+                let layout = ScheduleDetailLayout(
+                    availableHeight: geometry.size.height,
+                    preferredHeight: CGFloat(detailHeight),
+                    isCollapsed: detailsCollapsed,
+                    interfaceScale: interfaceScale
+                )
+
+                VStack(spacing: 0) {
+                    Group {
+                        if visibleRooms.isEmpty {
+                            ContentUnavailableView(
+                                "请先添加教室",
+                                systemImage: "door.left.hand.open"
+                            )
+                        } else {
+                            ScheduleGridView(
+                                model: model,
+                                weekStart: weekStart,
+                                rooms: visibleRooms,
+                                sessions: filteredSessions,
+                                selectedSessionID: selectedSessionSelection,
+                                zoom: zoom,
+                                fontScale: fontScale,
+                                focusedDayIndex: focusedDayIndex,
+                                toggleFocusedDay: toggleFocusedDay
+                            )
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: layout.gridHeight)
+
+                    detailDivider(layout: layout, theme: theme)
+
+                    ScheduleInspectorView(
+                        model: model,
+                        sessionID: selectedSessionID,
+                        isCollapsed: detailsCollapsed,
+                        headerHeight: layout.headerHeight,
+                        toggleCollapsed: { detailsCollapsed.toggle() },
+                        openCourse: { navigate(.courses) },
+                        startAttendance: { sessionID in
+                            model.focusedSessionID = sessionID
+                            navigate(.attendance)
+                        }
+                    )
+                    .frame(height: layout.detailHeight)
                 }
-            )
-            .frame(width: MDMetrics.inspectorWidth)
+            }
         }
         .background(theme.background)
         .task(id: model.terms.map(\.id)) {
@@ -91,6 +110,48 @@ struct ScheduleWorkspaceView: View {
                 fontScale: fontScale
             )
         }
+    }
+
+    private func detailDivider(layout: ScheduleDetailLayout, theme: MDTheme) -> some View {
+        ZStack {
+            theme.surface
+            Rectangle()
+                .fill(theme.separator)
+                .frame(height: 1)
+            Capsule()
+                .fill(theme.secondaryText.opacity(0.6))
+                .frame(width: 32, height: 2)
+        }
+        .frame(height: ScheduleDetailLayout.dividerHeight)
+        .contentShape(Rectangle())
+        .onHover { isHovering in
+            (isHovering ? NSCursor.resizeUpDown : NSCursor.arrow).set()
+        }
+        .gesture(
+            DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                .onChanged { value in
+                    if detailDragStart == nil {
+                        detailDragStart = layout.detailHeight
+                    }
+                    detailsCollapsed = false
+                    detailHeight = Double(min(
+                        layout.maximumDetailHeight,
+                        max(layout.minimumDetailHeight, (detailDragStart ?? layout.detailHeight) - value.translation.height)
+                    ))
+                }
+                .onEnded { _ in detailDragStart = nil }
+        )
+        .accessibilityLabel("课程详情高度")
+        .accessibilityValue("\(Int(layout.detailHeight))")
+        .accessibilityAdjustableAction { direction in
+            detailsCollapsed = false
+            let change: CGFloat = direction == .increment ? 24 : -24
+            detailHeight = Double(min(
+                layout.maximumDetailHeight,
+                max(layout.minimumDetailHeight, layout.detailHeight + change)
+            ))
+        }
+        .help("拖动调整课程详情高度")
     }
 
     private var toolbar: some View {
@@ -400,6 +461,12 @@ struct ScheduleWorkspaceView: View {
         )
     }
 
+    private var focusedDayIndex: Int? {
+        ScheduleWeek.dayCount > focusedDayIndexStorage && focusedDayIndexStorage >= 0
+            ? focusedDayIndexStorage
+            : nil
+    }
+
     private var visibleRooms: [Room] {
         Array(activeRooms.filter { currentRoomSelection.contains($0.id) }.prefix(2))
     }
@@ -500,6 +567,10 @@ struct ScheduleWorkspaceView: View {
         selectedSessionID = nil
     }
 
+    private func toggleFocusedDay(_ dayIndex: Int) {
+        focusedDayIndexStorage = focusedDayIndex == dayIndex ? -1 : dayIndex
+    }
+
     private func roomOptionHelp(isSelected: Bool, isDisabled: Bool) -> String {
         if isSelected && isDisabled {
             return "课表至少显示一间教室"
@@ -569,16 +640,8 @@ private struct SchedulePrintDocument: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                MasterDanceLogoView(.mark)
-                    .frame(width: 52, height: 42)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("MASTER DANCE")
-                        .mdFont(.monoStrong)
-                    Text("佳美舞蹈")
-                        .mdFont(.compactStrong)
-                }
+                MasterDanceLogoView(.full)
+                    .frame(width: 330, height: 64, alignment: .leading)
                 Spacer()
                 Text(ScheduleWeek.rangeLabel(startingAt: weekStart, includesYear: true))
                     .mdFont(.mono)
@@ -590,7 +653,9 @@ private struct SchedulePrintDocument: View {
                 sessions: sessions,
                 selectedSessionID: .constant(nil),
                 zoom: 1,
-                fontScale: fontScale
+                fontScale: fontScale,
+                focusedDayIndex: nil,
+                toggleFocusedDay: { _ in }
             )
         }
         .padding(18)

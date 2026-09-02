@@ -170,6 +170,47 @@ struct CourseTypeRow: Codable, Sendable {
     }
 }
 
+struct SessionPassPlanRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let name: String
+    let includedSessions: Int
+    let unitPriceCents: Int
+    let notes: String?
+    let isActive: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case name
+        case includedSessions = "included_sessions"
+        case unitPriceCents = "unit_price_cents"
+        case notes
+        case isActive = "is_active"
+    }
+
+    init(_ plan: SessionPassPlan, organizationID: UUID) {
+        id = plan.id.rawValue
+        self.organizationID = organizationID
+        name = plan.name
+        includedSessions = plan.includedSessions
+        unitPriceCents = plan.unitPriceCents
+        notes = plan.notes
+        isActive = plan.isActive
+    }
+
+    func domain() -> SessionPassPlan {
+        SessionPassPlan(
+            id: SessionPassPlanID(serverID: id),
+            name: name,
+            includedSessions: includedSessions,
+            unitPriceCents: unitPriceCents,
+            notes: notes,
+            isActive: isActive
+        )
+    }
+}
+
 struct AgeGroupRow: Codable, Sendable {
     let id: UUID
     let organizationID: UUID
@@ -731,6 +772,26 @@ struct AdminSaveEnrollmentParameters: Encodable, Sendable {
         billingNotes = enrollment.billingNotes
         selectedSessionIDs = enrollment.selectedSessionIDs.map(\.rawValue).sorted { $0.uuidString < $1.uuidString }
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(termID, forKey: .termID)
+        try container.encode(courseID, forKey: .courseID)
+        try container.encode(studentID, forKey: .studentID)
+        try container.encode(enrolledAt, forKey: .enrolledAt)
+        try container.encode(status, forKey: .status)
+        try container.encode(registrationMode, forKey: .registrationMode)
+        try container.encode(pricingStatus, forKey: .pricingStatus)
+        try container.encode(billingStartsOn, forKey: .billingStartsOn)
+        try container.encode(unitPriceCents, forKey: .unitPriceCents)
+        try container.encode(trialFeeCents, forKey: .trialFeeCents)
+        try container.encode(discountName, forKey: .discountName)
+        try container.encode(discountKind, forKey: .discountKind)
+        try container.encode(discountValue, forKey: .discountValue)
+        try container.encode(billingNotes, forKey: .billingNotes)
+        try container.encode(selectedSessionIDs, forKey: .selectedSessionIDs)
+    }
 }
 
 struct AttendanceRecordRow: Codable, Sendable {
@@ -740,6 +801,7 @@ struct AttendanceRecordRow: Codable, Sendable {
     let studentID: UUID
     let enrollmentID: UUID?
     let makeupForSessionID: UUID?
+    let usesSessionPass: Bool
     let status: String
     let recordedAt: String
     let recordedBy: UUID?
@@ -752,6 +814,7 @@ struct AttendanceRecordRow: Codable, Sendable {
         case studentID = "student_id"
         case enrollmentID = "enrollment_id"
         case makeupForSessionID = "makeup_for_session_id"
+        case usesSessionPass = "uses_session_pass"
         case status
         case recordedAt = "recorded_at"
         case recordedBy = "recorded_by"
@@ -765,6 +828,7 @@ struct AttendanceRecordRow: Codable, Sendable {
         studentID = attendance.studentID.rawValue
         enrollmentID = attendance.enrollmentID?.rawValue
         makeupForSessionID = attendance.makeupForSessionID?.rawValue
+        usesSessionPass = attendance.usesSessionPass
         status = attendance.status.rawValue
         recordedAt = SupabaseDateCodec.timestampString(from: attendance.recordedAt)
         self.recordedBy = recordedBy
@@ -781,9 +845,88 @@ struct AttendanceRecordRow: Codable, Sendable {
             studentID: StudentID(serverID: studentID),
             enrollmentID: enrollmentID.map(EnrollmentID.init(serverID:)),
             makeupForSessionID: makeupForSessionID.map(ClassSessionID.init(serverID:)),
+            usesSessionPass: usesSessionPass,
             status: status,
             recordedAt: SupabaseDateCodec.timestamp(from: recordedAt),
             note: note
+        )
+    }
+}
+
+struct StudentSessionPassRow: Codable, Sendable {
+    let id: UUID
+    let organizationID: UUID
+    let studentID: UUID
+    let planID: UUID
+    let issuedAt: String
+    let includedSessions: Int
+    let unitPriceCents: Int
+    let notes: String?
+    let isActive: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case organizationID = "organization_id"
+        case studentID = "student_id"
+        case planID = "plan_id"
+        case issuedAt = "issued_at"
+        case includedSessions = "included_sessions"
+        case unitPriceCents = "unit_price_cents"
+        case notes
+        case isActive = "is_active"
+    }
+
+    init(_ pass: StudentSessionPass, organizationID: UUID) {
+        id = pass.id.rawValue
+        self.organizationID = organizationID
+        studentID = pass.studentID.rawValue
+        planID = pass.planID.rawValue
+        issuedAt = SupabaseDateCodec.timestampString(from: pass.issuedAt)
+        includedSessions = pass.includedSessions
+        unitPriceCents = pass.unitPriceCents
+        notes = pass.notes
+        isActive = pass.isActive
+    }
+
+    func domain() throws -> StudentSessionPass {
+        try StudentSessionPass(
+            id: StudentSessionPassID(serverID: id),
+            studentID: StudentID(serverID: studentID),
+            planID: SessionPassPlanID(serverID: planID),
+            issuedAt: SupabaseDateCodec.timestamp(from: issuedAt),
+            includedSessions: includedSessions,
+            unitPriceCents: unitPriceCents,
+            notes: notes,
+            isActive: isActive
+        )
+    }
+}
+
+struct SessionPassUseRow: Decodable, Sendable {
+    let id: UUID
+    let studentSessionPassID: UUID
+    let attendanceID: UUID
+    let sessionID: UUID
+    let studentID: UUID
+    let usedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case studentSessionPassID = "student_session_pass_id"
+        case attendanceID = "attendance_id"
+        case sessionID = "session_id"
+        case studentID = "student_id"
+        case usedAt = "used_at"
+    }
+
+    func domain() throws -> SessionPassUse {
+        try SessionPassUse(
+            id: SessionPassUseID(serverID: id),
+            studentSessionPassID: StudentSessionPassID(serverID: studentSessionPassID),
+            attendanceID: AttendanceID(serverID: attendanceID),
+            sessionID: ClassSessionID(serverID: sessionID),
+            studentID: StudentID(serverID: studentID),
+            usedAt: SupabaseDateCodec.timestamp(from: usedAt)
         )
     }
 }
@@ -1342,6 +1485,7 @@ struct BillingInvoiceRow: Codable, Sendable {
     let organizationID: UUID
     let guardianID: UUID
     let termID: UUID?
+    let learnerIDs: [UUID]
     let invoiceNumber: String
     let version: Int
     let schoolYearLabel: String
@@ -1358,6 +1502,7 @@ struct BillingInvoiceRow: Codable, Sendable {
         case organizationID = "organization_id"
         case guardianID = "guardian_id"
         case termID = "term_id"
+        case learnerIDs = "learner_ids"
         case invoiceNumber = "invoice_number"
         case version
         case schoolYearLabel = "school_year_label"
@@ -1378,6 +1523,7 @@ struct BillingInvoiceRow: Codable, Sendable {
             id: BillingInvoiceID(serverID: id),
             guardianID: GuardianID(serverID: guardianID),
             termID: termID.map(TermID.init(serverID:)),
+            learnerIDs: learnerIDs.map(StudentID.init(serverID:)),
             invoiceNumber: invoiceNumber,
             version: version,
             schoolYearLabel: schoolYearLabel,
@@ -1405,6 +1551,7 @@ struct BillingInvoiceLineItemRow: Codable, Sendable {
     let unitAmountCents: Int
     let amountCents: Int
     let includedInAmountDue: Bool
+    let settlementStatus: String?
     let sortOrder: Int
 
     enum CodingKeys: String, CodingKey {
@@ -1420,12 +1567,25 @@ struct BillingInvoiceLineItemRow: Codable, Sendable {
         case unitAmountCents = "unit_amount_cents"
         case amountCents = "amount_cents"
         case includedInAmountDue = "included_in_amount_due"
+        case settlementStatus = "settlement_status"
         case sortOrder = "sort_order"
     }
 
     func domain() throws -> BillingInvoiceLineItem {
         guard let kind = BillingLineItemKind(rawValue: kind) else {
             throw SupabaseRepositoryError.invalidValue(field: "账单项目种类", value: kind)
+        }
+        let domainSettlementStatus: BillingLineItemSettlementStatus?
+        if let settlementStatus {
+            guard let value = BillingLineItemSettlementStatus(rawValue: settlementStatus) else {
+                throw SupabaseRepositoryError.invalidValue(
+                    field: "账单项目结算状态",
+                    value: settlementStatus
+                )
+            }
+            domainSettlementStatus = value
+        } else {
+            domainSettlementStatus = nil
         }
         return BillingInvoiceLineItem(
             id: BillingInvoiceLineItemID(serverID: id),
@@ -1439,6 +1599,7 @@ struct BillingInvoiceLineItemRow: Codable, Sendable {
             unitAmountCents: unitAmountCents,
             amountCents: amountCents,
             includedInAmountDue: includedInAmountDue,
+            settlementStatus: domainSettlementStatus,
             sortOrder: sortOrder
         )
     }
@@ -1516,7 +1677,8 @@ struct BillingArtifactRow: Codable, Sendable {
             kind: kind,
             storagePath: storagePath,
             mimeType: mimeType,
-            generatedAt: SupabaseDateCodec.timestamp(from: generatedAt)
+            generatedAt: SupabaseDateCodec.timestamp(from: generatedAt),
+            language: BillingArtifactLanguage.inferred(from: storagePath)
         )
     }
 }
@@ -1532,6 +1694,7 @@ struct BillingInvoiceItemPayload: Encodable, Sendable {
     let unitAmountCents: Int
     let amountCents: Int
     let includedInAmountDue: Bool
+    let settlementStatus: String
     let sortOrder: Int
 
     enum CodingKeys: String, CodingKey {
@@ -1545,6 +1708,7 @@ struct BillingInvoiceItemPayload: Encodable, Sendable {
         case unitAmountCents = "unit_amount_cents"
         case amountCents = "amount_cents"
         case includedInAmountDue = "included_in_amount_due"
+        case settlementStatus = "settlement_status"
         case sortOrder = "sort_order"
     }
 
@@ -1559,6 +1723,7 @@ struct BillingInvoiceItemPayload: Encodable, Sendable {
         unitAmountCents = item.unitAmountCents
         amountCents = item.amountCents
         includedInAmountDue = item.includedInAmountDue
+        settlementStatus = item.settlementStatus.rawValue
         sortOrder = item.sortOrder
     }
 }
@@ -1567,6 +1732,7 @@ struct IssueBillingInvoiceParameters: Encodable, Sendable {
     let invoiceID: UUID
     let guardianID: UUID
     let termID: UUID
+    let learnerIDs: [UUID]
     let invoiceNumber: String
     let version: Int
     let schoolYearLabel: String
@@ -1581,6 +1747,7 @@ struct IssueBillingInvoiceParameters: Encodable, Sendable {
         case invoiceID = "target_invoice_id"
         case guardianID = "target_guardian_id"
         case termID = "target_term_id"
+        case learnerIDs = "target_learner_ids"
         case invoiceNumber = "target_invoice_number"
         case version = "target_version"
         case schoolYearLabel = "target_school_year_label"
@@ -1597,6 +1764,7 @@ struct IssueBillingInvoiceParameters: Encodable, Sendable {
         try container.encode(invoiceID, forKey: .invoiceID)
         try container.encode(guardianID, forKey: .guardianID)
         try container.encode(termID, forKey: .termID)
+        try container.encode(learnerIDs, forKey: .learnerIDs)
         try container.encode(invoiceNumber, forKey: .invoiceNumber)
         try container.encode(version, forKey: .version)
         try container.encode(schoolYearLabel, forKey: .schoolYearLabel)
@@ -1634,5 +1802,91 @@ struct RecordBillingPaymentParameters: Encodable, Sendable {
         case note = "target_note"
         case artifactID = "target_artifact_id"
         case storagePath = "target_storage_path"
+    }
+}
+
+struct IssueDualBillingInvoiceParameters: Encodable, Sendable {
+    let invoiceID: UUID
+    let guardianID: UUID
+    let termID: UUID
+    let learnerIDs: [UUID]
+    let invoiceNumber: String
+    let version: Int
+    let schoolYearLabel: String
+    let issuedAt: String
+    let notes: String
+    let supersedesInvoiceID: UUID?
+    let bilingualArtifactID: UUID
+    let bilingualStoragePath: String
+    let englishArtifactID: UUID
+    let englishStoragePath: String
+    let items: [BillingInvoiceItemPayload]
+
+    enum CodingKeys: String, CodingKey {
+        case invoiceID = "target_invoice_id"
+        case guardianID = "target_guardian_id"
+        case termID = "target_term_id"
+        case learnerIDs = "target_learner_ids"
+        case invoiceNumber = "target_invoice_number"
+        case version = "target_version"
+        case schoolYearLabel = "target_school_year_label"
+        case issuedAt = "target_issued_at"
+        case notes = "target_notes"
+        case supersedesInvoiceID = "target_supersedes_invoice_id"
+        case bilingualArtifactID = "target_bilingual_artifact_id"
+        case bilingualStoragePath = "target_bilingual_storage_path"
+        case englishArtifactID = "target_english_artifact_id"
+        case englishStoragePath = "target_english_storage_path"
+        case items = "target_items"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(invoiceID, forKey: .invoiceID)
+        try container.encode(guardianID, forKey: .guardianID)
+        try container.encode(termID, forKey: .termID)
+        try container.encode(learnerIDs, forKey: .learnerIDs)
+        try container.encode(invoiceNumber, forKey: .invoiceNumber)
+        try container.encode(version, forKey: .version)
+        try container.encode(schoolYearLabel, forKey: .schoolYearLabel)
+        try container.encode(issuedAt, forKey: .issuedAt)
+        try container.encode(notes, forKey: .notes)
+        try container.encodeIfPresent(supersedesInvoiceID, forKey: .supersedesInvoiceID)
+        if supersedesInvoiceID == nil {
+            try container.encodeNil(forKey: .supersedesInvoiceID)
+        }
+        try container.encode(bilingualArtifactID, forKey: .bilingualArtifactID)
+        try container.encode(bilingualStoragePath, forKey: .bilingualStoragePath)
+        try container.encode(englishArtifactID, forKey: .englishArtifactID)
+        try container.encode(englishStoragePath, forKey: .englishStoragePath)
+        try container.encode(items, forKey: .items)
+    }
+}
+
+struct RecordDualBillingPaymentParameters: Encodable, Sendable {
+    let paymentID: UUID
+    let invoiceID: UUID
+    let amountCents: Int
+    let processingFeeCents: Int
+    let method: String
+    let receivedAt: String
+    let note: String
+    let bilingualArtifactID: UUID
+    let bilingualStoragePath: String
+    let englishArtifactID: UUID
+    let englishStoragePath: String
+
+    enum CodingKeys: String, CodingKey {
+        case paymentID = "target_payment_id"
+        case invoiceID = "target_invoice_id"
+        case amountCents = "target_amount_cents"
+        case processingFeeCents = "target_processing_fee_cents"
+        case method = "target_method"
+        case receivedAt = "target_received_at"
+        case note = "target_note"
+        case bilingualArtifactID = "target_bilingual_artifact_id"
+        case bilingualStoragePath = "target_bilingual_storage_path"
+        case englishArtifactID = "target_english_artifact_id"
+        case englishStoragePath = "target_english_storage_path"
     }
 }

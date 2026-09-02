@@ -2,6 +2,12 @@
 import MasterDanceCore
 import SwiftUI
 
+enum ScheduleCourseBlockPresentation: Equatable {
+    case automatic
+    case overview
+    case expanded
+}
+
 @MainActor
 struct CourseBlockView: View {
     let model: AppModel
@@ -9,6 +15,8 @@ struct CourseBlockView: View {
     let width: CGFloat
     let height: CGFloat
     let fontScale: Double
+    let presentation: ScheduleCourseBlockPresentation
+    let ageGroupColorIndex: Int
     let isSelected: Bool
     let hasConflict: Bool
     let select: () -> Void
@@ -22,11 +30,8 @@ struct CourseBlockView: View {
         let courseType = course.flatMap { model.courseType(id: $0.courseTypeID) }
         let ageGroup = course.flatMap { model.ageGroup(id: $0.ageGroupID) }
         let instructor = model.effectiveInstructor(for: session)
-        let instructorIndex = instructor.flatMap { selectedInstructor in
-            model.instructors.firstIndex(where: { $0.id == selectedInstructor.id })
-        } ?? 11
-        let backgroundColor = theme.scheduleBlockBackground(index: instructorIndex)
-        let borderColor = theme.scheduleBlockBorder(index: instructorIndex)
+        let backgroundColor = theme.scheduleBlockBackground(index: ageGroupColorIndex)
+        let borderColor = theme.scheduleBlockBorder(index: ageGroupColorIndex)
         let textColor = theme.scheduleBlockText
         let preview = CourseAttendancePreview(model: model, session: session)
         let priceLabel = schedulePriceLabel(for: course, compact: false)
@@ -34,7 +39,13 @@ struct CourseBlockView: View {
 
         Button(action: select) {
             ZStack(alignment: .bottomTrailing) {
-                if usesVerticalLayout {
+                if presentation == .overview {
+                    overviewContent(
+                        courseName: course?.name ?? "课程",
+                        isPrivateLesson: course?.format == .privateLesson,
+                        textColor: textColor
+                    )
+                } else if usesVerticalLayout {
                     verticalContent(
                         courseName: course?.name ?? "课程",
                         courseTypeName: courseType?.name ?? "课程种类",
@@ -91,6 +102,45 @@ struct CourseBlockView: View {
         .accessibilityHint(hoverText)
     }
 
+    private func overviewContent(
+        courseName: String,
+        isPrivateLesson: Bool,
+        textColor: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .top, spacing: 2) {
+                Text(courseName)
+                    .mdFont(size: overviewTitleFontSize, weight: .bold)
+                    .foregroundStyle(textColor)
+                    .lineLimit(height >= 70 ? 3 : height >= 46 ? 2 : 1)
+                    .minimumScaleFactor(0.5)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .layoutPriority(2)
+
+                formatBadge(
+                    isPrivateLesson: isPrivateLesson,
+                    size: width < 52 ? 12 : 14,
+                    fontSize: width < 52 ? 6.5 : 7,
+                    textColor: textColor
+                )
+            }
+
+            Spacer(minLength: 0)
+
+            if width >= 64, height >= 62 {
+                Text(compactSessionTime)
+                    .mdFont(size: max(7, overviewTitleFontSize - 2.5), weight: .semibold, design: .monospaced)
+                    .foregroundStyle(textColor.opacity(0.86))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 3)
+        .padding(.vertical, height < 46 ? 2 : 4)
+    }
+
     private func verticalContent(
         courseName: String,
         courseTypeName: String,
@@ -126,7 +176,7 @@ struct CourseBlockView: View {
                 .mdFont(size: titleFontSize, weight: .bold)
                 .foregroundStyle(textColor)
                 .lineLimit(verticalTitleLineLimit)
-                .minimumScaleFactor(0.84)
+                .minimumScaleFactor(0.5)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(2)
@@ -175,7 +225,7 @@ struct CourseBlockView: View {
                 Text(courseName)
                     .mdFont(size: titleFontSize, weight: .bold)
                     .lineLimit(height >= 68 ? 2 : 1)
-                    .minimumScaleFactor(0.84)
+                    .minimumScaleFactor(0.5)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .layoutPriority(2)
@@ -300,6 +350,11 @@ struct CourseBlockView: View {
     private var titleFontSize: CGFloat {
         let base: CGFloat = usesVerticalLayout ? 11.5 : 11
         return max(9.5, min(15, base + CGFloat(fontScale - 1) * 5))
+    }
+
+    private var overviewTitleFontSize: CGFloat {
+        let base: CGFloat = width < 54 ? 9.5 : 10.5
+        return max(8, min(13, base + CGFloat(fontScale - 1) * 3.5))
     }
 
     private var detailFontSize: CGFloat {

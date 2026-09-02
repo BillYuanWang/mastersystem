@@ -66,6 +66,12 @@ struct GuardianInspectorView: View {
 
                         StudentCourseManagerView(model: model, student: selectedStudent)
                             .id(selectedStudent.id)
+
+                        if selectedStudent.kind == .adult {
+                            Divider()
+                            StudentSessionPassManagerView(model: model, student: selectedStudent)
+                                .id("session-pass-\(selectedStudent.id)")
+                        }
                     }
                     .padding(16)
                 }
@@ -158,11 +164,16 @@ struct GuardianInspectorView: View {
                 .help("删除监护人")
             }
 
-            if let email = guardian.email, !email.isEmpty {
+            if let email = guardian.email, !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Label(email, systemImage: "envelope")
                     .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                     .textSelection(.enabled)
+            } else {
+                Label("邮箱待补", systemImage: "exclamationmark.circle.fill")
+                    .mdFont(.compactStrong)
+                    .foregroundStyle(theme.danger)
+                    .help("点击上方编辑按钮补充邮箱")
             }
             if let secondaryEmail = guardian.secondaryEmail, !secondaryEmail.isEmpty {
                 Label(secondaryEmail, systemImage: "envelope.open")
@@ -170,11 +181,16 @@ struct GuardianInspectorView: View {
                     .foregroundStyle(theme.secondaryText)
                     .textSelection(.enabled)
             }
-            if let phone = guardian.phone, !phone.isEmpty {
+            if let phone = guardian.phone, !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Label(phone, systemImage: "phone")
                     .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                     .textSelection(.enabled)
+            } else {
+                Label("电话待补", systemImage: "exclamationmark.circle.fill")
+                    .mdFont(.compactStrong)
+                    .foregroundStyle(theme.danger)
+                    .help("点击上方编辑按钮补充电话")
             }
             if let address = guardian.address, !address.isEmpty {
                 Label(address, systemImage: "house")
@@ -182,11 +198,6 @@ struct GuardianInspectorView: View {
                     .foregroundStyle(theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
-            }
-            if guardian.email == nil, guardian.secondaryEmail == nil, guardian.phone == nil {
-                Text("未填写联系方式")
-                    .mdFont(.compact)
-                    .foregroundStyle(theme.secondaryText)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -235,7 +246,13 @@ struct GuardianInspectorView: View {
                     )
                     .frame(maxWidth: .infinity)
                 }
-                .disabled(isWorking)
+                .disabled(isWorking || !hasCompleteContact)
+
+                if !hasCompleteContact {
+                    Text("请先补齐有效邮箱和电话，再生成监护人码。")
+                        .mdFont(.compact)
+                        .foregroundStyle(theme.warning)
+                }
             }
 
             if let errorMessage {
@@ -330,6 +347,18 @@ struct GuardianInspectorView: View {
             }
         }
     }
+
+    private var hasCompleteContact: Bool {
+        guard
+            let email = guardian.email,
+            GuardianContact.normalizedEmail(email) != nil,
+            let phone = guardian.phone,
+            GuardianContact.formattedUSPhone(phone) != nil
+        else {
+            return false
+        }
+        return true
+    }
 }
 
 @MainActor
@@ -392,6 +421,12 @@ struct UnassignedStudentInspectorView: View {
 
                 StudentCourseManagerView(model: model, student: student)
                     .padding(16)
+
+                if student.kind == .adult {
+                    Divider()
+                    StudentSessionPassManagerView(model: model, student: student)
+                        .padding(16)
+                }
             }
         }
         .foregroundStyle(theme.primaryText)

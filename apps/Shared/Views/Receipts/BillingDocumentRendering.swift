@@ -1,6 +1,26 @@
 #if os(macOS)
 import AppKit
+import MasterDanceCore
 import SwiftUI
+
+private enum ReceiptBrand {
+    static let legalName = "Starton EDU Irvine, Inc."
+    static let schoolName = "Master Dance"
+    static let taxID = "92-1606689"
+    static let publicAddress = "2 Jenner St., Suite 180, Irvine, CA 92618"
+}
+
+private enum ReceiptPalette {
+    static let ink = Color(red: 42 / 255, green: 31 / 255, blue: 36 / 255)
+    static let muted = Color(red: 118 / 255, green: 94 / 255, blue: 104 / 255)
+    static let accent = Color(red: 230 / 255, green: 92 / 255, blue: 151 / 255)
+    static let accentDeep = Color(red: 194 / 255, green: 45 / 255, blue: 111 / 255)
+    static let accentSoft = Color(red: 250 / 255, green: 216 / 255, blue: 231 / 255)
+    static let paper = Color(red: 255 / 255, green: 251 / 255, blue: 253 / 255)
+    static let paid = Color(red: 36 / 255, green: 126 / 255, blue: 92 / 255)
+    static let unpaid = Color(red: 188 / 255, green: 58 / 255, blue: 86 / 255)
+    static let waived = Color(red: 163 / 255, green: 65 / 255, blue: 132 / 255)
+}
 
 enum ReceiptCurrency: String, CaseIterable, Identifiable {
     case usd = "USD"
@@ -24,37 +44,110 @@ enum ReceiptDocumentKind: Equatable {
     case invoice
     case receipt
 
-    var chineseTitle: String { self == .invoice ? "账单" : "收据" }
-    var englishTitle: String { self == .invoice ? "INVOICE" : "RECEIPT" }
+    func title(language: BillingArtifactLanguage) -> String {
+        switch (self, language) {
+        case (.invoice, .bilingual): "账单 / INVOICE"
+        case (.receipt, .bilingual): "付款收据 / PAYMENT RECEIPT"
+        case (.invoice, .english): "INVOICE"
+        case (.receipt, .english): "PAYMENT RECEIPT"
+        }
+    }
+}
+
+enum ReceiptLineItemSection: Int, CaseIterable, Identifiable, Equatable {
+    case fullTerm
+    case perSession
+    case miscellaneous
+    case adjustments
+
+    var id: Int { rawValue }
+
+    func title(language: BillingArtifactLanguage) -> String {
+        switch (self, language) {
+        case (.fullTerm, .bilingual): "整期报名课程 / FULL-TERM ENROLLMENT"
+        case (.perSession, .bilingual): "按次报名课程 / PER-SESSION ENROLLMENT"
+        case (.miscellaneous, .bilingual): "其他收费 / OTHER CHARGES"
+        case (.adjustments, .bilingual): "折扣与结余 / DISCOUNTS & CREDITS"
+        case (.fullTerm, .english): "FULL-TERM ENROLLMENT"
+        case (.perSession, .english): "PER-SESSION ENROLLMENT"
+        case (.miscellaneous, .english): "OTHER CHARGES"
+        case (.adjustments, .english): "DISCOUNTS & CREDITS"
+        }
+    }
 }
 
 struct ReceiptLineItem: Equatable {
+    let kind: BillingLineItemKind
+    let section: ReceiptLineItemSection
     let title: String
+    let englishTitle: String
     let amount: Decimal
     let learnerName: String?
     let detail: String?
-    let includedInAmountDue: Bool
+    let englishDetail: String?
+    let settlementStatus: BillingLineItemSettlementStatus
 
     init(
+        kind: BillingLineItemKind = .manual,
+        section: ReceiptLineItemSection = .miscellaneous,
         title: String,
+        englishTitle: String? = nil,
         amount: Decimal,
         learnerName: String? = nil,
         detail: String? = nil,
-        includedInAmountDue: Bool = true
+        englishDetail: String? = nil,
+        settlementStatus: BillingLineItemSettlementStatus = .unpaid
     ) {
+        self.kind = kind
+        self.section = section
         self.title = title
+        self.englishTitle = englishTitle ?? title
         self.amount = amount
         self.learnerName = learnerName
         self.detail = detail
-        self.includedInAmountDue = includedInAmountDue
+        self.englishDetail = englishDetail
+        self.settlementStatus = settlementStatus
+    }
+
+    init(
+        kind: BillingLineItemKind = .manual,
+        section: ReceiptLineItemSection = .miscellaneous,
+        title: String,
+        englishTitle: String? = nil,
+        amount: Decimal,
+        learnerName: String? = nil,
+        detail: String? = nil,
+        englishDetail: String? = nil,
+        isPaid: Bool
+    ) {
+        self.init(
+            kind: kind,
+            section: section,
+            title: title,
+            englishTitle: englishTitle,
+            amount: amount,
+            learnerName: learnerName,
+            detail: detail,
+            englishDetail: englishDetail,
+            settlementStatus: isPaid ? .paid : .unpaid
+        )
+    }
+
+    func displayedTitle(language: BillingArtifactLanguage) -> String {
+        language == .english ? englishTitle : title
+    }
+
+    func displayedDetail(language: BillingArtifactLanguage) -> String? {
+        language == .english ? (englishDetail ?? detail) : detail
     }
 }
 
 struct ReceiptDocument: Equatable {
+    let language: BillingArtifactLanguage
     let kind: ReceiptDocumentKind
     let receiptNumber: String
     let version: Int
-    let schoolYearLabel: String
+    let termLabel: String
     let issuedOn: Date
     let guardianName: String
     let guardianEmail: String?
@@ -63,16 +156,18 @@ struct ReceiptDocument: Equatable {
     let currency: ReceiptCurrency
     let items: [ReceiptLineItem]
     let paymentMethod: String
+    let paymentMethodEnglish: String
     let paymentAmount: Decimal?
     let processingFee: Decimal
     let outstandingAfterPayment: Decimal?
     let note: String
 
     init(
+        language: BillingArtifactLanguage = .bilingual,
         kind: ReceiptDocumentKind,
         receiptNumber: String,
         version: Int,
-        schoolYearLabel: String,
+        termLabel: String,
         issuedOn: Date,
         guardianName: String,
         guardianEmail: String?,
@@ -81,15 +176,17 @@ struct ReceiptDocument: Equatable {
         currency: ReceiptCurrency = .usd,
         items: [ReceiptLineItem],
         paymentMethod: String = "",
+        paymentMethodEnglish: String = "",
         paymentAmount: Decimal? = nil,
         processingFee: Decimal = .zero,
         outstandingAfterPayment: Decimal? = nil,
         note: String = ""
     ) {
+        self.language = language
         self.kind = kind
         self.receiptNumber = receiptNumber
         self.version = version
-        self.schoolYearLabel = schoolYearLabel
+        self.termLabel = termLabel
         self.issuedOn = issuedOn
         self.guardianName = guardianName
         self.guardianEmail = guardianEmail
@@ -98,29 +195,63 @@ struct ReceiptDocument: Equatable {
         self.currency = currency
         self.items = items
         self.paymentMethod = paymentMethod
+        self.paymentMethodEnglish = paymentMethodEnglish
         self.paymentAmount = paymentAmount
         self.processingFee = processingFee
         self.outstandingAfterPayment = outstandingAfterPayment
         self.note = note
     }
 
-    init(
-        receiptNumber: String,
-        issuedOn: Date,
-        guardianName: String,
-        guardianEmail: String?,
-        guardianPhone: String?,
-        learnerName: String,
-        currency: ReceiptCurrency,
-        items: [ReceiptLineItem],
-        paymentMethod: String,
-        note: String
-    ) {
-        self.init(
-            kind: .receipt,
+    var chargeSubtotal: Decimal {
+        items
+            .filter { $0.section != .adjustments }
+            .reduce(.zero) { $0 + $1.amount }
+    }
+
+    var paidItemTotal: Decimal {
+        items
+            .filter { $0.section != .adjustments && $0.settlementStatus == .paid }
+            .reduce(.zero) { $0 + $1.amount }
+    }
+
+    var waivedItemTotal: Decimal {
+        items
+            .filter { $0.section != .adjustments && $0.settlementStatus == .waived }
+            .reduce(.zero) { $0 + $1.amount }
+    }
+
+    var adjustmentTotal: Decimal {
+        items
+            .filter { $0.section == .adjustments }
+            .reduce(.zero) { $0 + $1.amount }
+    }
+
+    var currentDue: Decimal {
+        if kind == .receipt, let outstandingAfterPayment {
+            return max(.zero, outstandingAfterPayment)
+        }
+        return max(
+            .zero,
+            items
+                .filter { $0.settlementStatus.contributesToAmountDue }
+                .reduce(.zero) { $0 + $1.amount }
+        )
+    }
+
+    var groupedItems: [(section: ReceiptLineItemSection, items: [ReceiptLineItem])] {
+        ReceiptLineItemSection.allCases.compactMap { section in
+            let matches = items.filter { $0.section == section }
+            return matches.isEmpty ? nil : (section, matches)
+        }
+    }
+
+    func translated(to language: BillingArtifactLanguage) -> ReceiptDocument {
+        ReceiptDocument(
+            language: language,
+            kind: kind,
             receiptNumber: receiptNumber,
-            version: 1,
-            schoolYearLabel: "",
+            version: version,
+            termLabel: termLabel,
             issuedOn: issuedOn,
             guardianName: guardianName,
             guardianEmail: guardianEmail,
@@ -129,14 +260,12 @@ struct ReceiptDocument: Equatable {
             currency: currency,
             items: items,
             paymentMethod: paymentMethod,
+            paymentMethodEnglish: paymentMethodEnglish,
+            paymentAmount: paymentAmount,
+            processingFee: processingFee,
+            outstandingAfterPayment: outstandingAfterPayment,
             note: note
         )
-    }
-
-    var total: Decimal {
-        items
-            .filter(\.includedInAmountDue)
-            .reduce(Decimal.zero) { $0 + $1.amount }
     }
 }
 
@@ -148,18 +277,27 @@ enum ReceiptRenderingError: LocalizedError {
 
 @MainActor
 enum ReceiptPNGRenderer {
-    static let canvasSize = CGSize(width: 720, height: 960)
+    static let canvasWidth: CGFloat = 440
+
+    static func canvasSize(for document: ReceiptDocument) -> CGSize {
+        let itemHeight = CGFloat(document.items.count) * 54
+        let sectionHeight = CGFloat(document.groupedItems.count) * 34
+        let noteHeight: CGFloat = document.note.isEmpty ? 0 : 68
+        let paymentHeight: CGFloat = document.paymentAmount == nil ? 0 : 92
+        return CGSize(
+            width: canvasWidth,
+            height: max(760, 440 + itemHeight + sectionHeight + noteHeight + paymentHeight)
+        )
+    }
 
     static func render(_ document: ReceiptDocument) throws -> Data {
+        let size = canvasSize(for: document)
         let renderer = ImageRenderer(
             content: ReceiptDocumentView(document: document)
-                .frame(width: canvasSize.width, height: canvasSize.height)
+                .frame(width: size.width, height: size.height)
         )
         renderer.scale = 2
-        renderer.proposedSize = ProposedViewSize(
-            width: canvasSize.width,
-            height: canvasSize.height
-        )
+        renderer.proposedSize = ProposedViewSize(width: size.width, height: size.height)
         guard let image = renderer.nsImage,
               let tiff = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiff),
@@ -170,232 +308,278 @@ enum ReceiptPNGRenderer {
     }
 }
 
-struct ReceiptPreviewPane: View {
-    let document: ReceiptDocument
+struct ReceiptPairPreviewPane: View {
+    let bilingual: ReceiptDocument
+    let english: ReceiptDocument
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         GeometryReader { proxy in
-            let horizontalPadding: CGFloat = 48
-            let verticalPadding: CGFloat = 36
-            let scale = min(
-                1,
-                max(
-                    0.35,
-                    min(
-                        (proxy.size.width - horizontalPadding) / ReceiptPNGRenderer.canvasSize.width,
-                        (proxy.size.height - verticalPadding) / ReceiptPNGRenderer.canvasSize.height
-                    )
-                )
-            )
-            let scaledWidth = ReceiptPNGRenderer.canvasSize.width * scale
-            let scaledHeight = ReceiptPNGRenderer.canvasSize.height * scale
-
-            VStack {
-                Spacer(minLength: 12)
-                HStack {
-                    Spacer(minLength: 12)
-                    ReceiptDocumentView(document: document)
-                        .frame(
-                            width: ReceiptPNGRenderer.canvasSize.width,
-                            height: ReceiptPNGRenderer.canvasSize.height
-                        )
-                        .scaleEffect(scale, anchor: .topLeading)
-                        .frame(width: scaledWidth, height: scaledHeight, alignment: .topLeading)
-                        .shadow(
-                            color: .black.opacity(colorScheme == .dark ? 0.38 : 0.15),
-                            radius: 18,
-                            y: 8
-                        )
-                    Spacer(minLength: 12)
+            let gap: CGFloat = 18
+            let totalWidth = ReceiptPNGRenderer.canvasWidth * 2 + gap
+            let scale = min(1, max(0.48, (proxy.size.width - 40) / totalWidth))
+            ScrollView([.vertical, .horizontal]) {
+                HStack(alignment: .top, spacing: gap) {
+                    preview(document: bilingual, label: "主中文双语")
+                    preview(document: english, label: "ENGLISH")
                 }
-                Spacer(minLength: 12)
+                .scaleEffect(scale, anchor: .topLeading)
+                .frame(
+                    width: totalWidth * scale,
+                    height: max(
+                        ReceiptPNGRenderer.canvasSize(for: bilingual).height,
+                        ReceiptPNGRenderer.canvasSize(for: english).height
+                    ) * scale + 34 * scale,
+                    alignment: .topLeading
+                )
+                .padding(20)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(theme.subtleSurface)
         }
+    }
+
+    private func preview(document: ReceiptDocument, label: String) -> some View {
+        let size = ReceiptPNGRenderer.canvasSize(for: document)
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.secondary)
+            ReceiptDocumentView(document: document)
+                .frame(width: size.width, height: size.height)
+                .shadow(
+                    color: .black.opacity(colorScheme == .dark ? 0.38 : 0.14),
+                    radius: 16,
+                    y: 7
+                )
+        }
+    }
+}
+
+struct ReceiptPreviewPane: View {
+    let document: ReceiptDocument
+
+    var body: some View {
+        ReceiptPairPreviewPane(
+            bilingual: document.translated(to: .bilingual),
+            english: document.translated(to: .english)
+        )
     }
 }
 
 private struct ReceiptDocumentView: View {
     let document: ReceiptDocument
 
+    private var isEnglish: Bool { document.language == .english }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            divider.padding(.vertical, 18)
-            recipientDetails
-            lineItems.padding(.top, 22)
-            totals.padding(.top, 13)
-            paymentDetails.padding(.top, 17)
-            Spacer(minLength: 16)
-            footer
+        ZStack {
+            ReceiptPalette.paper
+            ReceiptWaterSleeveWatermark()
+                .frame(width: 390, height: 720)
+                .offset(x: 50, y: 50)
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                Rectangle()
+                    .fill(ReceiptPalette.accent)
+                    .frame(height: 2)
+                    .padding(.vertical, 14)
+                recipientDetails
+                lineItems.padding(.top, 18)
+                totals.padding(.top, 16)
+                paymentDetails.padding(.top, 14)
+                Spacer(minLength: 20)
+                footer
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 28)
         }
-        .padding(.horizontal, 48)
-        .padding(.vertical, 40)
-        .foregroundStyle(Color(red: 0.10, green: 0.11, blue: 0.12))
-        .background(Color.white)
+        .foregroundStyle(ReceiptPalette.ink)
+        .clipped()
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             MasterDanceLogoView(.full)
-                .frame(width: 78, height: 78)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("MASTER DANCE")
-                    .font(.system(size: 23, weight: .bold, design: .monospaced))
-                Text("佳美舞蹈")
-                    .font(.system(size: 16, weight: .semibold))
-                Text("Starton EDU Irvine, Inc. & Master Dance")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.gray)
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 5) {
-                Text(document.kind.chineseTitle)
-                    .font(.system(size: 27, weight: .bold))
-                Text(document.kind.englishTitle)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.gray)
-                meta("编号", value: document.receiptNumber + " · v\(document.version)")
-                meta("日期", value: billingDateText(document.issuedOn))
+                .frame(width: 225, height: 55, alignment: .leading)
+            HStack(alignment: .bottom, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(document.kind.title(language: document.language))
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(ReceiptPalette.accentDeep)
+                    Text(ReceiptBrand.legalName)
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(ReceiptPalette.muted)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 3) {
+                    meta(isEnglish ? "NO." : "编号 / NO.", document.receiptNumber + " · V\(document.version)")
+                    meta(isEnglish ? "DATE" : "日期 / DATE", billingDateText(document.issuedOn))
+                }
             }
         }
     }
 
-    private var divider: some View {
-        Rectangle()
-            .fill(Color(red: 0.12, green: 0.13, blue: 0.14))
-            .frame(height: 2)
-    }
-
     private var recipientDetails: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            detailRow("监护人", value: document.guardianName)
-            detailRow("学员", value: document.learnerName)
-            if !document.schoolYearLabel.isEmpty {
-                detailRow("学年", value: document.schoolYearLabel)
-            }
+        VStack(alignment: .leading, spacing: 7) {
+            detailRow(isEnglish ? "GUARDIAN" : "监护人 / GUARDIAN", value: document.guardianName)
+            detailRow(isEnglish ? "STUDENT(S)" : "学员 / STUDENT", value: document.learnerName)
+            detailRow(isEnglish ? "TERM" : "学期 / TERM", value: document.termLabel)
             if let contact = contactText {
-                detailRow("联系方式", value: contact)
+                detailRow(isEnglish ? "CONTACT" : "联系方式 / CONTACT", value: contact)
             }
         }
     }
 
     private var lineItems: some View {
-        let count = max(1, document.items.count)
-        let rowHeight = max(28, min(42, 360 / CGFloat(count)))
-        let itemFont = max(10, min(14, rowHeight * 0.34))
-        return VStack(spacing: 0) {
-            HStack {
-                Text("收费项目")
-                Spacer()
-                Text("金额 · \(document.currency.rawValue)")
-            }
-            .font(.system(size: 12, weight: .semibold))
-            .padding(.horizontal, 13)
-            .frame(height: 35)
-            .foregroundStyle(Color.white)
-            .background(Color(red: 0.12, green: 0.13, blue: 0.14))
-
-            ForEach(Array(document.items.enumerated()), id: \.offset) { index, item in
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 5) {
-                            Text(item.title)
-                                .lineLimit(1)
-                            if !item.includedInAmountDue {
-                                Text("已付 · 仅展示")
-                                    .font(.system(size: max(8, itemFont - 3), weight: .semibold))
-                                    .foregroundStyle(Color.gray)
-                            }
-                        }
-                        let detail = [item.learnerName, item.detail]
-                            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty }
-                            .joined(separator: " · ")
-                        if !detail.isEmpty {
-                            Text(detail)
-                                .font(.system(size: max(8, itemFont - 3)))
-                                .foregroundStyle(Color.gray)
-                                .lineLimit(1)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(document.currency.formatted(item.amount))
-                        .font(.system(size: itemFont, weight: .medium, design: .monospaced))
-                        .foregroundStyle(
-                            item.includedInAmountDue
-                                ? Color(red: 0.10, green: 0.11, blue: 0.12)
-                                : Color.gray
-                        )
-                        .frame(width: 160, alignment: .trailing)
-                }
-                .font(.system(size: itemFont))
-                .padding(.horizontal, 13)
-                .frame(height: rowHeight)
-                .background(index.isMultiple(of: 2) ? Color.white : Color.black.opacity(0.035))
-                .overlay(alignment: .bottom) {
-                    Rectangle().fill(Color.black.opacity(0.10)).frame(height: 1)
+        VStack(spacing: 0) {
+            ForEach(document.groupedItems, id: \.section) { group in
+                lineItemSectionHeader(group.section)
+                ForEach(Array(group.items.enumerated()), id: \.offset) { index, item in
+                    lineItemRow(item, striped: !index.isMultiple(of: 2))
                 }
             }
         }
-        .overlay(Rectangle().stroke(Color.black.opacity(0.16), lineWidth: 1))
+    }
+
+    private func lineItemSectionHeader(_ section: ReceiptLineItemSection) -> some View {
+        HStack(spacing: 8) {
+            Text(section.title(language: document.language))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .frame(width: 238, alignment: .leading)
+            Text(isEnglish ? "AMOUNT · STATUS" : "金额 · 状态")
+                .frame(width: 118, alignment: .trailing)
+        }
+        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+        .foregroundStyle(ReceiptPalette.accentDeep)
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(ReceiptPalette.accentSoft.opacity(0.72))
+    }
+
+    private func lineItemRow(_ item: ReceiptLineItem, striped: Bool) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.displayedTitle(language: document.language))
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                let detail = itemDetail(item)
+                if !detail.isEmpty {
+                    Text(detail)
+                        .font(.system(size: 8.5, weight: .regular))
+                        .foregroundStyle(ReceiptPalette.muted)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(width: 248, alignment: .leading)
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(document.currency.formatted(item.amount))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                statusLabel(item)
+            }
+            .frame(width: 108, alignment: .trailing)
+        }
+        .padding(.horizontal, 10)
+        .frame(minHeight: 54)
+        .background(striped ? ReceiptPalette.accentSoft.opacity(0.19) : ReceiptPalette.paper.opacity(0.82))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(ReceiptPalette.accentSoft.opacity(0.78)).frame(height: 0.7)
+        }
+    }
+
+    @ViewBuilder
+    private func statusLabel(_ item: ReceiptLineItem) -> some View {
+        if item.section == .adjustments || item.amount < 0 {
+            Text(isEnglish ? "ADJUSTMENT" : "调整 / ADJUSTMENT")
+                .foregroundStyle(ReceiptPalette.accentDeep)
+        } else if resolvedSettlementStatus(item) == .waived {
+            Label(isEnglish ? "WAIVED" : "免付 / WAIVED", systemImage: "gift.fill")
+                .foregroundStyle(ReceiptPalette.waived)
+        } else if resolvedSettlementStatus(item) == .paid {
+            Label(isEnglish ? "PAID" : "已付 / PAID", systemImage: "checkmark.square.fill")
+                .foregroundStyle(ReceiptPalette.paid)
+        } else {
+            Label(isEnglish ? "UNPAID" : "未付 / UNPAID", systemImage: "square")
+                .foregroundStyle(ReceiptPalette.unpaid)
+        }
     }
 
     private var totals: some View {
         VStack(alignment: .trailing, spacing: 7) {
-            HStack(alignment: .firstTextBaseline, spacing: 16) {
+            summaryRow(isEnglish ? "Semester charges" : "本学期收费", amount: document.chargeSubtotal)
+            if document.paidItemTotal > 0 {
+                summaryRow(isEnglish ? "Previously paid items" : "其中已付项目", amount: -document.paidItemTotal)
+            }
+            if document.waivedItemTotal > 0 {
+                summaryRow(isEnglish ? "Waived items" : "其中免付项目", amount: -document.waivedItemTotal)
+            }
+            if document.adjustmentTotal != 0 {
+                summaryRow(isEnglish ? "Discounts and credits" : "折扣与结余", amount: document.adjustmentTotal)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Spacer()
-                Text(document.kind == .invoice ? "本次应付" : "账单金额")
-                    .font(.system(size: 15, weight: .semibold))
-                Text(document.currency.formatted(document.total))
-                    .font(.system(size: 23, weight: .bold, design: .monospaced))
+                Text(isEnglish ? "AMOUNT DUE NOW" : "本次应付 / AMOUNT DUE NOW")
+                    .font(.system(size: 12, weight: .bold))
+                Text(document.currency.formatted(document.currentDue))
+                    .font(.system(size: 22, weight: .bold, design: .monospaced))
+                    .foregroundStyle(ReceiptPalette.accentDeep)
             }
-            if let paymentAmount = document.paymentAmount {
-                totalRow("本次付款", amount: paymentAmount)
-                if document.processingFee > 0 {
-                    totalRow("银行卡手续费 3.5%", amount: document.processingFee)
-                    totalRow("实际收取", amount: paymentAmount + document.processingFee, strong: true)
-                }
-                if let outstanding = document.outstandingAfterPayment {
-                    totalRow("付款后待付", amount: outstanding, strong: outstanding > 0)
-                }
-            }
+            .padding(.top, 3)
         }
     }
 
     private var paymentDetails: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 7) {
+            if let paymentAmount = document.paymentAmount {
+                Rectangle().fill(ReceiptPalette.accentSoft).frame(height: 1)
+                detailRow(isEnglish ? "TOTAL PAID" : "累计付款 / TOTAL PAID", value: document.currency.formatted(paymentAmount))
+                if document.processingFee > 0 {
+                    detailRow(
+                        isEnglish ? "TOTAL CARD FEES" : "累计银行卡手续费 / TOTAL CARD FEES",
+                        value: document.currency.formatted(document.processingFee)
+                    )
+                }
+                if let outstanding = document.outstandingAfterPayment {
+                    detailRow(
+                        isEnglish ? "BALANCE" : "付款后待付 / BALANCE",
+                        value: document.currency.formatted(outstanding)
+                    )
+                }
+            }
             if !document.paymentMethod.isEmpty {
-                detailRow("支付方式", value: document.paymentMethod)
+                detailRow(
+                    isEnglish ? "METHOD" : "支付方式 / METHOD",
+                    value: isEnglish
+                        ? (document.paymentMethodEnglish.nilIfEmpty ?? document.paymentMethod)
+                        : document.paymentMethod
+                )
             }
             if !document.note.isEmpty {
-                detailRow("备注", value: document.note, lineLimit: 3)
+                detailRow(isEnglish ? "NOTE" : "备注 / NOTE", value: document.note, lineLimit: 4)
             }
         }
     }
 
     private var footer: some View {
-        VStack(spacing: 9) {
-            Rectangle().fill(Color.black.opacity(0.14)).frame(height: 1)
-            HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("感谢您选择佳美舞蹈")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("Thank you for choosing Master Dance.")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Color.gray)
+        VStack(spacing: 8) {
+            Rectangle().fill(ReceiptPalette.accentSoft).frame(height: 1)
+            HStack(alignment: .top, spacing: 14) {
+                Text(isEnglish ? "Thank you for choosing Master Dance." : "感谢您选择佳美舞蹈 / Thank you for choosing Master Dance.")
+                    .font(.system(size: 8.5, weight: .semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(ReceiptBrand.legalName.uppercased())
+                    Text("EIN \(ReceiptBrand.taxID)")
+                    Text("\(ReceiptBrand.schoolName) · \(ReceiptBrand.publicAddress)")
                 }
-                Spacer()
-                Text("STARTON EDU IRVINE, INC.")
-                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.gray)
+                .font(.system(size: 6.8, weight: .medium, design: .monospaced))
+                .foregroundStyle(ReceiptPalette.muted)
+                .multilineTextAlignment(.trailing)
             }
         }
     }
@@ -403,39 +587,71 @@ private struct ReceiptDocumentView: View {
     private var contactText: String? {
         let parts = [document.guardianEmail, document.guardianPhone]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty }
-        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    private func meta(_ label: String, value: String) -> some View {
-        HStack(spacing: 6) {
-            Text(label).foregroundStyle(Color.gray)
+    private func resolvedSettlementStatus(
+        _ item: ReceiptLineItem
+    ) -> BillingLineItemSettlementStatus {
+        if item.settlementStatus == .waived {
+            return .waived
+        }
+        if document.kind == .receipt, document.outstandingAfterPayment == 0 {
+            return .paid
+        }
+        return item.settlementStatus
+    }
+
+    private func itemDetail(_ item: ReceiptLineItem) -> String {
+        [item.learnerName, item.displayedDetail(language: document.language)]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty }
+            .joined(separator: " · ")
+    }
+
+    private func meta(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(label).foregroundStyle(ReceiptPalette.muted)
             Text(value).lineLimit(1)
         }
-        .font(.system(size: 9, weight: .medium, design: .monospaced))
+        .font(.system(size: 7.5, weight: .medium, design: .monospaced))
     }
 
     private func detailRow(_ label: String, value: String, lineLimit: Int = 2) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 14) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.gray)
-                .frame(width: 70, alignment: .leading)
+                .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                .foregroundStyle(ReceiptPalette.muted)
+                .frame(width: 108, alignment: .leading)
             Text(value)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 10.5, weight: .medium))
                 .lineLimit(lineLimit)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private func totalRow(_ label: String, amount: Decimal, strong: Bool = false) -> some View {
-        HStack(spacing: 16) {
+    private func summaryRow(_ label: String, amount: Decimal) -> some View {
+        HStack(spacing: 12) {
             Spacer()
             Text(label)
             Text(document.currency.formatted(amount))
-                .font(.system(size: strong ? 14 : 12, weight: strong ? .bold : .medium, design: .monospaced))
-                .frame(width: 145, alignment: .trailing)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .frame(width: 108, alignment: .trailing)
         }
-        .font(.system(size: 12, weight: strong ? .semibold : .regular))
+        .font(.system(size: 10, weight: .regular))
+        .foregroundStyle(ReceiptPalette.muted)
+    }
+}
+
+private struct ReceiptWaterSleeveWatermark: View {
+    var body: some View {
+        if let image = MasterDanceImageResource.image(named: "ReceiptWaterSleeveWatermark") {
+            Image(nsImage: image)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(ReceiptPalette.accentDeep)
+                .opacity(0.055)
+        }
     }
 }
 

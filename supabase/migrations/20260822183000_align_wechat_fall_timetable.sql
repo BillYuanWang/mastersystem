@@ -90,7 +90,8 @@ begin
      or lin_fan_id is null
      or category_id_value is null
      or group_course_type_id is null then
-    raise exception 'WeChat timetable alignment stopped: required term or reference data is missing';
+    raise notice 'WeChat timetable alignment skipped: this database does not contain the production term and reference data';
+    return;
   end if;
 
   if (

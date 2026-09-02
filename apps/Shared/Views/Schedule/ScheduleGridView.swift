@@ -11,6 +11,8 @@ struct ScheduleGridView: View {
     @Binding var selectedSessionID: ClassSessionID?
     let zoom: Double
     let fontScale: Double
+    let focusedDayIndex: Int?
+    let toggleFocusedDay: (Int) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -43,13 +45,16 @@ struct ScheduleGridView: View {
                 }
                 .scrollIndicators(.hidden)
             }
+            .animation(.snappy(duration: 0.24), value: focusedDayIndex)
         }
     }
 
     private func dayHeader(width: CGFloat, theme: MDTheme) -> some View {
-        let laneWidth = max(
-            1,
-            (width - timeColumnWidth) / CGFloat(ScheduleWeek.dayCount * max(1, rooms.count))
+        let layout = ScheduleFocusLayout(
+            availableWidth: width,
+            timeColumnWidth: timeColumnWidth,
+            roomCount: rooms.count,
+            focusedDayIndex: focusedDayIndex
         )
         return HStack(spacing: 0) {
             Text("时间")
@@ -58,52 +63,76 @@ struct ScheduleGridView: View {
                 .frame(width: timeColumnWidth, height: headerHeight)
 
             ForEach(Array(days.enumerated()), id: \.offset) { dayIndex, day in
-                VStack(spacing: 0) {
-                    HStack(spacing: 5) {
-                        Text(day.formatted(.dateTime.weekday(.abbreviated)).uppercased())
-                        Text(day.formatted(.dateTime.month(.abbreviated).day()).uppercased())
-                        if calendar.isDateInToday(day) {
-                            Circle()
-                                .fill(theme.accent)
-                                .frame(width: 5, height: 5)
-                                .accessibilityLabel("今天")
-                                .foregroundStyle(theme.accent)
-                        }
-                    }
-                    .mdFont(.monoStrong)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .foregroundStyle(calendar.isDateInToday(day) ? theme.accent : theme.secondaryText)
-                    .padding(.horizontal, 4)
-                    .frame(height: 30)
+                let dayWidth = layout.dayWidth(at: dayIndex)
+                let laneWidth = layout.laneWidth(at: dayIndex)
+                let isFocused = focusedDayIndex == dayIndex
 
-                    HStack(spacing: 0) {
-                        ForEach(rooms) { room in
-                            Text(room.name)
-                                .mdFont(.compact)
-                                .foregroundStyle(theme.secondaryText)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.72)
-                                .frame(width: laneWidth, height: 28)
-                                .overlay(alignment: .leading) {
-                                    Rectangle()
-                                        .fill(theme.faintSeparator)
-                                        .frame(width: 1)
-                                }
+                Button {
+                    toggleFocusedDay(dayIndex)
+                } label: {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 5) {
+                            Text(day.formatted(.dateTime.weekday(.abbreviated)).uppercased())
+                            Text(day.formatted(.dateTime.month(.abbreviated).day()).uppercased())
+                            if calendar.isDateInToday(day) {
+                                Circle()
+                                    .fill(theme.accent)
+                                    .frame(width: 5, height: 5)
+                                    .accessibilityLabel("今天")
+                                    .foregroundStyle(theme.accent)
+                            }
+                        }
+                        .mdFont(.monoStrong)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.58)
+                        .foregroundStyle(
+                            calendar.isDateInToday(day) || isFocused
+                                ? theme.accent
+                                : theme.secondaryText
+                        )
+                        .padding(.horizontal, 4)
+                        .frame(height: 30)
+
+                        HStack(spacing: 0) {
+                            ForEach(rooms) { room in
+                                Text(room.name)
+                                    .mdFont(.compact)
+                                    .foregroundStyle(theme.secondaryText)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.58)
+                                    .frame(width: laneWidth, height: 28)
+                                    .overlay(alignment: .leading) {
+                                        Rectangle()
+                                            .fill(theme.faintSeparator)
+                                            .frame(width: 1)
+                                    }
+                            }
                         }
                     }
+                    .frame(width: dayWidth, height: headerHeight)
+                    .contentShape(Rectangle())
                 }
-                .frame(width: laneWidth * CGFloat(rooms.count), height: headerHeight)
+                .buttonStyle(.plain)
                 .background(
-                    dayIndex.isMultiple(of: 2)
-                        ? theme.scheduleAlternatingDayHeaderBackground
-                        : theme.surface
+                    isFocused
+                        ? theme.accent.opacity(colorScheme == .dark ? 0.12 : 0.07)
+                        : dayIndex.isMultiple(of: 2)
+                            ? theme.scheduleAlternatingDayHeaderBackground
+                            : theme.surface
                 )
                 .overlay(alignment: .leading) {
                     Rectangle()
                         .fill(theme.separator)
                         .frame(width: 1)
                 }
+                .overlay(alignment: .bottom) {
+                    if isFocused {
+                        Rectangle()
+                            .fill(theme.accent)
+                            .frame(height: 2)
+                    }
+                }
+                .help(isFocused ? "再次点击，恢复全周等宽" : "点击放大这一天")
             }
         }
         .background(theme.surface)
@@ -111,10 +140,14 @@ struct ScheduleGridView: View {
 
     private func timelineBody(width: CGFloat, height: CGFloat, theme: MDTheme) -> some View {
         let roomCount = max(1, rooms.count)
-        let laneCount = days.count * roomCount
-        let laneWidth = max(1, (width - timeColumnWidth) / CGFloat(laneCount))
-        let dayWidth = laneWidth * CGFloat(roomCount)
-        let blockInset: CGFloat = laneWidth < 84 ? 1.5 : 2.5
+        let layout = ScheduleFocusLayout(
+            availableWidth: width,
+            timeColumnWidth: timeColumnWidth,
+            dayCount: days.count,
+            roomCount: roomCount,
+            focusedDayIndex: focusedDayIndex
+        )
+        let ageGroupPalette = ScheduleAgeGroupPalette(ageGroups: model.ageGroups)
         return ZStack(alignment: .topLeading) {
             theme.background
 
@@ -122,8 +155,8 @@ struct ScheduleGridView: View {
                 if dayIndex.isMultiple(of: 2) {
                     Rectangle()
                         .fill(theme.scheduleAlternatingDayBackground)
-                        .frame(width: dayWidth, height: height)
-                        .offset(x: timeColumnWidth + CGFloat(dayIndex) * dayWidth)
+                        .frame(width: layout.dayWidth(at: dayIndex), height: height)
+                        .offset(x: timeColumnWidth + layout.dayOffset(at: dayIndex))
                         .accessibilityHidden(true)
                 }
             }
@@ -149,21 +182,39 @@ struct ScheduleGridView: View {
                 }
             }
 
-            ForEach(0...laneCount, id: \.self) { index in
+            ForEach(days.indices, id: \.self) { dayIndex in
                 Rectangle()
-                    .fill(index.isMultiple(of: roomCount) ? theme.separator : theme.faintSeparator)
-                    .frame(width: index.isMultiple(of: roomCount) ? 0.8 : 0.45, height: height)
-                    .offset(x: timeColumnWidth + CGFloat(index) * laneWidth)
+                    .fill(theme.separator)
+                    .frame(width: 0.8, height: height)
+                    .offset(x: timeColumnWidth + layout.dayOffset(at: dayIndex))
+
+                ForEach(1..<roomCount, id: \.self) { roomIndex in
+                    Rectangle()
+                        .fill(theme.faintSeparator)
+                        .frame(width: 0.45, height: height)
+                        .offset(
+                            x: timeColumnWidth
+                                + layout.laneOffset(dayIndex: dayIndex, roomIndex: roomIndex)
+                        )
+                }
             }
 
+            Rectangle()
+                .fill(theme.separator)
+                .frame(width: 0.8, height: height)
+                .offset(x: width - 0.8)
+
             ForEach(sessions) { session in
-                if let placement = placement(for: session, laneWidth: laneWidth, height: height) {
+                if let placement = placement(for: session, layout: layout, height: height) {
+                    let blockInset: CGFloat = placement.width < 84 ? 1.5 : 2.5
                     CourseBlockView(
                         model: model,
                         session: session,
-                        width: max(1, laneWidth - blockInset * 2),
+                        width: max(1, placement.width - blockInset * 2),
                         height: placement.height,
                         fontScale: fontScale,
+                        presentation: courseBlockPresentation(for: placement.dayIndex),
+                        ageGroupColorIndex: ageGroupPalette.index(for: model.course(id: session.courseID)?.ageGroupID),
                         isSelected: selectedSessionID == session.id,
                         hasConflict: hasConflict(session),
                         select: { selectedSessionID = session.id }
@@ -179,7 +230,11 @@ struct ScheduleGridView: View {
         ScheduleWeek.days(startingAt: weekStart, calendar: calendar)
     }
 
-    private func placement(for session: ClassSession, laneWidth: CGFloat, height: CGFloat) -> SessionPlacement? {
+    private func placement(
+        for session: ClassSession,
+        layout: ScheduleFocusLayout,
+        height: CGFloat
+    ) -> SessionPlacement? {
         guard
             let dayIndex = days.firstIndex(where: { calendar.isDate($0, inSameDayAs: session.startsAt) }),
             let effectiveRoom = model.effectiveRoom(for: session),
@@ -196,11 +251,22 @@ struct ScheduleGridView: View {
 
         let clippedStart = max(startMinute, timelineStart)
         let clippedEnd = min(endMinute, timelineEnd)
-        let laneIndex = dayIndex * rooms.count + roomIndex
-        let x = timeColumnWidth + CGFloat(laneIndex) * laneWidth
+        let laneWidth = layout.laneWidth(at: dayIndex)
+        let x = timeColumnWidth + layout.laneOffset(dayIndex: dayIndex, roomIndex: roomIndex)
         let y = CGFloat(clippedStart - timelineStart) / CGFloat(timelineEnd - timelineStart) * height
         let blockHeight = CGFloat(clippedEnd - clippedStart) / CGFloat(timelineEnd - timelineStart) * height
-        return SessionPlacement(x: x, y: y, height: max(28, blockHeight - 3))
+        return SessionPlacement(
+            dayIndex: dayIndex,
+            x: x,
+            y: y,
+            width: laneWidth,
+            height: max(28, blockHeight - 3)
+        )
+    }
+
+    private func courseBlockPresentation(for dayIndex: Int) -> ScheduleCourseBlockPresentation {
+        guard let focusedDayIndex else { return .automatic }
+        return focusedDayIndex == dayIndex ? .expanded : .overview
     }
 
     private func hasConflict(_ session: ClassSession) -> Bool {
@@ -227,8 +293,10 @@ struct ScheduleGridView: View {
 }
 
 private struct SessionPlacement {
+    let dayIndex: Int
     let x: CGFloat
     let y: CGFloat
+    let width: CGFloat
     let height: CGFloat
 }
 #endif

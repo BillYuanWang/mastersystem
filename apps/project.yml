@@ -40,8 +40,8 @@ targets:
       properties:
         CFBundleDisplayName: MD Desk
         CFBundleIconFile: AppIcon
-        CFBundleShortVersionString: 0.1.24
-        CFBundleVersion: 71
+        CFBundleShortVersionString: "0.9.0"
+        CFBundleVersion: "89"
         CFBundleURLTypes:
           - CFBundleURLName: com.masterdance.desk.auth
             CFBundleURLSchemes:
@@ -56,7 +56,10 @@ targets:
         INFOPLIST_KEY_CFBundleIconFile: AppIcon
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 3GH2L367W3
         ENABLE_HARDENED_RUNTIME: YES
+        MARKETING_VERSION: "0.9.0"
+        CURRENT_PROJECT_VERSION: "89"
 
   MasterDanceMobile:
     type: application
@@ -77,8 +80,8 @@ targets:
       path: MasterDanceMobile/Info.plist
       properties:
         CFBundleDisplayName: Master Dance
-        CFBundleShortVersionString: 0.1.22
-        CFBundleVersion: "43"
+        CFBundleShortVersionString: "0.9.0"
+        CFBundleVersion: "49"
         CFBundleURLTypes:
           - CFBundleURLName: com.masterdance.mobile.auth
             CFBundleURLSchemes:
@@ -96,6 +99,14 @@ targets:
         TARGETED_DEVICE_FAMILY: 1
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 3GH2L367W3
+        MARKETING_VERSION: "0.9.0"
+        CURRENT_PROJECT_VERSION: "49"
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: Master Dance iOS App Store
 
 schemes:
   MasterDanceAdmin:

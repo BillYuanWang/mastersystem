@@ -222,6 +222,51 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
         try await enqueue(.deleteInstructor(id))
     }
 
+    public func listSessionPassPlans() async throws -> [SessionPassPlan] {
+        try await ensureSnapshot()
+        return await local.listSessionPassPlans()
+    }
+
+    public func save(sessionPassPlan: SessionPassPlan) async throws {
+        try await ensureSnapshot()
+        try await local.save(sessionPassPlan: sessionPassPlan)
+        try await enqueue(.saveSessionPassPlan(sessionPassPlan))
+    }
+
+    public func deleteSessionPassPlan(id: SessionPassPlanID) async throws {
+        try await ensureSnapshot()
+        try await local.deleteSessionPassPlan(id: id)
+        try await enqueue(.deleteSessionPassPlan(id))
+    }
+
+    public func listStudentSessionPasses(studentID: StudentID?) async throws -> [StudentSessionPass] {
+        try await ensureSnapshot()
+        return await local.listStudentSessionPasses(studentID: studentID)
+    }
+
+    public func save(studentSessionPass: StudentSessionPass) async throws {
+        try await ensureSnapshot()
+        try await local.save(studentSessionPass: studentSessionPass)
+        try await enqueue(.saveStudentSessionPass(studentSessionPass))
+    }
+
+    public func deleteStudentSessionPass(id: StudentSessionPassID) async throws {
+        try await ensureSnapshot()
+        try await local.deleteStudentSessionPass(id: id)
+        try await enqueue(.deleteStudentSessionPass(id))
+    }
+
+    public func listSessionPassUses(
+        studentSessionPassID: StudentSessionPassID?,
+        studentID: StudentID?
+    ) async throws -> [SessionPassUse] {
+        try await ensureSnapshot()
+        return await local.listSessionPassUses(
+            studentSessionPassID: studentSessionPassID,
+            studentID: studentID
+        )
+    }
+
     public func listCourses(termID: TermID?) async throws -> [Course] {
         try await ensureSnapshot()
         return await local.listCourses(termID: termID)
@@ -355,7 +400,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 
     public func save(attendance: Attendance) async throws {
         try await ensureSnapshot()
-        await local.save(attendance: attendance)
+        try await local.save(attendance: attendance)
         try await enqueue(.saveAttendance(attendance))
     }
 
@@ -573,16 +618,14 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
     public func issueBillingInvoice(
         invoice: BillingInvoice,
         lineItems: [BillingInvoiceLineItem],
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingInvoice {
         try await ensureSnapshot()
         _ = try await synchronizeIfNeeded()
         let saved = try await remote.issueBillingInvoice(
             invoice: invoice,
             lineItems: lineItems,
-            artifact: artifact,
-            pngData: pngData
+            artifactUploads: artifactUploads
         )
         try await replaceWithRemoteSnapshot()
         return saved
@@ -590,15 +633,13 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 
     public func recordBillingPayment(
         payment: BillingPayment,
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingPayment {
         try await ensureSnapshot()
         _ = try await synchronizeIfNeeded()
         let saved = try await remote.recordBillingPayment(
             payment: payment,
-            artifact: artifact,
-            pngData: pngData
+            artifactUploads: artifactUploads
         )
         try await replaceWithRemoteSnapshot()
         return saved
@@ -646,6 +687,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
         let termHolidays = try await remote.listTermHolidays(termID: nil)
         let courseCategories = try await remote.listCourseCategories()
         let courseTypes = try await remote.listCourseTypes()
+        let sessionPassPlans = try await remote.listSessionPassPlans()
         let ageGroups = try await remote.listAgeGroups()
         let rooms = try await remote.listRooms()
         let instructors = try await remote.listInstructors()
@@ -659,6 +701,11 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
             studentID: nil
         )
         let attendance = try await remote.listAttendance(sessionID: nil, studentID: nil)
+        let studentSessionPasses = try await remote.listStudentSessionPasses(studentID: nil)
+        let sessionPassUses = try await remote.listSessionPassUses(
+            studentSessionPassID: nil,
+            studentID: nil
+        )
         let leaveRequests = try await remote.listLeaveRequests(sessionID: nil, studentID: nil)
         let contractDocuments = try await remote.listContractDocuments(termID: nil)
         var contractConsents: [ContractConsent] = []
@@ -682,6 +729,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
             termHolidays: termHolidays,
             courseCategories: courseCategories,
             courseTypes: courseTypes,
+            sessionPassPlans: sessionPassPlans,
             ageGroups: ageGroups,
             rooms: rooms,
             instructors: instructors,
@@ -691,6 +739,8 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
             guardians: guardians,
             enrollments: enrollments,
             attendance: attendance,
+            studentSessionPasses: studentSessionPasses,
+            sessionPassUses: sessionPassUses,
             leaveRequests: leaveRequests,
             contractDocuments: contractDocuments,
             contractConsents: contractConsents,
@@ -766,7 +816,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 }
 
 private struct CacheEnvelope: Codable {
-    static let currentVersion = 4
+    static let currentVersion = 5
 
     let version: Int
     let snapshot: PreviewData
@@ -804,6 +854,10 @@ private enum PendingMutation: Codable, Sendable {
     case deleteCourseCategory(CourseCategoryID)
     case saveCourseType(CourseType)
     case deleteCourseType(CourseTypeID)
+    case saveSessionPassPlan(SessionPassPlan)
+    case deleteSessionPassPlan(SessionPassPlanID)
+    case saveStudentSessionPass(StudentSessionPass)
+    case deleteStudentSessionPass(StudentSessionPassID)
     case saveAgeGroup(AgeGroup)
     case deleteAgeGroup(AgeGroupID)
     case saveRoom(Room)
@@ -840,6 +894,10 @@ private enum PendingMutation: Codable, Sendable {
         case .deleteCourseCategory(let id): "course-category:\(id)"
         case .saveCourseType(let value): "course-type:\(value.id)"
         case .deleteCourseType(let id): "course-type:\(id)"
+        case .saveSessionPassPlan(let value): "session-pass-plan:\(value.id)"
+        case .deleteSessionPassPlan(let id): "session-pass-plan:\(id)"
+        case .saveStudentSessionPass(let value): "student-session-pass:\(value.id)"
+        case .deleteStudentSessionPass(let id): "student-session-pass:\(id)"
         case .saveAgeGroup(let value): "age-group:\(value.id)"
         case .deleteAgeGroup(let id): "age-group:\(id)"
         case .saveRoom(let value): "room:\(value.id)"
@@ -886,6 +944,10 @@ private enum PendingMutation: Codable, Sendable {
         case .deleteCourseCategory(let id): try await repository.deleteCourseCategory(id: id)
         case .saveCourseType(let value): try await repository.save(courseType: value)
         case .deleteCourseType(let id): try await repository.deleteCourseType(id: id)
+        case .saveSessionPassPlan(let value): try await repository.save(sessionPassPlan: value)
+        case .deleteSessionPassPlan(let id): try await repository.deleteSessionPassPlan(id: id)
+        case .saveStudentSessionPass(let value): try await repository.save(studentSessionPass: value)
+        case .deleteStudentSessionPass(let id): try await repository.deleteStudentSessionPass(id: id)
         case .saveAgeGroup(let value): try await repository.save(ageGroup: value)
         case .deleteAgeGroup(let id): try await repository.deleteAgeGroup(id: id)
         case .saveRoom(let value): try await repository.save(room: value)

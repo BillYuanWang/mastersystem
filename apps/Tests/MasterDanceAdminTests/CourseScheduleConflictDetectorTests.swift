@@ -69,6 +69,27 @@ struct CourseScheduleConflictDetectorTests {
         #expect(result.isEmpty)
     }
 
+    @Test("Unordered sessions preserve boundary and overlap behavior")
+    func handlesUnorderedSessions() throws {
+        let roomID = RoomID()
+        let first = course(roomID: roomID, instructorID: InstructorID())
+        let second = course(roomID: roomID, instructorID: InstructorID())
+        let start = try #require(ISO8601DateFormatter().date(from: "2026-08-18T16:00:00Z"))
+
+        let result = CourseScheduleConflictDetector.conflicts(
+            courses: [first, second],
+            sessions: [
+                session(courseID: second.id, startsAt: start.addingTimeInterval(60 * 60), duration: 60),
+                session(courseID: second.id, startsAt: start.addingTimeInterval(30 * 60), duration: 60),
+                session(courseID: first.id, startsAt: start, duration: 60),
+            ]
+        )
+
+        #expect(result[first.id]?.first?.overlappingSessionCount == 1)
+        #expect(result[second.id]?.first?.overlappingSessionCount == 1)
+        #expect(result[first.id]?.first?.resources == [.room])
+    }
+
     private func course(roomID: RoomID, instructorID: InstructorID) -> Course {
         Course(
             termID: TermID(),

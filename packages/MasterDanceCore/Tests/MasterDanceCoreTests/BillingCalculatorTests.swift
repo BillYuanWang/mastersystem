@@ -4,6 +4,14 @@ import Testing
 
 @Suite("Billing calculator")
 struct BillingCalculatorTests {
+    @Test("group per-session price stays five dollars above full-term unit price")
+    func groupPerSessionPremium() {
+        #expect(CoursePricingPolicy.perSessionUnitPriceCents(fullTermUnitPriceCents: 4_000) == 4_500)
+        #expect(CoursePricingPolicy.perSessionUnitPriceCents(fullTermUnitPriceCents: 3_500) == 4_000)
+        #expect(CoursePricingPolicy.perSessionUnitPriceCents(fullTermUnitPriceCents: nil) == nil)
+        #expect(CoursePricingPolicy.perSessionUnitPriceCents(fullTermUnitPriceCents: 0) == nil)
+    }
+
     @Test("full-term tuition uses actual scheduled sessions")
     func fullTermTuition() {
         let fixture = Fixture()
@@ -94,16 +102,149 @@ struct BillingCalculatorTests {
         #expect(BillingCalculator.cardFeeCents(for: 15) == 1)
     }
 
+    @Test("paid and waived line items retain price without contributing to amount due")
+    func settlementStates() throws {
+        let invoiceID = BillingInvoiceID()
+        let paidItem = BillingInvoiceLineItem(
+            invoiceID: invoiceID,
+            kind: .tuition,
+            title: "已付课程",
+            unitAmountCents: 5_000,
+            amountCents: 5_000,
+            isPaid: true
+        )
+        let waivedItem = BillingInvoiceLineItem(
+            invoiceID: invoiceID,
+            kind: .tuition,
+            title: "免付课程",
+            unitAmountCents: 5_000,
+            amountCents: 5_000,
+            settlementStatus: .waived
+        )
+
+        #expect(paidItem.isPaid)
+        #expect(!paidItem.includedInAmountDue)
+        #expect(waivedItem.isWaived)
+        #expect(!waivedItem.isPaid)
+        #expect(!waivedItem.includedInAmountDue)
+
+        let encoded = try JSONEncoder().encode(waivedItem)
+        let decoded = try JSONDecoder().decode(BillingInvoiceLineItem.self, from: encoded)
+        #expect(decoded.settlementStatus == .waived)
+        #expect(decoded.amountCents == 5_000)
+        #expect(BillingArtifactLanguage.inferred(from: "invoice-v1-en.png") == .english)
+        #expect(BillingArtifactLanguage.inferred(from: "invoice-v1-zh_en.png") == .bilingual)
+    }
+
+    @Test("legacy line item caches infer settlement status from the amount-due flag")
+    func legacyLineItemSettlementDecoding() throws {
+        let item = BillingInvoiceLineItem(
+            invoiceID: BillingInvoiceID(),
+            kind: .manual,
+            title: "旧已付项目",
+            unitAmountCents: 1_000,
+            amountCents: 1_000,
+            isPaid: true
+        )
+        let encoded = try JSONEncoder().encode(item)
+        var object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object.removeValue(forKey: "settlementStatus")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(BillingInvoiceLineItem.self, from: legacyData)
+
+        #expect(decoded.settlementStatus == .paid)
+        #expect(decoded.isPaid)
+    }
+
+    @Test("zero-due invoices are marked as requiring no payment")
+    func noPaymentRequiredInvoiceStatus() {
+        let invoice = BillingInvoice(
+            guardianID: GuardianID(),
+            termID: TermID(),
+            invoiceNumber: "INV-WAIVED",
+            schoolYearLabel: "2026 秋季学期",
+            amountDueCents: 0
+        )
+
+        #expect(invoice.paymentProgress(payments: []) == .noPaymentRequired)
+        #expect(invoice.displayStatus(payments: []) == .noPaymentRequired)
+    }
+
+    @Test("payment progress stays attached to one invoice version")
+    func invoiceVersionPaymentProgress() {
+        let invoice = BillingInvoice(
+            guardianID: GuardianID(),
+            termID: TermID(),
+            invoiceNumber: "INV-PROGRESS",
+            version: 3,
+            schoolYearLabel: "2026 秋季学期",
+            amountDueCents: 10_000
+        )
+        let unrelated = BillingPayment(
+            invoiceID: BillingInvoiceID(),
+            amountCents: 10_000,
+            processingFeeCents: 0,
+            method: .cash
+        )
+        let first = BillingPayment(
+            invoiceID: invoice.id,
+            amountCents: 4_000,
+            processingFeeCents: 0,
+            method: .zelle
+        )
+        let second = BillingPayment(
+            invoiceID: invoice.id,
+            amountCents: 6_000,
+            processingFeeCents: 0,
+            method: .check
+        )
+
+        #expect(invoice.paymentProgress(payments: [unrelated]) == .unpaid)
+        #expect(invoice.paymentProgress(payments: [first, unrelated]) == .partiallyPaid)
+        #expect(invoice.paidCents(payments: [first, unrelated]) == 4_000)
+        #expect(invoice.outstandingCents(payments: [first, unrelated]) == 6_000)
+        #expect(invoice.paymentProgress(payments: [first, second, unrelated]) == .paid)
+        #expect(invoice.outstandingCents(payments: [first, second, unrelated]) == 0)
+    }
+
+    @Test("legacy cached invoices decode before learner scopes existed")
+    func legacyInvoiceDecoding() throws {
+        let invoice = BillingInvoice(
+            guardianID: GuardianID(),
+            termID: TermID(),
+            learnerIDs: [StudentID()],
+            invoiceNumber: "INV-LEGACY",
+            schoolYearLabel: "2026 秋季学期",
+            amountDueCents: 1_000
+        )
+        let encoded = try JSONEncoder().encode(invoice)
+        var object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        object.removeValue(forKey: "learnerIDs")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(BillingInvoice.self, from: legacyData)
+
+        #expect(decoded.learnerIDs.isEmpty)
+        #expect(decoded.invoiceNumber == invoice.invoiceNumber)
+    }
+
     @Test("issued invoices, payments, and correction versions remain append-only")
     func invoiceLifecycle() async throws {
         let guardian = Guardian(displayName: "测试家庭")
+        let learner = Student(
+            guardianID: guardian.id,
+            displayName: "测试学员",
+            kind: .child
+        )
         let termID = TermID()
         let store = PreviewMasterDanceStore(
-            data: PreviewData(guardians: [guardian])
+            data: PreviewData(students: [learner], guardians: [guardian])
         )
         let first = BillingInvoice(
             guardianID: guardian.id,
             termID: termID,
+            learnerIDs: [learner.id],
             invoiceNumber: "INV-2026-0001",
             schoolYearLabel: "2026–2027",
             amountDueCents: 10_000
@@ -118,12 +259,11 @@ struct BillingCalculatorTests {
         _ = try await store.issueBillingInvoice(
             invoice: first,
             lineItems: [firstItem],
-            artifact: BillingArtifact(
+            artifactUploads: artifactUploads(
                 invoiceID: first.id,
                 kind: .invoice,
-                storagePath: "preview/invoice.png"
-            ),
-            pngData: Data([1, 2, 3])
+                data: Data([1, 2, 3])
+            )
         )
 
         let payment = BillingPayment(
@@ -134,18 +274,18 @@ struct BillingCalculatorTests {
         )
         _ = try await store.recordBillingPayment(
             payment: payment,
-            artifact: BillingArtifact(
+            artifactUploads: artifactUploads(
                 invoiceID: first.id,
                 paymentID: payment.id,
                 kind: .receipt,
-                storagePath: "preview/receipt.png"
-            ),
-            pngData: Data([4, 5, 6])
+                data: Data([4, 5, 6])
+            )
         )
 
         let second = BillingInvoice(
             guardianID: guardian.id,
             termID: termID,
+            learnerIDs: [learner.id],
             invoiceNumber: first.invoiceNumber,
             version: 2,
             schoolYearLabel: first.schoolYearLabel,
@@ -162,12 +302,11 @@ struct BillingCalculatorTests {
         _ = try await store.issueBillingInvoice(
             invoice: second,
             lineItems: [secondItem],
-            artifact: BillingArtifact(
+            artifactUploads: artifactUploads(
                 invoiceID: second.id,
                 kind: .invoice,
-                storagePath: "preview/invoice-v2.png"
-            ),
-            pngData: Data([7, 8, 9])
+                data: Data([7, 8, 9])
+            )
         )
 
         let invoices = await store.listBillingInvoices()
@@ -176,17 +315,30 @@ struct BillingCalculatorTests {
         #expect(storedFirst.displayStatus(payments: [payment]) == .superseded)
         #expect(first.outstandingCents(payments: [payment]) == 5_000)
         #expect(await store.listBillingPayments().map(\.id) == [payment.id])
-        #expect(await store.listBillingArtifacts().count == 3)
+        #expect(await store.listBillingArtifacts().count == 6)
     }
 
-    @Test("a family and term can only start one invoice series")
-    func invoiceSeriesIsUniquePerFamilyAndTerm() async throws {
+    @Test("invoice series are unique per family, term, and learner selection")
+    func invoiceSeriesIsUniquePerLearnerScope() async throws {
         let guardian = Guardian(displayName: "测试家庭")
+        let firstLearner = Student(
+            guardianID: guardian.id,
+            displayName: "学员甲",
+            kind: .child
+        )
+        let secondLearner = Student(
+            guardianID: guardian.id,
+            displayName: "学员乙",
+            kind: .child
+        )
         let termID = TermID()
-        let store = PreviewMasterDanceStore(data: PreviewData(guardians: [guardian]))
+        let store = PreviewMasterDanceStore(
+            data: PreviewData(students: [firstLearner, secondLearner], guardians: [guardian])
+        )
         let first = BillingInvoice(
             guardianID: guardian.id,
             termID: termID,
+            learnerIDs: [firstLearner.id],
             invoiceNumber: "INV-2026-0001",
             schoolYearLabel: "2026–2027",
             amountDueCents: 1_000
@@ -194,6 +346,7 @@ struct BillingCalculatorTests {
         let duplicateRoot = BillingInvoice(
             guardianID: guardian.id,
             termID: termID,
+            learnerIDs: [firstLearner.id],
             invoiceNumber: "INV-2026-0002",
             schoolYearLabel: "2026–2027",
             amountDueCents: 1_000
@@ -202,18 +355,40 @@ struct BillingCalculatorTests {
         _ = try await store.issueBillingInvoice(
             invoice: first,
             lineItems: [invoiceItem(invoiceID: first.id, amountCents: 1_000)],
-            artifact: BillingArtifact(invoiceID: first.id, kind: .invoice),
-            pngData: Data([1])
+            artifactUploads: artifactUploads(invoiceID: first.id, kind: .invoice, data: Data([1]))
         )
 
         await #expect(throws: PreviewRepositoryError.self) {
             try await store.issueBillingInvoice(
                 invoice: duplicateRoot,
                 lineItems: [invoiceItem(invoiceID: duplicateRoot.id, amountCents: 1_000)],
-                artifact: BillingArtifact(invoiceID: duplicateRoot.id, kind: .invoice),
-                pngData: Data([2])
+                artifactUploads: artifactUploads(
+                    invoiceID: duplicateRoot.id,
+                    kind: .invoice,
+                    data: Data([2])
+                )
             )
         }
+
+        let separateLearnerInvoice = BillingInvoice(
+            guardianID: guardian.id,
+            termID: termID,
+            learnerIDs: [secondLearner.id],
+            invoiceNumber: "INV-2026-0003",
+            schoolYearLabel: "2026–2027",
+            amountDueCents: 1_000
+        )
+        _ = try await store.issueBillingInvoice(
+            invoice: separateLearnerInvoice,
+            lineItems: [invoiceItem(invoiceID: separateLearnerInvoice.id, amountCents: 1_000)],
+            artifactUploads: artifactUploads(
+                invoiceID: separateLearnerInvoice.id,
+                kind: .invoice,
+                data: Data([3])
+            )
+        )
+
+        #expect(await store.listBillingInvoices().filter { $0.version == 1 }.count == 2)
     }
 
     private func invoiceItem(invoiceID: BillingInvoiceID, amountCents: Int) -> BillingInvoiceLineItem {
@@ -224,6 +399,25 @@ struct BillingCalculatorTests {
             unitAmountCents: amountCents,
             amountCents: amountCents
         )
+    }
+
+    private func artifactUploads(
+        invoiceID: BillingInvoiceID,
+        paymentID: BillingPaymentID? = nil,
+        kind: BillingArtifactKind,
+        data: Data
+    ) -> [BillingArtifactUpload] {
+        BillingArtifactLanguage.allCases.map { language in
+            BillingArtifactUpload(
+                artifact: BillingArtifact(
+                    invoiceID: invoiceID,
+                    paymentID: paymentID,
+                    kind: kind,
+                    language: language
+                ),
+                pngData: data
+            )
+        }
     }
 }
 

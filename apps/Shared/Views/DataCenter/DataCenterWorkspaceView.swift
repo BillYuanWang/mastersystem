@@ -161,6 +161,25 @@ struct DataCenterWorkspaceView: View {
                 delete: { deletion = .courseType($0.id, $0.name) },
                 theme: theme
             )
+        case .sessionPassPlans:
+            referenceTable(
+                headers: [("次卡方案", 180), ("次数", 90), ("单价", 120), ("备注", 240), ("状态", 90)],
+                rows: filtered(model.sessionPassPlans, text: { [$0.name, $0.notes ?? ""] }),
+                name: { $0.name },
+                values: {
+                    [
+                        $0.name,
+                        "\($0.includedSessions) 次",
+                        "$\(MoneyTextParser.dollars(from: $0.unitPriceCents))/次",
+                        $0.notes ?? "—",
+                        $0.isActive ? "启用" : "停用"
+                    ]
+                },
+                reorder: { model.moveSessionPassPlan($0.id, to: $1.id) },
+                edit: { editor = .sessionPassPlan($0) },
+                delete: { deletion = .sessionPassPlan($0.id, $0.name) },
+                theme: theme
+            )
         }
     }
 
@@ -684,6 +703,8 @@ struct DataCenterWorkspaceView: View {
             ReferenceDataEditorView(model: model, target: .room(value))
         case let .instructor(value):
             ReferenceDataEditorView(model: model, target: .instructor(value))
+        case let .sessionPassPlan(value):
+            SessionPassPlanEditorView(model: model, original: value)
         }
     }
 
@@ -699,6 +720,7 @@ struct DataCenterWorkspaceView: View {
                 case let .ageGroup(id, _): try await model.deleteAgeGroup(id: id)
                 case let .room(id, _): try await model.deleteRoom(id: id)
                 case let .instructor(id, _): try await model.deleteInstructor(id: id)
+                case let .sessionPassPlan(id, _): try await model.deleteSessionPassPlan(id: id)
                 }
             } catch {
                 errorMessage = error.localizedDescription
@@ -799,6 +821,7 @@ private enum DataCenterSection: String, CaseIterable, Identifiable {
     case ageGroups
     case rooms
     case courseTypes
+    case sessionPassPlans
 
     var id: String { rawValue }
 
@@ -809,6 +832,7 @@ private enum DataCenterSection: String, CaseIterable, Identifiable {
         case .ageGroups: "年龄段"
         case .rooms: "教室"
         case .courseTypes: "课程种类"
+        case .sessionPassPlans: "次卡方案"
         }
     }
 
@@ -821,6 +845,7 @@ private enum DataCenterSection: String, CaseIterable, Identifiable {
         case .ageGroups: "person.2"
         case .rooms: "door.left.hand.open"
         case .courseTypes: "tag"
+        case .sessionPassPlans: "rectangle.stack.fill"
         }
     }
 
@@ -831,6 +856,7 @@ private enum DataCenterSection: String, CaseIterable, Identifiable {
         case .ageGroups: .ageGroup(nil)
         case .rooms: .room(nil)
         case .courseTypes: .courseType(nil)
+        case .sessionPassPlans: .sessionPassPlan(nil)
         }
     }
 }
@@ -842,6 +868,7 @@ private enum DataCenterEditor: Identifiable {
     case ageGroup(AgeGroup?)
     case room(Room?)
     case instructor(Instructor?)
+    case sessionPassPlan(SessionPassPlan?)
 
     var id: String {
         switch self {
@@ -851,6 +878,7 @@ private enum DataCenterEditor: Identifiable {
         case let .ageGroup(value): "age-\(value?.id.description ?? "new")"
         case let .room(value): "room-\(value?.id.description ?? "new")"
         case let .instructor(value): "instructor-\(value?.id.description ?? "new")"
+        case let .sessionPassPlan(value): "session-pass-plan-\(value?.id.description ?? "new")"
         }
     }
 }
@@ -862,6 +890,7 @@ private enum DataCenterDeletion {
     case ageGroup(AgeGroupID, String)
     case room(RoomID, String)
     case instructor(InstructorID, String)
+    case sessionPassPlan(SessionPassPlanID, String)
 
     var name: String {
         switch self {
@@ -870,7 +899,8 @@ private enum DataCenterDeletion {
              let .courseType(_, name),
              let .ageGroup(_, name),
              let .room(_, name),
-             let .instructor(_, name):
+             let .instructor(_, name),
+             let .sessionPassPlan(_, name):
             name
         }
     }
@@ -1132,6 +1162,85 @@ private struct ReferenceDataEditorView: View {
                 value.isActive = isActiveSnapshot
                 try await model.saveInstructor(value)
             }
+        }
+        dismiss()
+    }
+}
+
+private struct SessionPassPlanEditorView: View {
+    let model: AppModel
+    let original: SessionPassPlan?
+
+    @State private var name: String
+    @State private var includedSessions: Int
+    @State private var unitPriceText: String
+    @State private var notes: String
+    @State private var isActive: Bool
+
+    @Environment(\.dismiss) private var dismiss
+
+    init(model: AppModel, original: SessionPassPlan?) {
+        self.model = model
+        self.original = original
+        _name = State(initialValue: original?.name ?? "")
+        _includedSessions = State(initialValue: original?.includedSessions ?? 10)
+        _unitPriceText = State(initialValue: MoneyTextParser.dollars(from: original?.unitPriceCents))
+        _notes = State(initialValue: original?.notes ?? "")
+        _isActive = State(initialValue: original?.isActive ?? true)
+    }
+
+    var body: some View {
+        Form {
+            MDSectionTitle(chinese: original == nil ? "添加次卡方案" : "编辑次卡方案")
+            TextField("方案名称", text: $name, prompt: Text("例如：成人 10 次卡"))
+            Stepper("包含次数：\(includedSessions)", value: $includedSessions, in: 1...10_000)
+            TextField("每次单价（美元）", text: $unitPriceText, prompt: Text("40.00"))
+            TextField("备注", text: $notes, axis: .vertical)
+                .lineLimit(2...4)
+            Toggle("启用", isOn: $isActive)
+
+            Text("方案修改只影响以后发出的次卡；已经发出的卡会保留发卡时的次数和单价。")
+                .mdFont(.compact)
+                .foregroundStyle(.secondary)
+
+            editorButtons(canSave: canSave, dismiss: dismiss, save: save)
+        }
+        .formStyle(.grouped)
+        .frame(width: 450)
+        .padding(8)
+    }
+
+    private var parsedUnitPrice: Int? {
+        MoneyTextParser.cents(from: unitPriceText)
+    }
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && includedSessions > 0
+            && parsedUnitPrice != nil
+            && parsedUnitPrice! >= 0
+    }
+
+    private func save() {
+        guard let unitPriceCents = parsedUnitPrice else { return }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        var value = original ?? SessionPassPlan(
+            name: trimmedName,
+            includedSessions: includedSessions,
+            unitPriceCents: unitPriceCents
+        )
+        value.name = trimmedName
+        value.includedSessions = includedSessions
+        value.unitPriceCents = unitPriceCents
+        value.notes = trimmedNotes
+        value.isActive = isActive
+        let isCreating = original == nil
+        model.performBackgroundOperation(
+            label: isCreating ? "创建次卡方案" : "更新次卡方案",
+            successMessage: isCreating ? "次卡方案已创建" : "次卡方案已更新"
+        ) {
+            try await model.saveSessionPassPlan(value)
         }
         dismiss()
     }

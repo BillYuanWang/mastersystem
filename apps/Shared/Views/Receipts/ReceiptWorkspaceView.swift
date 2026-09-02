@@ -14,25 +14,49 @@ private enum BillingWorkspaceMode: String, CaseIterable, Identifiable {
 private enum BillingWorkspaceError: LocalizedError {
     case missingFamily
     case missingTerm
+    case missingLearners
     case missingInvoiceNumber
     case missingItems
+    case missingEnrollmentCharges
     case incompleteItem
     case invalidAmount(String)
     case negativeTotal
     case invalidPayment
     case invoiceSeriesChanged
+    case itemOutsideLearnerScope
 
     var errorDescription: String? {
         switch self {
         case .missingFamily: "请选择监护人。"
         case .missingTerm: "请选择账单所属学期。"
+        case .missingLearners: "请至少勾选一名学员。"
         case .missingInvoiceNumber: "请输入账单编号。"
         case .missingItems: "请至少添加一个收费项目。"
+        case .missingEnrollmentCharges: "账单必须列出所选学员在本学期的全部报名课程。请先点击“载入所选学员课程”。"
         case .incompleteItem: "每个收费项目都需要名称和正确金额。"
         case .invalidAmount(let value): "金额“\(value)”格式不正确。"
         case .negativeTotal: "本次应付合计不能小于 0。"
         case .invalidPayment: "付款金额必须大于 0，且不能超过待付金额。"
         case .invoiceSeriesChanged: "这份账单已经出现更新版本，请返回账单记录后基于最新版继续。"
+        case .itemOutsideLearnerScope: "收费项目中的学员不属于本账单，请重新选择。"
+        }
+    }
+}
+
+private extension BillingLineItemSettlementStatus {
+    var title: String {
+        switch self {
+        case .unpaid: "未付"
+        case .paid: "已付"
+        case .waived: "免付"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .unpaid: "未付：计入本次应付"
+        case .paid: "已付：保留原价，不再计入本次应付"
+        case .waived: "免付：保留原价，记录减免但无需付款"
         }
     }
 }
@@ -47,7 +71,7 @@ private struct BillingDraftLine: Identifiable, Equatable {
     var quantity: Int
     var unitAmountCents: Int
     var amountText: String
-    var includedInAmountDue: Bool
+    var settlementStatus: BillingLineItemSettlementStatus
 
     init(
         id: UUID = UUID(),
@@ -59,7 +83,7 @@ private struct BillingDraftLine: Identifiable, Equatable {
         quantity: Int = 1,
         unitAmountCents: Int = 0,
         amountText: String = "",
-        includedInAmountDue: Bool = true
+        settlementStatus: BillingLineItemSettlementStatus = .unpaid
     ) {
         self.id = id
         self.studentID = studentID
@@ -70,13 +94,18 @@ private struct BillingDraftLine: Identifiable, Equatable {
         self.quantity = quantity
         self.unitAmountCents = unitAmountCents
         self.amountText = amountText
-        self.includedInAmountDue = includedInAmountDue
+        self.settlementStatus = settlementStatus
     }
 }
 
 private struct GeneratedBillingFile {
     let data: Data
     let url: URL
+}
+
+private struct GeneratedBillingFiles {
+    let bilingual: GeneratedBillingFile
+    let english: GeneratedBillingFile
 }
 
 @MainActor
@@ -170,14 +199,15 @@ private struct BillingComposerView: View {
 
     @State private var selectedGuardianID: GuardianID?
     @State private var selectedTermID: TermID?
+    @State private var selectedLearnerIDs: Set<StudentID> = []
     @State private var revisionBaseInvoice: BillingInvoice?
     @State private var invoiceNumber = ""
     @State private var version = 1
-    @State private var schoolYearLabel = ""
+    @State private var termLabel = ""
     @State private var issuedOn = Date()
     @State private var lines: [BillingDraftLine] = []
     @State private var note = ""
-    @State private var generatedFile: GeneratedBillingFile?
+    @State private var generatedFiles: GeneratedBillingFiles?
     @State private var statusMessage: String?
     @State private var errorMessage: String?
     @State private var isIssuing = false
@@ -195,18 +225,26 @@ private struct BillingComposerView: View {
 
                 Rectangle().fill(theme.separator).frame(width: 1)
 
-                ReceiptPreviewPane(document: previewDocument)
+                ReceiptPairPreviewPane(
+                    bilingual: previewDocument.translated(to: .bilingual),
+                    english: previewDocument.translated(to: .english)
+                )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .task { configureIfNeeded() }
         .onChange(of: selectedGuardianID) { _, _ in
             guard correctionInvoice == nil else { return }
+            selectedLearnerIDs = Set(familyLearners.map(\.id))
             configureForSelectedSeries()
         }
         .onChange(of: selectedTermID) { _, termID in
             guard correctionInvoice == nil else { return }
-            schoolYearLabel = termID.flatMap { model.term(id: $0) }.map(defaultSchoolYearLabel) ?? ""
+            termLabel = termID.flatMap { model.term(id: $0) }?.name ?? ""
+            configureForSelectedSeries()
+        }
+        .onChange(of: selectedLearnerIDs) { _, _ in
+            guard correctionInvoice == nil else { return }
             configureForSelectedSeries()
         }
         .onChange(of: model.billingInvoices.map(\.id)) { _, _ in
@@ -241,26 +279,30 @@ private struct BillingComposerView: View {
                 }
                 Spacer()
 
-                if let generatedFile {
-                    Button {
-                        copyPNG(generatedFile.data)
+                if let generatedFiles {
+                    Menu {
+                        Button("复制主中文双语版") { copyPNG(generatedFiles.bilingual.data) }
+                        Button("复制全英文版") { copyPNG(generatedFiles.english.data) }
                     } label: {
                         Image(systemName: "doc.on.doc")
                     }
-                    .buttonStyle(MDIconButtonStyle())
-                    .help("复制 PNG")
+                    .menuStyle(.borderlessButton)
+                    .help("选择要复制的 PNG 版本")
 
                     Button {
-                        NSWorkspace.shared.activateFileViewerSelecting([generatedFile.url])
+                        NSWorkspace.shared.activateFileViewerSelecting([
+                            generatedFiles.bilingual.url,
+                            generatedFiles.english.url
+                        ])
                     } label: {
                         Image(systemName: "magnifyingglass")
                     }
                     .buttonStyle(MDIconButtonStyle())
-                    .help("在 Finder 中显示")
+                    .help("在 Finder 中显示两份 PNG")
                 }
 
                 Button(action: issueInvoice) {
-                    Label(revisionBaseInvoice == nil ? "签发账单" : "签发 v\(version)", systemImage: "paperplane")
+                    Label(revisionBaseInvoice == nil ? "签发账单" : "签发 V\(version)", systemImage: "paperplane")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -296,11 +338,45 @@ private struct BillingComposerView: View {
                 .labelsHidden()
                 .disabled(correctionInvoice != nil)
             }
-            formRow("学员档案") {
-                Text(familyLearners.map(\.displayName).joined(separator: "、").nilIfEmpty ?? "暂无学员")
-                    .mdFont(.body)
-                    .foregroundStyle(familyLearners.isEmpty ? theme.secondaryText : theme.primaryText)
-                    .lineLimit(2)
+            formRow("账单学员") {
+                VStack(alignment: .leading, spacing: 7) {
+                    if familyLearners.isEmpty {
+                        Text("暂无学员档案")
+                            .mdFont(.body)
+                            .foregroundStyle(theme.secondaryText)
+                    } else {
+                        HStack(spacing: 10) {
+                            Text("已选 \(selectedLearnerIDs.count) / \(familyLearners.count)")
+                                .mdFont(.compactStrong)
+                                .foregroundStyle(selectedLearnerIDs.isEmpty ? theme.danger : theme.accent)
+                            Spacer()
+                            Button("全选") {
+                                selectedLearnerIDs = Set(familyLearners.map(\.id))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(correctionInvoice != nil)
+                            Button("清空") {
+                                selectedLearnerIDs.removeAll()
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(correctionInvoice != nil)
+                        }
+
+                        ForEach(familyLearners) { learner in
+                            Toggle(isOn: learnerSelectionBinding(learner.id)) {
+                                HStack(spacing: 7) {
+                                    Text(learner.displayName)
+                                        .mdFont(.bodyStrong)
+                                    Text(learner.kind == .child ? "少儿" : "成人")
+                                        .mdFont(.compact)
+                                        .foregroundStyle(theme.secondaryText)
+                                }
+                            }
+                            .toggleStyle(.checkbox)
+                            .disabled(correctionInvoice != nil)
+                        }
+                    }
+                }
             }
             formRow("学期") {
                 Picker("", selection: $selectedTermID) {
@@ -323,14 +399,15 @@ private struct BillingComposerView: View {
                         .textFieldStyle(.roundedBorder)
                         .disabled(revisionBaseInvoice != nil)
                         .help(revisionBaseInvoice == nil ? "新账单主线编号" : "同一家庭与学期沿用原账单编号")
-                    Text("v\(version)")
+                    Text("V\(version)")
                         .mdFont(.monoStrong)
                         .foregroundStyle(theme.accent)
                 }
             }
-            formRow("学年") {
-                TextField("例如 2026–2027", text: $schoolYearLabel)
-                    .textFieldStyle(.roundedBorder)
+            formRow("账单学期") {
+                Text(termLabel.nilIfEmpty ?? "请先选择学期")
+                    .mdFont(.body)
+                    .foregroundStyle(termLabel.isEmpty ? theme.secondaryText : theme.primaryText)
             }
             formRow("签发日期") {
                 DatePicker("", selection: $issuedOn, displayedComponents: .date)
@@ -345,10 +422,10 @@ private struct BillingComposerView: View {
                 Button {
                     generateFromEnrollments()
                 } label: {
-                    Label("按报名生成", systemImage: "wand.and.stars")
+                    Label("载入所选学员课程", systemImage: "wand.and.stars")
                 }
                 .buttonStyle(.bordered)
-                .disabled(selectedGuardianID == nil || selectedTermID == nil)
+                .disabled(selectedGuardianID == nil || selectedTermID == nil || selectedLearnerIDs.isEmpty)
 
                 Menu {
                     Button("注册费") { appendPreset(.registration) }
@@ -368,16 +445,17 @@ private struct BillingComposerView: View {
             }
 
             if lines.isEmpty {
-                Text("选择家庭和学期后，可按现有报名自动生成学费，也可手动添加项目。")
+                Text("选择监护人、学期和账单学员后，可载入所选学员的课程，也可手动添加项目。")
                     .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
                     .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
             } else {
                 HStack(spacing: 7) {
                     Text("学员").frame(width: 105, alignment: .leading)
+                    Text("类别").frame(width: 70, alignment: .leading)
                     Text("项目").frame(maxWidth: .infinity, alignment: .leading)
                     Text("金额").frame(width: 92, alignment: .leading)
-                    Text("应付").frame(width: 38)
+                    Text("状态").frame(width: 68)
                     Color.clear.frame(width: 28)
                 }
                 .mdFont(.compactStrong)
@@ -394,12 +472,18 @@ private struct BillingComposerView: View {
         HStack(spacing: 7) {
             Picker("", selection: line.studentID) {
                 Text("家庭").tag(Optional<StudentID>.none)
-                ForEach(familyLearners) { student in
+                ForEach(selectedLearners) { student in
                     Text(student.displayName).tag(Optional(student.id))
                 }
             }
             .labelsHidden()
             .frame(width: 105)
+
+            Text(sectionTitle(for: line.wrappedValue))
+                .mdFont(.compact)
+                .foregroundStyle(theme.secondaryText)
+                .lineLimit(1)
+                .frame(width: 70, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 3) {
                 TextField("收费项目", text: line.title)
@@ -417,11 +501,23 @@ private struct BillingComposerView: View {
                 .monospacedDigit()
                 .frame(width: 92)
 
-            Toggle("", isOn: line.includedInAmountDue)
+            if receiptSection(for: line.wrappedValue) == .adjustments {
+                Text("—")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+                    .frame(width: 68)
+                    .help("折扣与结余直接调整本次应付，不使用结算状态")
+            } else {
+                Picker("", selection: line.settlementStatus) {
+                    ForEach(BillingLineItemSettlementStatus.allCases, id: \.rawValue) { status in
+                        Text(status.title).tag(status)
+                    }
+                }
                 .labelsHidden()
-                .toggleStyle(.checkbox)
-                .frame(width: 38)
-                .help(line.wrappedValue.includedInAmountDue ? "计入本次应付" : "仅展示，不计入应付")
+                .pickerStyle(.menu)
+                .frame(width: 68)
+                .help(line.wrappedValue.settlementStatus.helpText)
+            }
 
             Button {
                 lines.removeAll { $0.id == line.wrappedValue.id }
@@ -464,18 +560,66 @@ private struct BillingComposerView: View {
         return model.students(for: selectedGuardianID)
     }
 
+    private var selectedLearners: [Student] {
+        familyLearners.filter { selectedLearnerIDs.contains($0.id) }
+    }
+
+    private var selectedLearnerIDList: [StudentID] {
+        BillingInvoice.normalizedLearnerIDs(Array(selectedLearnerIDs))
+    }
+
+    private var selectedLearnerNames: String {
+        selectedLearners.map(\.displayName).joined(separator: "、")
+    }
+
+    private func learnerSelectionBinding(_ learnerID: StudentID) -> Binding<Bool> {
+        Binding(
+            get: { selectedLearnerIDs.contains(learnerID) },
+            set: { isSelected in
+                if isSelected {
+                    selectedLearnerIDs.insert(learnerID)
+                } else {
+                    selectedLearnerIDs.remove(learnerID)
+                }
+            }
+        )
+    }
+
     private var selectedInvoiceSeries: BillingInvoiceSeries? {
-        guard let selectedGuardianID, let selectedTermID else { return nil }
+        guard let selectedGuardianID, let selectedTermID, !selectedLearnerIDs.isEmpty else { return nil }
         return BillingInvoiceSeriesResolver.series(
             guardianID: selectedGuardianID,
             termID: selectedTermID,
+            learnerIDs: selectedLearnerIDList,
             in: model.billingInvoices
         )
     }
 
+    private var selectedLearnerTermEnrollments: [Enrollment] {
+        guard selectedGuardianID != nil, let selectedTermID else { return [] }
+        return model.enrollments.filter {
+            $0.termID == selectedTermID
+                && $0.status == .active
+                && selectedLearnerIDs.contains($0.studentID)
+        }
+    }
+
+    private var includesEveryTermEnrollment: Bool {
+        let includedEnrollmentIDs = Set(lines.compactMap(\.enrollmentID))
+        return selectedLearnerTermEnrollments.allSatisfy {
+            includedEnrollmentIDs.contains($0.id)
+        }
+    }
+
+    private var lineItemsStayWithinLearnerScope: Bool {
+        lines.allSatisfy { line in
+            line.studentID.map(selectedLearnerIDs.contains) ?? true
+        }
+    }
+
     private var amountDueCents: Int {
         lines.reduce(0) { result, line in
-            guard line.includedInAmountDue,
+            guard line.settlementStatus.contributesToAmountDue,
                   let cents = MoneyTextParser.cents(from: line.amountText) else { return result }
             return result + cents
         }
@@ -484,13 +628,15 @@ private struct BillingComposerView: View {
     private var canIssue: Bool {
         selectedGuardianID != nil
             && selectedTermID != nil
+            && !selectedLearnerIDs.isEmpty
             && !invoiceNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !schoolYearLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !termLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !lines.isEmpty
             && lines.allSatisfy {
                 !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     && MoneyTextParser.cents(from: $0.amountText) != nil
             }
+            && lineItemsStayWithinLearnerScope
             && amountDueCents >= 0
             && revisionBaseInvoice?.id == selectedInvoiceSeries?.latestInvoice.id
     }
@@ -500,12 +646,12 @@ private struct BillingComposerView: View {
             kind: .invoice,
             receiptNumber: invoiceNumber.nilIfEmpty ?? "—",
             version: version,
-            schoolYearLabel: schoolYearLabel,
+            termLabel: termLabel,
             issuedOn: issuedOn,
             guardianName: selectedGuardian?.displayName ?? "请选择监护人",
             guardianEmail: selectedGuardian?.email,
             guardianPhone: selectedGuardian?.phone,
-            learnerName: familyLearners.map(\.displayName).joined(separator: "、").nilIfEmpty ?? "请选择家庭",
+            learnerName: selectedLearnerNames.nilIfEmpty ?? "请选择账单学员",
             items: previewReceiptItems,
             note: note.trimmingCharacters(in: .whitespacesAndNewlines)
         )
@@ -515,14 +661,94 @@ private struct BillingComposerView: View {
         let values = lines.compactMap { line -> ReceiptLineItem? in
             guard !line.title.isEmpty || !line.amountText.isEmpty else { return nil }
             return ReceiptLineItem(
+                kind: line.kind,
+                section: receiptSection(for: line),
                 title: line.title.nilIfEmpty ?? "收费项目",
+                englishTitle: englishBillingTitle(for: line),
                 amount: decimal(cents: MoneyTextParser.cents(from: line.amountText) ?? 0),
                 learnerName: line.studentID.flatMap { model.student(id: $0)?.displayName },
                 detail: line.detail.nilIfEmpty,
-                includedInAmountDue: line.includedInAmountDue
+                englishDetail: englishBillingDetail(for: line),
+                settlementStatus: line.settlementStatus
             )
         }
-        return values.isEmpty ? [ReceiptLineItem(title: "收费项目", amount: .zero)] : values
+        return values.isEmpty
+            ? [ReceiptLineItem(title: "收费项目", englishTitle: "Charge", amount: .zero)]
+            : values
+    }
+
+    private func receiptSection(for line: BillingDraftLine) -> ReceiptLineItemSection {
+        switch line.kind {
+        case .tuition:
+            let mode = line.enrollmentID.flatMap { enrollmentID in
+                model.enrollments.first { $0.id == enrollmentID }?.registrationMode
+            }
+            return mode == .perSession ? .perSession : .fullTerm
+        case .trial:
+            return .perSession
+        case .discount, .balanceCredit:
+            return .adjustments
+        case .registration, .priorBalance, .manual:
+            return .miscellaneous
+        }
+    }
+
+    private func sectionTitle(for line: BillingDraftLine) -> String {
+        switch receiptSection(for: line) {
+        case .fullTerm: "整期"
+        case .perSession: "按次"
+        case .miscellaneous: "其他"
+        case .adjustments: "优惠"
+        }
+    }
+
+    private func englishBillingTitle(for line: BillingDraftLine) -> String {
+        let courseName = line.enrollmentID.flatMap { enrollmentID in
+            model.enrollments.first { $0.id == enrollmentID }
+        }.flatMap { model.course(id: $0.courseID)?.name }
+        switch line.kind {
+        case .tuition:
+            let label = receiptSection(for: line) == .perSession
+                ? "Per-Session Tuition"
+                : "Full-Term Tuition"
+            return [courseName, label].compactMap { $0?.nilIfEmpty }.joined(separator: " · ")
+        case .trial:
+            return [courseName, "Trial Class Fee"].compactMap { $0?.nilIfEmpty }.joined(separator: " · ")
+        case .registration:
+            return "Annual Registration Fee"
+        case .discount:
+            return "Course Discount"
+        case .balanceCredit:
+            return "Prior Credit"
+        case .priorBalance:
+            return "Prior Balance"
+        case .manual:
+            return line.title.unicodeScalars.contains(where: { $0.value > 127 })
+                ? "Additional Charge"
+                : (line.title.nilIfEmpty ?? "Additional Charge")
+        }
+    }
+
+    private func englishBillingDetail(for line: BillingDraftLine) -> String? {
+        switch line.kind {
+        case .tuition:
+            guard line.quantity > 1, line.unitAmountCents != 0 else { return nil }
+            return "\(line.quantity) sessions × $\(MoneyTextParser.dollars(from: line.unitAmountCents))"
+        case .trial:
+            return "Trial class fee"
+        case .discount:
+            return "Applied to course tuition"
+        case .balanceCredit:
+            return "Applied to the current amount due"
+        case .priorBalance:
+            return "Balance from a prior term"
+        case .registration:
+            return "Annual student registration"
+        case .manual:
+            return line.detail.unicodeScalars.contains(where: { $0.value > 127 })
+                ? nil
+                : line.detail.nilIfEmpty
+        }
     }
 
     private func configureIfNeeded() {
@@ -537,12 +763,13 @@ private struct BillingComposerView: View {
         } else {
             selectedGuardianID = sortedGuardians.first?.id
             selectedTermID = model.currentEnrollmentTerm?.id ?? model.terms.first?.id
+            selectedLearnerIDs = Set(familyLearners.map(\.id))
             configureForSelectedSeries()
         }
     }
 
     private func configureForSelectedSeries() {
-        generatedFile = nil
+        generatedFiles = nil
         statusMessage = nil
         errorMessage = nil
 
@@ -557,34 +784,33 @@ private struct BillingComposerView: View {
         note = ""
         lines.removeAll()
         if let term = selectedTermID.flatMap({ model.term(id: $0) }) {
-            schoolYearLabel = defaultSchoolYearLabel(term)
+            termLabel = term.name
         } else {
-            schoolYearLabel = ""
+            termLabel = ""
         }
     }
 
     private func applyRevision(from invoice: BillingInvoice, updateSelection: Bool = true) {
         revisionBaseInvoice = invoice
+        let storedItems = model.billingItems(for: invoice.id)
+        let itemLearnerIDs = Set(storedItems.compactMap(\.studentID))
+        let invoiceLearnerIDs = Set(invoice.learnerIDs)
         if updateSelection {
             selectedGuardianID = invoice.guardianID
             selectedTermID = invoice.termID
         }
+        selectedLearnerIDs = invoiceLearnerIDs.isEmpty ? itemLearnerIDs : invoiceLearnerIDs
         invoiceNumber = invoice.invoiceNumber
         version = invoice.version + 1
-        schoolYearLabel = invoice.schoolYearLabel
+        termLabel = invoice.termID.flatMap(model.term(id:))?.name ?? invoice.schoolYearLabel
         note = invoice.notes ?? ""
-        lines = model.billingItems(for: invoice.id).map(draftLine)
+        lines = storedItems.map(draftLine)
     }
 
     private func generateFromEnrollments() {
-        guard let selectedGuardianID, let selectedTermID else { return }
-        let studentIDs = Set(model.students(for: selectedGuardianID).map(\.id))
-        let enrollments = model.enrollments
-            .filter {
-                $0.termID == selectedTermID
-                    && $0.status == .active
-                    && studentIDs.contains($0.studentID)
-            }
+        guard selectedGuardianID != nil, selectedTermID != nil else { return }
+        let manualLines = lines.filter { $0.enrollmentID == nil }
+        let enrollments = selectedLearnerTermEnrollments
             .sorted { lhs, rhs in
                 let leftStudent = model.student(id: lhs.studentID)?.displayName ?? ""
                 let rightStudent = model.student(id: rhs.studentID)?.displayName ?? ""
@@ -596,7 +822,7 @@ private struct BillingComposerView: View {
                 return leftCourse.localizedStandardCompare(rightCourse) == .orderedAscending
             }
 
-        lines = enrollments.flatMap { enrollment -> [BillingDraftLine] in
+        let enrollmentLines = enrollments.flatMap { enrollment -> [BillingDraftLine] in
             let estimate = model.billingEstimate(for: enrollment)
             let courseName = model.course(id: enrollment.courseID)?.name ?? "课程"
             guard let tuition = estimate.tuitionBeforeDiscountCents,
@@ -608,8 +834,7 @@ private struct BillingComposerView: View {
                         kind: .tuition,
                         title: courseName + "（待定价）",
                         detail: "请先在报名页完成计费设置",
-                        amountText: "0.00",
-                        includedInAmountDue: false
+                        amountText: "0.00"
                     )
                 ]
             }
@@ -658,8 +883,9 @@ private struct BillingComposerView: View {
             }
             return result
         }
-        generatedFile = nil
-        statusMessage = enrollments.isEmpty ? "该家庭本学期暂无报名" : "已按报名生成"
+        lines = enrollmentLines + manualLines
+        generatedFiles = nil
+        statusMessage = enrollments.isEmpty ? "所选学员本学期暂无报名" : "已载入所选学员全部课程"
     }
 
     private func billingDetail(
@@ -681,7 +907,8 @@ private struct BillingComposerView: View {
     }
 
     private func appendPreset(_ kind: BillingLineItemKind) {
-        let firstMinorID = familyLearners.first(where: { $0.kind == .child })?.id
+        let firstMinorID = selectedLearners.first(where: { $0.kind == .child })?.id
+        let onlyLearnerID = selectedLearners.count == 1 ? selectedLearners[0].id : nil
         let line: BillingDraftLine
         switch kind {
         case .registration:
@@ -698,9 +925,9 @@ private struct BillingComposerView: View {
                 amountText: "-0.00"
             )
         case .priorBalance:
-            line = BillingDraftLine(kind: .priorBalance, title: "上期欠款")
+            line = BillingDraftLine(studentID: onlyLearnerID, kind: .priorBalance, title: "上期欠款")
         default:
-            line = BillingDraftLine(kind: .manual)
+            line = BillingDraftLine(studentID: onlyLearnerID, kind: .manual)
         }
         lines.append(line)
     }
@@ -715,22 +942,38 @@ private struct BillingComposerView: View {
             defer { isIssuing = false }
             do {
                 let package = try validatedPackage()
-                let document = previewDocument
-                let png = try ReceiptPNGRenderer.render(document)
+                let bilingualDocument = previewDocument.translated(to: .bilingual)
+                let englishDocument = previewDocument.translated(to: .english)
+                let bilingualPNG = try ReceiptPNGRenderer.render(bilingualDocument)
+                let englishPNG = try ReceiptPNGRenderer.render(englishDocument)
+                let artifactUploads = package.artifacts.map { artifact in
+                    BillingArtifactUpload(
+                        artifact: artifact,
+                        pngData: artifact.resolvedLanguage == .english ? englishPNG : bilingualPNG
+                    )
+                }
                 _ = try await model.issueBillingInvoice(
                     package.invoice,
                     lineItems: package.items,
-                    artifact: package.artifact,
-                    pngData: png
+                    artifactUploads: artifactUploads
                 )
                 let store = try ReceiptFileStore.documents()
-                let destination = try store.savePNG(
-                    png,
-                    learnerName: document.guardianName,
-                    filenameStem: "账单-\(billingDateText(document.issuedOn))-\(document.receiptNumber)-v\(document.version)"
+                let baseName = "\(billingDateText(bilingualDocument.issuedOn))-\(selectedLearnerNames)-\(bilingualDocument.receiptNumber)-V\(bilingualDocument.version)"
+                let bilingualDestination = try store.savePNG(
+                    bilingualPNG,
+                    learnerName: bilingualDocument.guardianName,
+                    filenameStem: "账单-\(baseName)-中英"
                 )
-                generatedFile = GeneratedBillingFile(data: png, url: destination)
-                statusMessage = "账单已签发并同步"
+                let englishDestination = try store.savePNG(
+                    englishPNG,
+                    learnerName: bilingualDocument.guardianName,
+                    filenameStem: "Invoice-\(baseName)-English"
+                )
+                generatedFiles = GeneratedBillingFiles(
+                    bilingual: GeneratedBillingFile(data: bilingualPNG, url: bilingualDestination),
+                    english: GeneratedBillingFile(data: englishPNG, url: englishDestination)
+                )
+                statusMessage = "两份账单已签发并同步"
                 try? await Task.sleep(nanoseconds: 650_000_000)
                 didIssue()
             } catch {
@@ -742,10 +985,11 @@ private struct BillingComposerView: View {
     private func validatedPackage() throws -> (
         invoice: BillingInvoice,
         items: [BillingInvoiceLineItem],
-        artifact: BillingArtifact
+        artifacts: [BillingArtifact]
     ) {
         guard let guardian = selectedGuardian else { throw BillingWorkspaceError.missingFamily }
         guard let selectedTermID else { throw BillingWorkspaceError.missingTerm }
+        guard !selectedLearnerIDs.isEmpty else { throw BillingWorkspaceError.missingLearners }
         guard revisionBaseInvoice?.id == selectedInvoiceSeries?.latestInvoice.id else {
             throw BillingWorkspaceError.invoiceSeriesChanged
         }
@@ -756,7 +1000,8 @@ private struct BillingComposerView: View {
                 number == revisionBaseInvoice.invoiceNumber,
                 version == revisionBaseInvoice.version + 1,
                 revisionBaseInvoice.guardianID == guardian.id,
-                revisionBaseInvoice.termID == selectedTermID
+                revisionBaseInvoice.termID == selectedTermID,
+                revisionBaseInvoice.learnerIDs == selectedLearnerIDList
             else { throw BillingWorkspaceError.invoiceSeriesChanged }
         } else {
             guard version == 1, selectedInvoiceSeries == nil else {
@@ -764,6 +1009,12 @@ private struct BillingComposerView: View {
             }
         }
         guard !lines.isEmpty else { throw BillingWorkspaceError.missingItems }
+        guard lineItemsStayWithinLearnerScope else {
+            throw BillingWorkspaceError.itemOutsideLearnerScope
+        }
+        guard includesEveryTermEnrollment else {
+            throw BillingWorkspaceError.missingEnrollmentCharges
+        }
         guard amountDueCents >= 0 else { throw BillingWorkspaceError.negativeTotal }
 
         let invoiceID = BillingInvoiceID()
@@ -783,7 +1034,7 @@ private struct BillingComposerView: View {
                 quantity: max(1, line.quantity),
                 unitAmountCents: line.quantity > 1 ? line.unitAmountCents : amount,
                 amountCents: amount,
-                includedInAmountDue: line.includedInAmountDue,
+                settlementStatus: line.settlementStatus,
                 sortOrder: index
             )
         }
@@ -791,9 +1042,10 @@ private struct BillingComposerView: View {
             id: invoiceID,
             guardianID: guardian.id,
             termID: selectedTermID,
+            learnerIDs: selectedLearnerIDList,
             invoiceNumber: number,
             version: version,
-            schoolYearLabel: schoolYearLabel.trimmingCharacters(in: .whitespacesAndNewlines),
+            schoolYearLabel: termLabel.trimmingCharacters(in: .whitespacesAndNewlines),
             issuedAt: issuedOn,
             amountDueCents: amountDueCents,
             notes: note.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
@@ -802,7 +1054,9 @@ private struct BillingComposerView: View {
         return (
             invoice,
             items,
-            BillingArtifact(invoiceID: invoiceID, kind: .invoice)
+            BillingArtifactLanguage.allCases.map { language in
+                BillingArtifact(invoiceID: invoiceID, kind: .invoice, language: language)
+            }
         )
     }
 
@@ -816,7 +1070,7 @@ private struct BillingComposerView: View {
             quantity: item.quantity,
             unitAmountCents: item.unitAmountCents,
             amountText: MoneyTextParser.dollars(from: item.amountCents),
-            includedInAmountDue: item.includedInAmountDue
+            settlementStatus: item.settlementStatus
         )
     }
 
@@ -828,11 +1082,6 @@ private struct BillingComposerView: View {
             return Int(invoice.invoiceNumber.dropFirst(prefix.count))
         }.max() ?? 0
         return prefix + String(format: "%04d", maximum + 1)
-    }
-
-    private func defaultSchoolYearLabel(_ term: Term) -> String {
-        let year = Calendar.masterDance.component(.year, from: term.startsOn)
-        return "\(year)–\(year + 1)"
     }
 
     private func copyPNG(_ data: Data) {
@@ -958,8 +1207,12 @@ private struct BillingHistoryView: View {
             guard !query.isEmpty else { return true }
             let family = model.guardian(id: series.key.guardianID)?.displayName ?? ""
             let term = series.key.termID.flatMap(model.term(id:))?.name ?? ""
+            let learners = series.latestInvoice.learnerIDs.compactMap {
+                model.student(id: $0)?.displayName
+            }.joined(separator: "、")
             return family.localizedCaseInsensitiveContains(query)
                 || term.localizedCaseInsensitiveContains(query)
+                || learners.localizedCaseInsensitiveContains(query)
                 || series.invoices.contains {
                     $0.invoiceNumber.localizedCaseInsensitiveContains(query)
                         || $0.schoolYearLabel.localizedCaseInsensitiveContains(query)
@@ -997,17 +1250,21 @@ private struct BillingHistoryView: View {
                             .mdFont(.monoStrong)
                     }
                     HStack(spacing: 6) {
-                        Text(invoice.invoiceNumber + " · v\(invoice.version)")
+                        Text(invoice.invoiceNumber + " · V\(invoice.version)")
                         Spacer()
                         Text(invoice.termID.flatMap(model.term(id:))?.name ?? "未分学期")
                             .lineLimit(1)
                     }
                     .mdFont(.compact)
                     .foregroundStyle(theme.secondaryText)
+                    Text(learnerNames(for: invoice))
+                        .mdFont(.compactStrong)
+                        .foregroundStyle(theme.accent)
+                        .lineLimit(1)
                 }
             }
             .padding(.horizontal, 12)
-            .frame(minHeight: 54)
+            .frame(minHeight: 66)
             .background(selected ? theme.accent.opacity(colorScheme == .dark ? 0.20 : 0.10) : Color.clear)
             .contentShape(Rectangle())
         }
@@ -1019,13 +1276,19 @@ private struct BillingHistoryView: View {
         let status = invoice.displayStatus(payments: payments)
         let outstanding = invoice.outstandingCents(payments: payments)
         let items = model.billingItems(for: invoice.id)
+        let waivedTotal = items
+            .filter(\.isWaived)
+            .reduce(0) { $0 + max(0, $1.amountCents) }
         let latestInvoice = selectedSeries?.latestInvoice ?? invoice
         return VStack(spacing: 0) {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(invoice.invoiceNumber + " · v\(invoice.version)")
+                    Text(invoice.invoiceNumber + " · V\(invoice.version)")
                         .mdFont(.bodyStrong)
-                    Text(model.guardian(id: invoice.guardianID)?.displayName ?? "家庭")
+                    Text([
+                        model.guardian(id: invoice.guardianID)?.displayName ?? "家庭",
+                        learnerNames(for: invoice),
+                    ].filter { !$0.isEmpty }.joined(separator: " · "))
                         .mdFont(.compact)
                         .foregroundStyle(theme.secondaryText)
                 }
@@ -1036,7 +1299,7 @@ private struct BillingHistoryView: View {
 
                 Picker("历史版本", selection: selectedInvoiceBinding(fallback: invoice.id)) {
                     ForEach(selectedSeries?.invoices ?? [invoice]) { versionInvoice in
-                        Text("v\(versionInvoice.version) · \(billingDateText(versionInvoice.issuedAt))")
+                        Text("V\(versionInvoice.version) · \(billingDateText(versionInvoice.issuedAt))")
                             .tag(versionInvoice.id)
                     }
                 }
@@ -1053,7 +1316,7 @@ private struct BillingHistoryView: View {
                 .controlSize(.small)
                 .help(invoice.id == latestInvoice.id
                     ? "基于当前版本继续修改"
-                    : "将基于最新版 v\(latestInvoice.version) 继续修改")
+                    : "将基于最新版 V\(latestInvoice.version) 继续修改")
 
                 Button {
                     paymentInvoice = invoice
@@ -1075,12 +1338,24 @@ private struct BillingHistoryView: View {
                         metric("账单金额", "$" + MoneyTextParser.dollars(from: invoice.amountDueCents), theme: theme)
                         metric("已付款", "$" + MoneyTextParser.dollars(from: invoice.amountDueCents - outstanding), theme: theme)
                         metric("待付金额", "$" + MoneyTextParser.dollars(from: outstanding), theme: theme, emphasized: outstanding > 0)
-                        metric("学年", invoice.schoolYearLabel, theme: theme)
+                        if waivedTotal > 0 {
+                            metric("免付金额", "$" + MoneyTextParser.dollars(from: waivedTotal), theme: theme)
+                        }
+                        metric(
+                            "学期",
+                            invoice.termID.flatMap(model.term(id:))?.name ?? invoice.schoolYearLabel,
+                            theme: theme
+                        )
                         Spacer()
                     }
 
                     detailSection("收费项目", theme: theme) {
                         ForEach(items) { item in
+                            let displaySettlementStatus: BillingLineItemSettlementStatus = {
+                                if item.isWaived { return .waived }
+                                if status == .paid { return .paid }
+                                return item.settlementStatus
+                            }()
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.title).mdFont(.bodyStrong)
@@ -1090,10 +1365,17 @@ private struct BillingHistoryView: View {
                                         .lineLimit(1)
                                 }
                                 Spacer()
-                                if !item.includedInAmountDue {
-                                    Text("仅展示")
-                                        .mdFont(.compact)
-                                        .foregroundStyle(theme.secondaryText)
+                                if item.kind == .discount || item.kind == .balanceCredit || item.amountCents < 0 {
+                                    Text("调整")
+                                        .mdFont(.compactStrong)
+                                        .foregroundStyle(theme.accent)
+                                } else {
+                                    Label(
+                                        displaySettlementStatus.title,
+                                        systemImage: settlementSymbol(displaySettlementStatus)
+                                    )
+                                    .mdFont(.compactStrong)
+                                    .foregroundStyle(settlementColor(displaySettlementStatus, theme: theme))
                                 }
                                 Text("$" + MoneyTextParser.dollars(from: item.amountCents))
                                     .mdFont(.monoStrong)
@@ -1128,27 +1410,13 @@ private struct BillingHistoryView: View {
                         }
                     }
 
-                    detailSection("PNG 文件", theme: theme) {
-                        ForEach(model.artifacts(for: invoice.id)) { artifact in
-                            HStack(spacing: 10) {
-                                Image(systemName: artifact.kind == .invoice ? "doc.text.image" : "receipt")
-                                    .foregroundStyle(theme.accent)
-                                Text(artifact.kind == .invoice ? "账单 v\(invoice.version)" : "付款收据")
-                                    .mdFont(.body)
-                                Text(billingDateText(artifact.generatedAt))
-                                    .mdFont(.compact)
-                                    .foregroundStyle(theme.secondaryText)
-                                Spacer()
-                                Button {
-                                    copyArtifact(artifact)
-                                } label: {
-                                    Image(systemName: "doc.on.doc")
-                                }
-                                .buttonStyle(MDIconButtonStyle())
-                                .help("复制 PNG")
-                            }
-                            .frame(minHeight: 38)
-                        }
+                    detailSection("账单与付款收据 PNG", theme: theme) {
+                        BillingVersionDocumentGrid(
+                            invoice: invoice,
+                            payments: payments,
+                            artifacts: model.artifacts(for: invoice.id),
+                            copyArtifact: copyArtifact
+                        )
                     }
                 }
                 .padding(20)
@@ -1216,11 +1484,17 @@ private struct BillingHistoryView: View {
         return [learner, item.detail].compactMap { $0?.nilIfEmpty }.joined(separator: " · ")
     }
 
+    private func learnerNames(for invoice: BillingInvoice) -> String {
+        let names = invoice.learnerIDs.compactMap { model.student(id: $0)?.displayName }
+        return names.joined(separator: "、").nilIfEmpty ?? "未记录学员范围"
+    }
+
     private func statusTitle(_ status: BillingInvoiceDisplayStatus) -> String {
         switch status {
         case .issued: "待付款"
         case .partiallyPaid: "部分付款"
         case .paid: "已付款"
+        case .noPaymentRequired: "无需付款"
         case .superseded: "已被新版本替代"
         }
     }
@@ -1230,6 +1504,7 @@ private struct BillingHistoryView: View {
         case .issued: "clock"
         case .partiallyPaid: "circle.lefthalf.filled"
         case .paid: "checkmark.circle.fill"
+        case .noPaymentRequired: "checkmark.seal.fill"
         case .superseded: "arrow.trianglehead.2.clockwise.rotate.90"
         }
     }
@@ -1239,7 +1514,27 @@ private struct BillingHistoryView: View {
         case .issued: theme.warning
         case .partiallyPaid: theme.warning
         case .paid: theme.success
+        case .noPaymentRequired: theme.accent
         case .superseded: theme.secondaryText
+        }
+    }
+
+    private func settlementSymbol(_ status: BillingLineItemSettlementStatus) -> String {
+        switch status {
+        case .unpaid: "square"
+        case .paid: "checkmark.square.fill"
+        case .waived: "gift.fill"
+        }
+    }
+
+    private func settlementColor(
+        _ status: BillingLineItemSettlementStatus,
+        theme: MDTheme
+    ) -> Color {
+        switch status {
+        case .unpaid: theme.danger
+        case .paid: theme.success
+        case .waived: theme.accent
         }
     }
 
@@ -1290,7 +1585,7 @@ private struct BillingPaymentSheet: View {
             HStack {
                 MDSectionTitle(chinese: "记录付款", english: "PAYMENT")
                 Spacer()
-                Text(invoice.invoiceNumber + " · v\(invoice.version)")
+                Text(invoice.invoiceNumber + " · V\(invoice.version)")
                     .mdFont(.monoStrong)
                     .foregroundStyle(theme.secondaryText)
             }
@@ -1363,7 +1658,7 @@ private struct BillingPaymentSheet: View {
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }
-                Button("生成收据并记录") { recordPayment() }
+                Button("生成付款收据并记录") { recordPayment() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!paymentIsValid || isSaving)
@@ -1419,23 +1714,36 @@ private struct BillingPaymentSheet: View {
                     receivedAt: receivedOn,
                     note: note.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
                 )
-                let document = receiptDocument(payment: payment)
-                let png = try ReceiptPNGRenderer.render(document)
-                let artifact = BillingArtifact(
-                    invoiceID: invoice.id,
-                    paymentID: payment.id,
-                    kind: .receipt
-                )
+                let bilingualDocument = receiptDocument(payment: payment).translated(to: .bilingual)
+                let englishDocument = bilingualDocument.translated(to: .english)
+                let bilingualPNG = try ReceiptPNGRenderer.render(bilingualDocument)
+                let englishPNG = try ReceiptPNGRenderer.render(englishDocument)
+                let artifactUploads = BillingArtifactLanguage.allCases.map { language in
+                    BillingArtifactUpload(
+                        artifact: BillingArtifact(
+                            invoiceID: invoice.id,
+                            paymentID: payment.id,
+                            kind: .receipt,
+                            language: language
+                        ),
+                        pngData: language == .english ? englishPNG : bilingualPNG
+                    )
+                }
                 _ = try await model.recordBillingPayment(
                     payment,
-                    artifact: artifact,
-                    pngData: png
+                    artifactUploads: artifactUploads
                 )
                 let store = try ReceiptFileStore.documents()
+                let baseName = "\(billingDateText(payment.receivedAt))-\(bilingualDocument.learnerName)-\(invoice.invoiceNumber)-V\(invoice.version)"
                 _ = try store.savePNG(
-                    png,
-                    learnerName: document.guardianName,
-                    filenameStem: "收据-\(billingDateText(payment.receivedAt))-\(invoice.invoiceNumber)-v\(invoice.version)"
+                    bilingualPNG,
+                    learnerName: bilingualDocument.guardianName,
+                    filenameStem: "付款收据-\(baseName)-中英"
+                )
+                _ = try store.savePNG(
+                    englishPNG,
+                    learnerName: bilingualDocument.guardianName,
+                    filenameStem: "Payment-Receipt-\(baseName)-English"
                 )
                 dismiss()
             } catch {
@@ -1447,14 +1755,24 @@ private struct BillingPaymentSheet: View {
     private func receiptDocument(payment: BillingPayment) -> ReceiptDocument {
         let guardian = model.guardian(id: invoice.guardianID)
         let items = model.billingItems(for: invoice.id)
-        let learnerNames = Set(items.compactMap { item in
-            item.studentID.flatMap { model.student(id: $0)?.displayName }
-        }).sorted()
+        let learnerNames = invoice.learnerIDs.compactMap {
+            model.student(id: $0)?.displayName
+        }
+        let paymentLedger = (model.payments(for: invoice.id).filter { $0.id != payment.id } + [payment])
+            .sorted { lhs, rhs in
+                if lhs.receivedAt != rhs.receivedAt { return lhs.receivedAt < rhs.receivedAt }
+                return lhs.createdAt < rhs.createdAt
+            }
+        let cumulativePaymentCents = paymentLedger.reduce(0) { $0 + $1.amountCents }
+        let cumulativeFeeCents = paymentLedger.reduce(0) { $0 + $1.processingFeeCents }
+        let methods = paymentLedger.reduce(into: [BillingPaymentMethod]()) { result, entry in
+            if !result.contains(entry.method) { result.append(entry.method) }
+        }
         return ReceiptDocument(
             kind: .receipt,
             receiptNumber: invoice.invoiceNumber,
             version: invoice.version,
-            schoolYearLabel: invoice.schoolYearLabel,
+            termLabel: invoice.termID.flatMap(model.term(id:))?.name ?? invoice.schoolYearLabel,
             issuedOn: payment.receivedAt,
             guardianName: guardian?.displayName ?? "家庭",
             guardianEmail: guardian?.email,
@@ -1462,19 +1780,80 @@ private struct BillingPaymentSheet: View {
             learnerName: learnerNames.joined(separator: "、"),
             items: items.map { item in
                 ReceiptLineItem(
+                    kind: item.kind,
+                    section: receiptSection(for: item),
                     title: item.title,
+                    englishTitle: englishBillingTitle(for: item),
                     amount: decimal(cents: item.amountCents),
                     learnerName: item.studentID.flatMap { model.student(id: $0)?.displayName },
                     detail: item.detail,
-                    includedInAmountDue: item.includedInAmountDue
+                    englishDetail: englishBillingDetail(for: item),
+                    settlementStatus: item.settlementStatus
                 )
             },
-            paymentMethod: paymentMethodTitle(payment.method),
-            paymentAmount: decimal(cents: payment.amountCents),
-            processingFee: decimal(cents: payment.processingFeeCents),
-            outstandingAfterPayment: decimal(cents: outstandingCents - payment.amountCents),
+            paymentMethod: methods.map(paymentMethodTitle).joined(separator: "、"),
+            paymentMethodEnglish: methods.map(paymentMethodEnglishTitle).joined(separator: " + "),
+            paymentAmount: decimal(cents: cumulativePaymentCents),
+            processingFee: decimal(cents: cumulativeFeeCents),
+            outstandingAfterPayment: decimal(cents: max(0, invoice.amountDueCents - cumulativePaymentCents)),
             note: payment.note ?? invoice.notes ?? ""
         )
+    }
+
+    private func receiptSection(for item: BillingInvoiceLineItem) -> ReceiptLineItemSection {
+        switch item.kind {
+        case .tuition:
+            let mode = item.enrollmentID.flatMap { enrollmentID in
+                model.enrollments.first { $0.id == enrollmentID }?.registrationMode
+            }
+            return mode == .perSession ? .perSession : .fullTerm
+        case .trial:
+            return .perSession
+        case .discount, .balanceCredit:
+            return .adjustments
+        case .registration, .priorBalance, .manual:
+            return .miscellaneous
+        }
+    }
+
+    private func englishBillingTitle(for item: BillingInvoiceLineItem) -> String {
+        let courseName = item.enrollmentID.flatMap { enrollmentID in
+            model.enrollments.first { $0.id == enrollmentID }
+        }.flatMap { model.course(id: $0.courseID)?.name }
+        switch item.kind {
+        case .tuition:
+            let label = receiptSection(for: item) == .perSession
+                ? "Per-Session Tuition"
+                : "Full-Term Tuition"
+            return [courseName, label].compactMap { $0?.nilIfEmpty }.joined(separator: " · ")
+        case .trial:
+            return [courseName, "Trial Class Fee"].compactMap { $0?.nilIfEmpty }.joined(separator: " · ")
+        case .registration: return "Annual Registration Fee"
+        case .discount: return "Course Discount"
+        case .balanceCredit: return "Prior Credit"
+        case .priorBalance: return "Prior Balance"
+        case .manual:
+            return item.title.unicodeScalars.contains(where: { $0.value > 127 })
+                ? "Additional Charge"
+                : item.title
+        }
+    }
+
+    private func englishBillingDetail(for item: BillingInvoiceLineItem) -> String? {
+        switch item.kind {
+        case .tuition:
+            guard item.quantity > 1 else { return nil }
+            return "\(item.quantity) sessions × $\(MoneyTextParser.dollars(from: item.unitAmountCents))"
+        case .trial: return "Trial class fee"
+        case .discount: return "Applied to course tuition"
+        case .balanceCredit: return "Applied to the current amount due"
+        case .priorBalance: return "Balance from a prior term"
+        case .registration: return "Annual student registration"
+        case .manual:
+            guard let detail = item.detail,
+                  !detail.unicodeScalars.contains(where: { $0.value > 127 }) else { return nil }
+            return detail
+        }
     }
 
     private func label(_ text: String) -> some View {
@@ -1491,6 +1870,15 @@ private func paymentMethodTitle(_ method: BillingPaymentMethod) -> String {
     case .check: "支票"
     case .zelle: "Zelle"
     case .card: "银行卡"
+    }
+}
+
+private func paymentMethodEnglishTitle(_ method: BillingPaymentMethod) -> String {
+    switch method {
+    case .cash: "Cash"
+    case .check: "Check"
+    case .zelle: "Zelle"
+    case .card: "Card"
     }
 }
 
