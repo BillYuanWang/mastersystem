@@ -12,6 +12,25 @@ handoff package is requested, then regenerate each PDF from its Markdown source.
 
 ## Current release
 
+### v0.9.0-beta.1p - 2026-09-01
+
+- Distributed macOS 0.9.0 build 89 as a universal Apple Silicon and Intel ZIP.
+  The app is signed with Agentech's Developer ID, notarized by Apple, stapled,
+  and accepted by Gatekeeper. The final ZIP also passed an extraction and
+  signature recheck.
+- Uploaded iOS 0.9.0 build 49 successfully to App Store Connect for internal
+  TestFlight. Apple accepted the upload and is processing it; build 45 remains
+  the last confirmed tester-visible baseline until that processing finishes.
+- This package carries the accumulated local changes since the prior macOS
+  build 79 and iOS build 45: the focused seven-day/two-room schedule, persistent
+  media cache, Admin SDK/MCP, incomplete-contact handling, expanded immutable
+  billing documents, course price presentation and rules, adult N-session
+  cards, and high-visibility incomplete course setup states.
+- All 136 Swift tests passed. Both app targets completed Release preflight;
+  macOS build 89 passed Developer ID signing, Apple notarization, stapling, ZIP
+  integrity, and Gatekeeper checks. This release action did not change the
+  Supabase schema or production data.
+
 ### v0.9.0-beta.1o - 2026-09-01
 
 - Made incomplete course setup visible at a glance in the macOS course table.

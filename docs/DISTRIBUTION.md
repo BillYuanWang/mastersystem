@@ -41,12 +41,13 @@ iPhone 不能像 Mac 一样把 App 文件随意发给别人安装。内部 TestF
 
 它会重新生成 Xcode 项目、校验两个 Info.plist 和隐私清单、运行全部 Swift 测试，并分别完成 macOS 与 iOS 的无签名 Release 构建。最后还会报告两种发布证书是否存在。
 
-每次上传 TestFlight 前，`CFBundleVersion` 必须大于 Apple 已经接收过的 build。已分发的版本为：
+每次上传 TestFlight 前，`CFBundleVersion` 必须大于 Apple 已经接收过的 build。当前发布状态为：
 
-- macOS：0.9.0 build 79
-- iOS：0.9.0 build 45
+- macOS：0.9.0 build 89，已签名、公证并生成员工安装包
+- iOS：0.9.0 build 49，已上传并在 Apple 处理中
+- iOS 最后确认可供测试员使用的基线：0.9.0 build 45
 
-8 月 31 日的顶部导航、底部课表详情、年龄段配色、双语言长条账单和学员范围账单已全部进入 macOS build 79 公证包。iOS 本轮未变，TestFlight 仍是 build 45。
+macOS build 89 汇总了 build 79 之后的课表、离线图片缓存、账单与收据、课程价格、成人 N 次卡、Admin SDK/MCP 和未完成课程提示。iOS build 49 汇总了 build 45 之后的本地图片缓存、成人 N 次卡余额与记录，以及相关管理员签到支持。
 
 ## 4. 生成员工 Mac 安装包
 
@@ -62,7 +63,11 @@ iPhone 不能像 Mac 一样把 App 文件随意发给别人安装。内部 TestF
 4. 提交 Apple 公证并等待结果。
 5. 把公证票据装订到 App。
 6. 通过 Gatekeeper 再验证。
-7. 按当前源码版本输出 `dist/macos/MD-Desk-版本-构建号-macOS.zip`；当前已分发文件是 `MD-Desk-0.9.0-79-macOS.zip`。
+7. 按当前源码版本输出 `dist/macos/MD-Desk-版本-构建号-macOS.zip`；当前已分发文件是 `MD-Desk-0.9.0-89-macOS.zip`。
+
+本次安装包 SHA-256：
+
+`3beb9ef20cc826e0984d207533706d5801b755cd84f509407129bf22b0584cc7`
 
 员工安装：
 
@@ -90,7 +95,7 @@ Apple 处理完成后：
 
 1. 在 App Store Connect 的 `Users and Access` 添加员工 Apple Account，并只授予 Master Dance 所需的 App 访问。
 2. 在 Master Dance 的 `TestFlight > Internal Testing` 建立内部组。
-3. 把负责人和员工加入该组，并选择 build 45。
+3. 把负责人和员工加入该组，并在 Apple 处理完成后选择 build 49；如果该组已开启自动分发，处理完成后会自动进入该组。
 4. 两台 iPhone 从 App Store 安装 TestFlight。
 5. 接受邀请，在 TestFlight 中安装 Master Dance。
 6. 教务老师使用 Admin 帐号，负责人可以分别测试 Admin 和监护人帐号。

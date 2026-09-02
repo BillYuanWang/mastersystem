@@ -1,9 +1,11 @@
 # Master Dance
 
-Current local revision: `v0.9.0-beta.1o`. macOS is app version 0.9.0 build 88,
-while the local iOS app is version 0.9.0 build 48. The latest notarized
-macOS distribution remains build 79, and the accepted iOS TestFlight build
-remains 45.
+Current local revision: `v0.9.0-beta.1p`. macOS is app version 0.9.0 build 89,
+which is also the latest Developer ID signed and Apple-notarized distribution.
+The local iOS app is version 0.9.0 build 49; that build was uploaded
+successfully to App Store Connect and is processing for internal TestFlight.
+Build 45 remains the latest confirmed accepted TestFlight baseline until Apple
+finishes processing build 49.
 
 On macOS, guardian email and phone remain required during normal family entry
 and editing. A family deliberately inserted through the trusted Codex/SDK/MCP
