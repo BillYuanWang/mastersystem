@@ -1547,6 +1547,7 @@ struct BillingInvoiceLineItemRow: Codable, Sendable {
     let kind: String
     let title: String
     let detail: String?
+    let scheduleSnapshot: BillingScheduleSnapshot?
     let quantity: Int
     let unitAmountCents: Int
     let amountCents: Int
@@ -1563,6 +1564,7 @@ struct BillingInvoiceLineItemRow: Codable, Sendable {
         case kind
         case title
         case detail
+        case scheduleSnapshot = "schedule_snapshot"
         case quantity
         case unitAmountCents = "unit_amount_cents"
         case amountCents = "amount_cents"
@@ -1595,6 +1597,7 @@ struct BillingInvoiceLineItemRow: Codable, Sendable {
             kind: kind,
             title: title,
             detail: detail,
+            scheduleSnapshot: scheduleSnapshot,
             quantity: quantity,
             unitAmountCents: unitAmountCents,
             amountCents: amountCents,
@@ -1690,6 +1693,7 @@ struct BillingInvoiceItemPayload: Encodable, Sendable {
     let kind: String
     let title: String
     let detail: String?
+    let scheduleSnapshot: BillingScheduleSnapshot?
     let quantity: Int
     let unitAmountCents: Int
     let amountCents: Int
@@ -1704,6 +1708,7 @@ struct BillingInvoiceItemPayload: Encodable, Sendable {
         case kind
         case title
         case detail
+        case scheduleSnapshot = "schedule_snapshot"
         case quantity
         case unitAmountCents = "unit_amount_cents"
         case amountCents = "amount_cents"
@@ -1719,6 +1724,7 @@ struct BillingInvoiceItemPayload: Encodable, Sendable {
         kind = item.kind.rawValue
         title = item.title
         detail = item.detail
+        scheduleSnapshot = item.scheduleSnapshot
         quantity = item.quantity
         unitAmountCents = item.unitAmountCents
         amountCents = item.amountCents

@@ -18,6 +18,9 @@ struct CourseSheetView: View {
     @SceneStorage("md-desk.courses.name-filter") private var courseNameFilter = ""
     @SceneStorage("md-desk.courses.column-filters") private var selectedFilterValuesStorage = ""
     @State private var activeFilterColumn: CourseTableColumn?
+    @State private var expandedScheduleID: CourseID?
+    @SceneStorage("md-desk.courses.filter-week-enabled") private var weekFilterEnabled = false
+    @SceneStorage("md-desk.courses.filter-week-date") private var filterWeekDate = Date().timeIntervalSinceReferenceDate
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.mdInterfaceFontScale) private var interfaceFontScale
@@ -194,6 +197,16 @@ struct CourseSheetView: View {
                 .fill(theme.separator)
                 .frame(height: 1)
 
+            if column == .schedule {
+                Toggle("仅查看指定周", isOn: $weekFilterEnabled)
+                if weekFilterEnabled {
+                    DatePicker("所在周", selection: Binding(
+                        get: { Date(timeIntervalSinceReferenceDate: filterWeekDate) },
+                        set: { filterWeekDate = $0.timeIntervalSinceReferenceDate }
+                    ), displayedComponents: .date)
+                }
+            }
+
             if column == .name {
                 HStack(spacing: 6) {
                     TextField("输入课程名称", text: $courseNameFilter)
@@ -311,6 +324,20 @@ struct CourseSheetView: View {
                 needsAttention: entry.needsAttention(.schedule),
                 theme: theme
             )
+            .help(entry.schedule.details(calendar: .masterDance))
+            .contentShape(Rectangle())
+            .onTapGesture { expandedScheduleID = entry.id }
+            .popover(isPresented: Binding(
+                get: { expandedScheduleID == entry.id },
+                set: { if !$0 { expandedScheduleID = nil } }
+            )) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(entry.course.name).mdFont(.bodyStrong)
+                        Text(entry.schedule.details(calendar: .masterDance)).mdFont(.compact)
+                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                }.frame(width: 470, height: 300)
+            }
             dataCell(
                 "\(entry.sessionCount)",
                 width: layout[.sessions],
@@ -540,11 +567,28 @@ struct CourseSheetView: View {
             .filter { selectedTermID == nil || $0.termID == selectedTermID }
             .map { course in
             let courseSessions = (sessionsByCourse[course.id] ?? []).sorted { $0.startsAt < $1.startsAt }
-            let schedule = courseSessions.first.map(scheduleDetails)
+            let scopedSessions = courseSessions.filter { session in
+                !weekFilterEnabled || session.startsAt.startOfWeek() == Date(timeIntervalSinceReferenceDate: filterWeekDate).startOfWeek()
+            }
+            let schedule = CourseScheduleSummary(sessions: scopedSessions, calendar: .masterDance)
             let term = model.term(id: course.termID)
             let ageGroup = model.ageGroup(id: course.ageGroupID)
             let room = model.room(id: course.defaultRoomID)
             let instructor = model.instructor(id: course.defaultInstructorID)
+            let activeSessions = scopedSessions.filter { $0.status != .cancelled }
+            let roomIDs = Set(activeSessions.map { $0.roomOverrideID ?? course.defaultRoomID })
+            let instructorIDs = Set(activeSessions.map { $0.instructorOverrideID ?? course.defaultInstructorID })
+            let roomOptions = Dictionary(uniqueKeysWithValues: (roomIDs.isEmpty ? [course.defaultRoomID] : Array(roomIDs)).map {
+                ($0.description, model.room(id: $0)?.name ?? "未设置")
+            })
+            let instructorOptions = Dictionary(uniqueKeysWithValues: (instructorIDs.isEmpty ? [course.defaultInstructorID] : Array(instructorIDs)).map {
+                ($0.description, model.instructor(id: $0)?.displayName ?? "未设置")
+            })
+            let sessionFilterValues = activeSessions.map { session in
+                [CourseTableColumn.schedule: CourseScheduleSummary(sessions: [session], calendar: .masterDance).primary?.key ?? "none",
+                 .room: (session.roomOverrideID ?? course.defaultRoomID).description,
+                 .instructor: (session.instructorOverrideID ?? course.defaultInstructorID).description]
+            }
             let courseType = model.courseType(id: course.courseTypeID)
             let typeName = courseType?.name ?? "未设置"
             let formatToken = course.format == .privateLesson ? "私" : "组"
@@ -554,7 +598,7 @@ struct CourseSheetView: View {
             if referenceNeedsAttention(ageGroup?.name) { attentionColumns.insert(.ageGroup) }
             if referenceNeedsAttention(room?.name) { attentionColumns.insert(.room) }
             if referenceNeedsAttention(instructor?.displayName) { attentionColumns.insert(.instructor) }
-            if schedule == nil {
+            if schedule.primary == nil {
                 attentionColumns.formUnion([.schedule, .sessions])
             }
             if perSessionPriceNeedsAttention(course) {
@@ -569,18 +613,19 @@ struct CourseSheetView: View {
                 termName: term?.name ?? "未设置",
                 ageGroupName: ageGroup?.name ?? "未设置",
                 ageGroupKey: course.ageGroupID.description,
-                roomName: room?.name ?? "未设置",
+                roomName: roomOptions.values.sorted().joined(separator: " / "),
                 roomKey: course.defaultRoomID.description,
-                instructorName: instructor?.displayName ?? "未设置",
+                instructorName: instructorOptions.values.sorted().joined(separator: " / "),
                 instructorKey: course.defaultInstructorID.description,
-                scheduleLabel: schedule?.label ?? "未排课",
-                scheduleKey: schedule?.key ?? "none",
-                scheduleSortKey: schedule?.sortKey,
-                sessionCount: courseSessions.count,
+                roomOptions: roomOptions,
+                instructorOptions: instructorOptions,
+                sessionFilterValues: sessionFilterValues,
+                schedule: schedule,
+                sessionCount: courseSessions.filter { $0.status != .cancelled }.count,
                 perSessionPriceLabel: perSessionPriceLabel(course),
                 perSessionPriceKey: perSessionPriceKey(course),
                 perSessionPriceSortValue: String(format: "%012d", course.dropInUnitPriceCents ?? -1),
-                fullTermPriceLabel: fullTermPriceLabel(course, sessionCount: courseSessions.count),
+                fullTermPriceLabel: fullTermPriceLabel(course, sessionCount: courseSessions.filter { $0.status != .cancelled }.count),
                 fullTermPriceKey: fullTermPriceKey(course),
                 fullTermPriceSortValue: String(format: "%012d", course.unitPriceCents ?? -1),
                 courseTypeName: typeName,
@@ -689,6 +734,7 @@ struct CourseSheetView: View {
     private func displayedEntries(from entries: [CourseTableEntry]) -> [CourseTableEntry] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         var result = entries.filter { entry in
+            if weekFilterEnabled && entry.schedule.slots.isEmpty { return false }
             let matchesSearch = query.isEmpty || entry.searchValues.contains {
                 $0.localizedCaseInsensitiveContains(query)
             }
@@ -725,7 +771,7 @@ struct CourseSheetView: View {
 
     private var activeFilterCount: Int {
         let selectedCount = selectedFilterValues.values.filter { !$0.isEmpty }.count
-        return selectedCount + (trimmedCourseNameFilter.isEmpty ? 0 : 1)
+        return selectedCount + (trimmedCourseNameFilter.isEmpty ? 0 : 1) + (weekFilterEnabled ? 1 : 0)
     }
 
     private var isNarrowed: Bool {
@@ -733,8 +779,18 @@ struct CourseSheetView: View {
     }
 
     private func matchesSelectedFilters(_ entry: CourseTableEntry) -> Bool {
-        selectedFilterValues.allSatisfy { column, selectedValues in
-            selectedValues.isEmpty || selectedValues.contains(entry.filterKey(for: column))
+        let sessionColumns: Set<CourseTableColumn> = [.schedule, .room, .instructor]
+        let actualFilters = selectedFilterValues.filter { sessionColumns.contains($0.key) && !$0.value.isEmpty }
+        let matchesSession = actualFilters.isEmpty || entry.sessionFilterValues.contains { values in
+            actualFilters.allSatisfy { column, selected in selected.contains(values[column] ?? "none") }
+        } || (entry.sessionFilterValues.isEmpty && actualFilters.allSatisfy { column, selected in
+            selected.contains(entry.filterKey(for: column))
+        })
+        return matchesSession && selectedFilterValues.allSatisfy { column, selectedValues in
+            if sessionColumns.contains(column) {
+                return true
+            }
+            return selectedValues.isEmpty || selectedValues.contains(entry.filterKey(for: column))
         }
     }
 
@@ -744,12 +800,24 @@ struct CourseSheetView: View {
     ) -> [CourseFilterOption] {
         var grouped: [String: CourseFilterOption] = [:]
         for entry in entries {
-            let key = entry.filterKey(for: column)
-            let label = entry.filterLabel(for: column)
-            if let existing = grouped[key] {
-                grouped[key] = CourseFilterOption(id: key, label: existing.label, count: existing.count + 1)
+            let options: [(key: String, label: String)]
+            if column == .schedule, !entry.schedule.slots.isEmpty {
+                options = entry.schedule.slots.map { (key: $0.key, label: $0.label) }
+            } else if column == .room {
+                options = entry.roomOptions.map { (key: $0.key, label: $0.value) }
+            } else if column == .instructor {
+                options = entry.instructorOptions.map { (key: $0.key, label: $0.value) }
             } else {
-                grouped[key] = CourseFilterOption(id: key, label: label, count: 1)
+                options = [(key: entry.filterKey(for: column), label: entry.filterLabel(for: column))]
+            }
+            for option in options {
+                if let existing = grouped[option.key] {
+                    grouped[option.key] = CourseFilterOption(
+                        id: option.key, label: existing.label, count: existing.count + 1
+                    )
+                } else {
+                    grouped[option.key] = CourseFilterOption(id: option.key, label: option.label, count: 1)
+                }
             }
         }
         return grouped.values.sorted {
@@ -817,6 +885,7 @@ struct CourseSheetView: View {
     }
 
     private func isFilterActive(_ column: CourseTableColumn) -> Bool {
+        if column == .schedule, weekFilterEnabled { return true }
         if column == .name {
             return !trimmedCourseNameFilter.isEmpty
         }
@@ -841,6 +910,7 @@ struct CourseSheetView: View {
     }
 
     private func clearFilter(for column: CourseTableColumn) {
+        if column == .schedule { weekFilterEnabled = false }
         if column == .name {
             courseNameFilter = ""
         } else {
@@ -852,6 +922,7 @@ struct CourseSheetView: View {
     }
 
     private func clearAllFilters() {
+        weekFilterEnabled = false
         courseNameFilter = ""
         selectedFilterValuesStorage = MDTableFilterCodec.removeAll(from: selectedFilterValuesStorage)
     }
@@ -866,26 +937,6 @@ struct CourseSheetView: View {
                     activeFilterColumn = nil
                 }
             }
-        )
-    }
-
-    private func scheduleDetails(_ session: ClassSession) -> (label: String, key: String, sortKey: Int) {
-        let calendar = Calendar.masterDance
-        let weekday = calendar.component(.weekday, from: session.startsAt)
-        let startHour = calendar.component(.hour, from: session.startsAt)
-        let startMinute = calendar.component(.minute, from: session.startsAt)
-        let endHour = calendar.component(.hour, from: session.endsAt)
-        let endMinute = calendar.component(.minute, from: session.endsAt)
-        let weekdayIndex = (weekday + 5) % 7
-        let startMinutes = startHour * 60 + startMinute
-        let endMinutes = endHour * 60 + endMinute
-        let day = session.startsAt.formatted(.dateTime.weekday(.abbreviated))
-        let start = session.startsAt.formatted(date: .omitted, time: .shortened)
-        let end = session.endsAt.formatted(date: .omitted, time: .shortened)
-        return (
-            label: "\(day) \(start)–\(end)",
-            key: "\(weekday)-\(startMinutes)-\(endMinutes)",
-            sortKey: weekdayIndex * 1_440 + startMinutes
         )
     }
 
@@ -983,9 +1034,10 @@ private struct CourseTableEntry: Identifiable {
     let roomKey: String
     let instructorName: String
     let instructorKey: String
-    let scheduleLabel: String
-    let scheduleKey: String
-    let scheduleSortKey: Int?
+    let roomOptions: [String: String]
+    let instructorOptions: [String: String]
+    let sessionFilterValues: [[CourseTableColumn: String]]
+    let schedule: CourseScheduleSummary
     let sessionCount: Int
     let perSessionPriceLabel: String
     let perSessionPriceKey: String
@@ -1002,6 +1054,10 @@ private struct CourseTableEntry: Identifiable {
     let attentionColumns: Set<CourseTableColumn>
 
     var id: CourseID { course.id }
+
+    var scheduleLabel: String { schedule.label }
+    var scheduleKey: String { schedule.primary?.key ?? "none" }
+    var scheduleSortKey: Int? { schedule.primary?.sortKey }
 
     var hasConflict: Bool { !conflicts.isEmpty }
 
@@ -1030,7 +1086,7 @@ private struct CourseTableEntry: Identifiable {
             courseTypeFilterLabel,
             conflictLabel,
             statusLabel
-        ]
+        ] + schedule.slots.map(\.label)
     }
 
     func filterKey(for column: CourseTableColumn) -> String {

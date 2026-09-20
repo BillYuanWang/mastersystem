@@ -142,17 +142,10 @@ public enum BillingCalculator {
         trialSessionIDs: Set<ClassSessionID> = [],
         calendar: Calendar = .current
     ) -> EnrollmentChargeEstimate {
-        let startDay = enrollment.billingStartsOn.map(calendar.startOfDay(for:))
-        let normalSessionCount = sessions.reduce(into: 0) { count, session in
-            guard session.status != .cancelled,
-                  !trialSessionIDs.contains(session.id),
-                  enrollment.includes(sessionID: session.id) else { return }
-            if let startDay,
-               calendar.startOfDay(for: session.startsAt) < startDay {
-                return
-            }
-            count += 1
-        }
+        let normalSessionCount = EnrollmentSessionResolver.billableSessions(
+            enrollment: enrollment, sessions: sessions,
+            trialSessionIDs: trialSessionIDs, calendar: calendar
+        ).count
 
         guard let unitPriceCents = enrollment.unitPriceCents else {
             return EnrollmentChargeEstimate(
@@ -377,6 +370,7 @@ public struct BillingInvoiceLineItem: Identifiable, Codable, Equatable, Sendable
     public let kind: BillingLineItemKind
     public let title: String
     public let detail: String?
+    public let scheduleSnapshot: BillingScheduleSnapshot?
     public let quantity: Int
     public let unitAmountCents: Int
     public let amountCents: Int
@@ -396,6 +390,7 @@ public struct BillingInvoiceLineItem: Identifiable, Codable, Equatable, Sendable
         kind: BillingLineItemKind,
         title: String,
         detail: String? = nil,
+        scheduleSnapshot: BillingScheduleSnapshot? = nil,
         quantity: Int = 1,
         unitAmountCents: Int,
         amountCents: Int,
@@ -412,6 +407,7 @@ public struct BillingInvoiceLineItem: Identifiable, Codable, Equatable, Sendable
         self.kind = kind
         self.title = title
         self.detail = detail
+        self.scheduleSnapshot = scheduleSnapshot
         self.quantity = quantity
         self.unitAmountCents = unitAmountCents
         self.amountCents = amountCents
@@ -458,6 +454,7 @@ public struct BillingInvoiceLineItem: Identifiable, Codable, Equatable, Sendable
         case kind
         case title
         case detail
+        case scheduleSnapshot
         case quantity
         case unitAmountCents
         case amountCents
@@ -475,6 +472,7 @@ public struct BillingInvoiceLineItem: Identifiable, Codable, Equatable, Sendable
         kind = try container.decode(BillingLineItemKind.self, forKey: .kind)
         title = try container.decode(String.self, forKey: .title)
         detail = try container.decodeIfPresent(String.self, forKey: .detail)
+        scheduleSnapshot = try container.decodeIfPresent(BillingScheduleSnapshot.self, forKey: .scheduleSnapshot)
         quantity = try container.decode(Int.self, forKey: .quantity)
         unitAmountCents = try container.decode(Int.self, forKey: .unitAmountCents)
         amountCents = try container.decode(Int.self, forKey: .amountCents)
@@ -499,6 +497,7 @@ public struct BillingInvoiceLineItem: Identifiable, Codable, Equatable, Sendable
         try container.encode(kind, forKey: .kind)
         try container.encode(title, forKey: .title)
         try container.encodeIfPresent(detail, forKey: .detail)
+        try container.encodeIfPresent(scheduleSnapshot, forKey: .scheduleSnapshot)
         try container.encode(quantity, forKey: .quantity)
         try container.encode(unitAmountCents, forKey: .unitAmountCents)
         try container.encode(amountCents, forKey: .amountCents)

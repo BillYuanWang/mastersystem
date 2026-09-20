@@ -1,11 +1,30 @@
 # Master Dance
 
-Current local revision: `v0.9.0-beta.1p`. macOS is app version 0.9.0 build 89,
-which is also the latest Developer ID signed and Apple-notarized distribution.
-The local iOS app is version 0.9.0 build 49; that build was uploaded
-successfully to App Store Connect and is processing for internal TestFlight.
-Build 45 remains the latest confirmed accepted TestFlight baseline until Apple
-finishes processing build 49.
+Current release: `v0.9.1`, macOS build 90 (2026-09-20).
+The workspace `MD Desk.app` and the new universal employee ZIP are both 0.9.1
+build 90. Developer ID signing, Apple notarization, ticket stapling, and
+freshly extracted ZIP signature/Gatekeeper checks passed. This replaces local
+build 88 and is one build newer than the previous distributed package (89).
+Employee computers have not been updated; older installers are retained.
+
+The iOS version remains 0.9.0 build 49. Its unchanged target passed an unsigned
+Release compatibility build; no TestFlight upload was made in this release.
+Build 49 was uploaded on 2026-09-01, but its current Apple processing/tester
+availability was not rechecked. Build 45 remains the last documented confirmed
+tester baseline, a build-number distance of four, not a claim about live status.
+
+Courses now show all actual scheduled time slots, with exact date details and
+optional week-specific filtering. Room/instructor filters use actual session
+overrides. Full-term enrollment can start later; per-session enrollment follows
+selected session IDs, including when a selected class moves earlier. Editing a
+course preserves session IDs and linked records rather than flattening phased
+schedules into one weekly rule. New invoice items retain frozen dated-session
+snapshots for both language variants and later payment receipts. Issued legacy
+documents remain untouched. The additive Supabase migration is deployed and
+read-only schema/permission checks passed; no production course or billing
+records were edited for testing. All 154 Swift tests passed, both receipt
+languages were visually checked, and the installed app's phased-course display,
+week filter, and editor were checked against real data without saving changes.
 
 On macOS, guardian email and phone remain required during normal family entry
 and editing. A family deliberately inserted through the trusted Codex/SDK/MCP
@@ -25,9 +44,9 @@ offline; a changed cloud revision downloads once and replaces the prior image.
 The image cache does not retain a second in-memory copy. Files remain fresh for
 180 days, with stale current media retained as a fallback while refreshing.
 
-The production 2026 Fall term currently contains 31 confirmed courses and 527
-sessions. The two weekend temporary-adjustment courses and all unconfirmed
-prices were intentionally excluded from the July 24 timetable import.
+The July 24 timetable import added 31 confirmed courses and 527 sessions.
+Temporary-adjustment courses and unconfirmed prices were excluded from that
+initial import; subsequent administrator updates remain authoritative.
 
 MD Desk first renders the schedule, then quietly preloads Courses, Families,
 Enrollments, Attendance, and Leave into RAM one workspace at a time. Those six

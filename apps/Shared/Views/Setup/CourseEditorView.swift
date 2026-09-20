@@ -12,6 +12,7 @@ struct CourseEditorView: View {
     @State private var draft = CourseCreationDraft()
     @State private var occurrenceCourseID: CourseID
     @State private var didConfigure = false
+    @State private var confirmingScheduleChange = false
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
@@ -120,7 +121,7 @@ struct CourseEditorView: View {
                             }
                         }
 
-                        editorSection("每周排课", theme: theme) {
+                        editorSection(original == nil ? "每周排课" : "批量调整课次", theme: theme) {
                             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
                                 GridRow {
                                     fieldLabel("开始周")
@@ -153,6 +154,16 @@ struct CourseEditorView: View {
                                             .labelsHidden()
                                     }
                                 }
+                            }
+                            if original != nil {
+                                Button("应用到所选日期区间") {
+                                    draft.existingSessions = CourseSessionEditing.moving(
+                                        draft.existingSessions ?? [], from: draft.startsOn, through: draft.endsOn,
+                                        weekday: draft.weekday, startTime: draft.startTime, endTime: draft.endTime,
+                                        calendar: .masterDance
+                                    )
+                                }
+                                .disabled(draft.startsOn > draft.endsOn)
                             }
                         }
 
@@ -249,15 +260,28 @@ struct CourseEditorView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("实际课次")
                                 .mdFont(.bodyStrong)
-                            Text("点击日期右上角的叉可移除休息周")
+                            Text(original == nil ? "点击日期右上角的叉可移除休息周" : "已排定的每一次课；修改资料不会重新生成课次")
                                 .mdFont(.compact)
                                 .foregroundStyle(theme.secondaryText)
                         }
                         Spacer()
-                        Text("\(activeOccurrenceCount)/\(occurrenceDates.count)")
+                        Text("\(activeOccurrenceCount)/\(draft.existingSessions?.count ?? occurrenceDates.count)")
                             .mdFont(.monoStrong)
                     }
 
+                    if original != nil {
+                        ScrollView {
+                            LazyVStack(spacing: 10) {
+                                ForEach(Array((draft.existingSessions ?? []).indices), id: \.self) { index in
+                                    existingSessionRow(index, theme: theme)
+                                    Divider()
+                                }
+                            }
+                        }
+                        if let scheduleError {
+                            Text(scheduleError).mdFont(.compact).foregroundStyle(theme.danger)
+                        }
+                    } else {
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 116), spacing: 8)], spacing: 8) {
                             ForEach(occurrenceDates, id: \.self) { date in
@@ -273,6 +297,7 @@ struct CourseEditorView: View {
                             description: Text("请检查日期、星期和上课时间。")
                         )
                     }
+                    }
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -283,7 +308,9 @@ struct CourseEditorView: View {
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }
-                Button(saveButtonTitle) { save() }
+                Button(saveButtonTitle) {
+                    if hasSessionChanges { confirmingScheduleChange = true } else { save() }
+                }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave)
             }
@@ -291,6 +318,11 @@ struct CourseEditorView: View {
         }
         .frame(width: 980, height: 700)
         .background(theme.background)
+        .confirmationDialog("确认修改实际课次？", isPresented: $confirmingScheduleChange) {
+            Button("保存排课修改") { save() }
+        } message: {
+            Text("报名和签到将继续关联原课次；已签发账单与收据保留原安排，不会被改写。")
+        }
         .onAppear(perform: configureDraft)
         .onChange(of: draft.termID) { oldValue, newValue in
             guard didConfigure, oldValue != nil, oldValue != newValue else { return }
@@ -318,7 +350,10 @@ struct CourseEditorView: View {
     }
 
     private var activeOccurrenceCount: Int {
-        occurrenceDates.filter {
+        if let sessions = draft.existingSessions {
+            return sessions.filter { $0.status != .cancelled }.count
+        }
+        return occurrenceDates.filter {
             let date = Calendar.masterDance.startOfDay(for: $0)
             return !draft.excludedDates.contains(date) && !automaticHolidayDates.contains(date)
         }.count
@@ -350,6 +385,7 @@ struct CourseEditorView: View {
             && courseTermIsReady
             && activeOccurrenceCount > 0
             && priceIsValid
+            && scheduleError == nil
     }
 
     private var courseTermIsReady: Bool {
@@ -576,6 +612,10 @@ struct CourseEditorView: View {
             draft.isActive = source.isActive
 
             let existingSessions = model.sessions(forCourse: source.id)
+            if original != nil {
+                draft.existingSessions = existingSessions
+                draft.sourceSessions = existingSessions
+            }
             if let first = existingSessions.first, let last = existingSessions.last {
                 let calendar = Calendar.masterDance
                 draft.startsOn = calendar.startOfDay(for: first.startsAt)
@@ -621,6 +661,75 @@ struct CourseEditorView: View {
         if original != nil { return "编辑课程" }
         if duplicateSource != nil { return "复制课程" }
         return "添加课程"
+    }
+
+    private var hasSessionChanges: Bool {
+        guard let original, let sessions = draft.existingSessions else { return false }
+        return sessions != model.sessions(forCourse: original.id)
+    }
+
+    private var scheduleError: String? {
+        guard let sessions = draft.existingSessions else { return nil }
+        guard let termID = draft.termID, let term = model.term(id: termID) else { return "请选择学期" }
+        let calendar = Calendar.masterDance
+        var times = Set<Date>()
+        for session in sessions where session.status != .cancelled {
+            let day = calendar.startOfDay(for: session.startsAt)
+            if session.endsAt <= session.startsAt { return "下课时间必须晚于上课时间" }
+            if day < calendar.startOfDay(for: term.startsOn) || day > calendar.startOfDay(for: term.endsOn) {
+                return "实际课次必须在所选学期内"
+            }
+            if automaticHolidayDates.contains(day) { return "实际课次落在假期，请调整日期或取消该课次" }
+            if !times.insert(session.startsAt).inserted { return "同一门课程不能在同一时间安排两次" }
+        }
+        return nil
+    }
+
+    private func existingSessionRow(_ index: Int, theme: MDTheme) -> some View {
+        let session = draft.existingSessions![index]
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                DatePicker("上课", selection: Binding(
+                    get: { draft.existingSessions![index].startsAt },
+                    set: { date in
+                        let duration = session.endsAt.timeIntervalSince(session.startsAt)
+                        draft.existingSessions![index].startsAt = date
+                        draft.existingSessions![index].endsAt = date.addingTimeInterval(duration)
+                    }
+                ), displayedComponents: [.date, .hourAndMinute])
+                Button {
+                    let previous = draft.sourceSessions?.first { $0.id == session.id }?.status
+                    draft.existingSessions![index].status = session.status == .cancelled
+                        ? (previous == .cancelled ? .scheduled : previous ?? .scheduled) : .cancelled
+                } label: {
+                    Image(systemName: session.status == .cancelled ? "arrow.uturn.backward" : "xmark.circle")
+                }.buttonStyle(.plain).help(session.status == .cancelled ? "恢复课次" : "取消课次（保留记录）")
+            }
+            DatePicker("下课", selection: Binding(
+                get: { draft.existingSessions![index].endsAt },
+                set: { draft.existingSessions![index].endsAt = $0 }
+            ), displayedComponents: [.date, .hourAndMinute])
+            HStack {
+                Picker("教室", selection: Binding(
+                    get: { draft.existingSessions![index].roomOverrideID },
+                    set: { draft.existingSessions![index].roomOverrideID = $0 }
+                )) {
+                    Text("课程默认").tag(Optional<RoomID>.none)
+                    ForEach(model.rooms) { Text($0.name).tag(Optional($0.id)) }
+                }
+                Picker("老师", selection: Binding(
+                    get: { draft.existingSessions![index].instructorOverrideID },
+                    set: { draft.existingSessions![index].instructorOverrideID = $0 }
+                )) {
+                    Text("课程默认").tag(Optional<InstructorID>.none)
+                    ForEach(model.instructors) { Text($0.displayName).tag(Optional($0.id)) }
+                }
+            }
+            Text(session.status == .cancelled ? "已取消" : session.startsAt.formatted(.dateTime.weekday(.wide)))
+                .mdFont(.compact).foregroundStyle(session.status == .cancelled ? theme.danger : theme.secondaryText)
+        }
+        .mdFont(.compact)
+        .padding(.vertical, 4)
     }
 
     private var editorEnglishTitle: String {

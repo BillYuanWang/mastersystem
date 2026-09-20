@@ -15,6 +15,7 @@ struct EnrollmentsWorkspaceView: View {
     @State private var draftCourseID: CourseID?
     @State private var draftRegistrationMode = EnrollmentRegistrationMode.fullTerm
     @State private var draftSelectedSessionIDs: Set<ClassSessionID> = []
+    @State private var draftBillingStart = Date()
     @State private var showingStudentPicker = false
     @State private var showingCoursePicker = false
     @State private var showingRegistrationPicker = false
@@ -229,8 +230,10 @@ struct EnrollmentsWorkspaceView: View {
                     DraftEnrollmentRegistrationPicker(
                         model: model,
                         course: course,
+                        studentID: draftStudentID,
                         mode: $draftRegistrationMode,
-                        selectedSessionIDs: $draftSelectedSessionIDs
+                        selectedSessionIDs: $draftSelectedSessionIDs,
+                        billingStart: $draftBillingStart
                     )
                 }
             }
@@ -596,6 +599,9 @@ struct EnrollmentsWorkspaceView: View {
 
     private func selectCourse(_ courseID: CourseID) {
         draftCourseID = courseID
+        if let studentID = draftStudentID {
+            draftBillingStart = model.suggestedBillingStart(courseID: courseID, studentID: studentID) ?? Date()
+        }
         draftRegistrationMode = model.course(id: courseID)?.format.requiresPerSessionEnrollment == true
             ? .perSession
             : .fullTerm
@@ -609,7 +615,8 @@ struct EnrollmentsWorkspaceView: View {
             studentID: studentID,
             courseID: courseID,
             registrationMode: draftRegistrationMode,
-            selectedSessionIDs: draftRegistrationMode == .perSession ? draftSelectedSessionIDs : []
+            selectedSessionIDs: draftRegistrationMode == .perSession ? draftSelectedSessionIDs : [],
+            billingStartsOn: draftRegistrationMode == .fullTerm ? draftBillingStart : nil
         )
         pendingEnrollments.insert(submission, at: 0)
         draftStudentID = nil
@@ -643,7 +650,8 @@ struct EnrollmentsWorkspaceView: View {
                 studentID: submission.studentID,
                 courseID: submission.courseID,
                 registrationMode: submission.registrationMode,
-                selectedSessionIDs: submission.selectedSessionIDs
+                selectedSessionIDs: submission.selectedSessionIDs,
+                billingStartsOn: submission.billingStartsOn
             )
         }
     }
@@ -674,10 +682,7 @@ struct EnrollmentsWorkspaceView: View {
     }
 
     private func scheduleLabel(_ course: Course) -> String {
-        guard let session = model.sessions(forCourse: course.id).first else { return "未排课" }
-        return weekdayTitle(Calendar.masterDance.component(.weekday, from: session.startsAt)) + " "
-            + session.startsAt.formatted(date: .omitted, time: .shortened) + "–"
-            + session.endsAt.formatted(date: .omitted, time: .shortened)
+        CourseScheduleSummary(sessions: model.sessions(forCourse: course.id), calendar: .masterDance).label
     }
 
     private func staffAndRoom(_ course: Course) -> String {
@@ -726,13 +731,7 @@ struct EnrollmentsWorkspaceView: View {
     }
 
     private func enrollmentScheduleLabel(_ enrollment: Enrollment) -> String {
-        guard enrollment.registrationMode == .perSession else {
-            return courseForEnrollment(enrollment).map(scheduleLabel) ?? "未排课"
-        }
-        let selected = model.sessions(for: enrollment)
-        guard let first = selected.first else { return "未选择课次" }
-        let date = first.startsAt.formatted(.dateTime.month().day())
-        return selected.count == 1 ? date : "\(date) 起 · \(selected.count) 节"
+        CourseScheduleSummary(sessions: model.billableSessions(for: enrollment), calendar: .masterDance).label
     }
 
     private func coursePricingStatusLabel(_ course: Course) -> String {
@@ -982,7 +981,7 @@ private struct CourseEnrollmentPicker: View {
                             .background(theme.subtleSurface)
 
                             ForEach(group.courses) { course in
-                                courseRow(course, theme: theme)
+                                courseRow(course, weekday: Int(group.id), theme: theme)
                                 Divider().padding(.leading, 108)
                             }
                         }
@@ -998,10 +997,8 @@ private struct CourseEnrollmentPicker: View {
     private var filteredCourses: [Course] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         return courses.filter { course in
-            let courseWeekday = firstSession(course).map {
-                Calendar.masterDance.component(.weekday, from: $0.startsAt)
-            }
-            guard weekday == nil || weekday == courseWeekday else { return false }
+            let summary = CourseScheduleSummary(sessions: model.sessions(forCourse: course.id), calendar: .masterDance)
+            guard weekday == nil || summary.slots.contains(where: { $0.weekday == weekday }) else { return false }
             guard !query.isEmpty else { return true }
             let values = [
                 course.name,
@@ -1010,7 +1007,7 @@ private struct CourseEnrollmentPicker: View {
                 model.instructor(id: course.defaultInstructorID)?.displayName ?? "",
                 model.room(id: course.defaultRoomID)?.name ?? "",
                 model.term(id: course.termID)?.name ?? ""
-            ]
+            ] + summary.slots.map(\.label)
             return values.contains { $0.localizedCaseInsensitiveContains(query) }
         }
     }
@@ -1018,9 +1015,10 @@ private struct CourseEnrollmentPicker: View {
     private var groups: [CourseDayGroup] {
         let orderedDays: [Int?] = [2, 3, 4, 5, 6, 7, 1, nil]
         return orderedDays.compactMap { day in
+            if let weekday, day != weekday { return nil }
             let matching = filteredCourses.filter { course in
-                guard let session = firstSession(course) else { return day == nil }
-                return day == Calendar.masterDance.component(.weekday, from: session.startsAt)
+                let slots = CourseScheduleSummary(sessions: model.sessions(forCourse: course.id), calendar: .masterDance).slots
+                return slots.isEmpty ? day == nil : slots.contains { $0.weekday == day }
             }
             .sorted { lhs, rhs in
                 switch (firstSession(lhs), firstSession(rhs)) {
@@ -1043,8 +1041,12 @@ private struct CourseEnrollmentPicker: View {
         [(2, "周一"), (3, "周二"), (4, "周三"), (5, "周四"), (6, "周五"), (7, "周六"), (1, "周日")]
     }
 
-    private func courseRow(_ course: Course, theme: MDTheme) -> some View {
-        let session = firstSession(course)
+    private func courseRow(_ course: Course, weekday: Int?, theme: MDTheme) -> some View {
+        let summary = CourseScheduleSummary(
+            sessions: model.sessions(forCourse: course.id).filter {
+                weekday == nil || Calendar.masterDance.component(.weekday, from: $0.startsAt) == weekday
+            }, calendar: .masterDance
+        )
         let typeIndex = model.courseTypes.firstIndex { $0.id == course.courseTypeID } ?? 0
         return Button {
             select(course.id)
@@ -1055,7 +1057,7 @@ private struct CourseEnrollmentPicker: View {
                     .frame(width: 4, height: 38)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(session.map(timeRange) ?? "未排课")
+                    Text(summary.label)
                         .mdFont(.monoStrong)
                         .foregroundStyle(theme.primaryText)
                     Text(model.term(id: course.termID)?.name ?? "")
@@ -1063,7 +1065,7 @@ private struct CourseEnrollmentPicker: View {
                         .foregroundStyle(theme.secondaryText)
                         .lineLimit(1)
                 }
-                .frame(width: 88, alignment: .leading)
+                .frame(width: 148, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(course.name)
@@ -1103,6 +1105,7 @@ private struct CourseEnrollmentPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help(summary.details(calendar: .masterDance))
     }
 
     private func firstSession(_ course: Course) -> ClassSession? {
@@ -1128,8 +1131,10 @@ private struct CourseEnrollmentPicker: View {
 private struct DraftEnrollmentRegistrationPicker: View {
     let model: AppModel
     let course: Course
+    let studentID: StudentID?
     @Binding var mode: EnrollmentRegistrationMode
     @Binding var selectedSessionIDs: Set<ClassSessionID>
+    @Binding var billingStart: Date
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -1158,11 +1163,16 @@ private struct DraftEnrollmentRegistrationPicker: View {
             Divider()
 
             if mode == .fullTerm {
-                ContentUnavailableView(
-                    "整期报名",
-                    systemImage: "calendar.badge.checkmark",
-                    description: Text("包含这门课程所有未取消的课次。")
-                )
+                DatePicker("报名起始日期", selection: $billingStart, displayedComponents: .date)
+                    .padding(12)
+                ScrollView {
+                    Text(CourseScheduleSummary(sessions: coveredSessions, calendar: .masterDance).details(calendar: .masterDance))
+                        .mdFont(.compact)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                }
+                Text("计费 \(coveredSessions.count) 节 · 已扣除休课与已记录试课")
+                    .mdFont(.compactStrong).padding(12)
             } else if sessions.isEmpty {
                 ContentUnavailableView("没有可选课次", systemImage: "calendar.badge.exclamationmark")
             } else {
@@ -1210,6 +1220,14 @@ private struct DraftEnrollmentRegistrationPicker: View {
         model.sessions(forCourse: course.id).filter { $0.status != .cancelled }
     }
 
+    private var coveredSessions: [ClassSession] {
+        let trials = Set(model.attendance.filter { $0.studentID == studentID && $0.status == .trial }.map(\.sessionID))
+        return sessions.filter {
+            Calendar.masterDance.startOfDay(for: $0.startsAt) >= Calendar.masterDance.startOfDay(for: billingStart)
+                && !trials.contains($0.id)
+        }
+    }
+
     private func sessionRow(_ session: ClassSession, theme: MDTheme) -> some View {
         let selected = selectedSessionIDs.contains(session.id)
         return Button {
@@ -1224,11 +1242,18 @@ private struct DraftEnrollmentRegistrationPicker: View {
                     .font(.system(size: 16))
                     .foregroundStyle(selected ? theme.accent : theme.secondaryText)
                     .frame(width: 22)
-                Text(sessionDateLabel(session.startsAt))
-                    .mdFont(.bodyStrong)
-                    .foregroundStyle(theme.primaryText)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(sessionDateLabel(session.startsAt))
+                        .mdFont(.bodyStrong)
+                        .foregroundStyle(theme.primaryText)
+                    Text([model.room(id: session.roomOverrideID ?? course.defaultRoomID)?.name,
+                          model.instructor(id: session.instructorOverrideID ?? course.defaultInstructorID)?.displayName]
+                        .compactMap { $0 }.joined(separator: " · "))
+                        .mdFont(.compact)
+                        .foregroundStyle(theme.secondaryText)
+                }
                 Spacer()
-                Text(session.startsAt.formatted(date: .omitted, time: .shortened))
+                Text(session.startsAt.formatted(date: .omitted, time: .shortened) + "–" + session.endsAt.formatted(date: .omitted, time: .shortened))
                     .mdFont(.mono)
                     .foregroundStyle(theme.secondaryText)
             }
@@ -1286,6 +1311,7 @@ private struct PendingEnrollmentSubmission: Identifiable {
     let courseID: CourseID
     let registrationMode: EnrollmentRegistrationMode
     let selectedSessionIDs: Set<ClassSessionID>
+    let billingStartsOn: Date?
     var status = PendingEnrollmentStatus.syncing
 }
 

@@ -524,6 +524,30 @@ final class AppModel {
         )
     }
 
+    func billableSessions(for enrollment: Enrollment) -> [ClassSession] {
+        EnrollmentSessionResolver.billableSessions(
+            enrollment: enrollment, sessions: sessions(forCourse: enrollment.courseID),
+            trialSessionIDs: trialSessionIDs(for: enrollment), calendar: .masterDance
+        )
+    }
+
+    func billingScheduleSnapshot(for enrollment: Enrollment) -> BillingScheduleSnapshot {
+        let course = course(id: enrollment.courseID)
+        return BillingScheduleSnapshot(
+            courseName: course?.name ?? "课程",
+            studentName: student(id: enrollment.studentID)?.displayName ?? "学员",
+            registrationMode: enrollment.registrationMode,
+            timeZoneIdentifier: Calendar.masterDance.timeZone.identifier,
+            sessions: billableSessions(for: enrollment).map { session in
+                BillingScheduleSnapshot.Session(
+                    session: session,
+                    room: room(id: session.roomOverrideID ?? course?.defaultRoomID)?.name ?? "未定教室",
+                    instructor: instructor(id: session.instructorOverrideID ?? course?.defaultInstructorID)?.displayName ?? "未定老师"
+                )
+            }
+        )
+    }
+
     func suggestedBillingStart(
         courseID: CourseID,
         studentID: StudentID
@@ -963,17 +987,44 @@ final class AppModel {
         updated.isActive = draft.isActive
 
         let existingSessions = sessions(forCourse: original.id)
-        let replacementSessions = try generatedSessions(for: original.id, termID: termID, draft: draft)
+        let replacementSessions: [ClassSession]
+        if let edited = draft.existingSessions {
+            if edited == draft.sourceSessions {
+                replacementSessions = existingSessions
+            } else {
+                guard draft.sourceSessions == existingSessions else { throw AppModelError.courseScheduleChangedRemotely }
+                replacementSessions = edited
+            }
+            let calendar = Calendar.masterDance
+            guard let term = term(id: termID),
+                  Set(existingSessions.map(\.id)) == Set(replacementSessions.map(\.id)),
+                  replacementSessions.allSatisfy({ $0.courseID == original.id && $0.endsAt > $0.startsAt }) else {
+                throw AppModelError.invalidCourseSchedule
+            }
+            let active = replacementSessions.filter { $0.status != .cancelled }
+            let holidayDates = termHolidays.filter { $0.termID == termID }.reduce(into: Set<Date>()) {
+                $0.formUnion(calendarDays(from: $1.startsOn, through: $1.endsOn))
+            }
+            guard Set(active.map(\.startsAt)).count == active.count,
+                  active.allSatisfy({
+                      let day = calendar.startOfDay(for: $0.startsAt)
+                      return day >= calendar.startOfDay(for: term.startsOn)
+                          && day <= calendar.startOfDay(for: term.endsOn) && !holidayDates.contains(day)
+                  }) else { throw AppModelError.invalidCourseSchedule }
+        } else {
+            replacementSessions = try generatedSessions(for: original.id, termID: termID, draft: draft)
+        }
         let scheduleChanged = !sameSchedule(existingSessions, replacementSessions)
+            || existingSessions != replacementSessions
         let pricingWasExplicitlyChanged = original.pricingStatus != pricing.status
             || original.unitPriceCents != pricing.unitPriceCents
             || original.dropInUnitPriceCents != pricing.dropInUnitPriceCents
-        if scheduleChanged,
+        if existingSessions.filter({ $0.status != .cancelled }).count != replacementSessions.filter({ $0.status != .cancelled }).count,
            !pricingWasExplicitlyChanged,
            updated.pricingStatus == .priced || updated.pricingStatus == .free {
             updated.pricingStatus = .reviewRequired
         }
-        if scheduleChanged {
+        if scheduleChanged, draft.existingSessions == nil {
             let existingSessionIDs = Set(existingSessions.map(\.id))
             let hasAttendance = attendance.contains { existingSessionIDs.contains($0.sessionID) }
             let hasLeaveRequests = leaveRequests.contains { existingSessionIDs.contains($0.sessionID) }
@@ -990,10 +1041,11 @@ final class AppModel {
         try await withCloudActivity(label: "更新课程") {
             try await repository.save(course: updated)
             if scheduleChanged {
-                for session in existingSessions {
+                let replacementIDs = Set(replacementSessions.map(\.id))
+                for session in existingSessions where !replacementIDs.contains(session.id) {
                     try await repository.deleteSession(id: session.id)
                 }
-                for session in replacementSessions {
+                for session in replacementSessions where !existingSessions.contains(session) {
                     try await repository.save(session: session)
                 }
             }
@@ -1511,7 +1563,8 @@ final class AppModel {
         studentID: StudentID,
         courseID: CourseID,
         registrationMode: EnrollmentRegistrationMode = .fullTerm,
-        selectedSessionIDs: Set<ClassSessionID> = []
+        selectedSessionIDs: Set<ClassSessionID> = [],
+        billingStartsOn: Date? = nil
     ) async throws {
         guard let course = course(id: courseID) else {
             throw AppModelError.missingEnrollmentFields
@@ -1534,7 +1587,14 @@ final class AppModel {
                 .map(\.startsAt)
                 .min()
         } else {
-            suggestedStart = suggestedBillingStart(courseID: courseID, studentID: studentID)
+            suggestedStart = billingStartsOn ?? suggestedBillingStart(courseID: courseID, studentID: studentID)
+        }
+        if registrationMode == .fullTerm {
+            let candidate = Enrollment(
+                termID: course.termID, courseID: courseID, studentID: studentID,
+                enrolledAt: Date(), billingStartsOn: suggestedStart
+            )
+            guard !billableSessions(for: candidate).isEmpty else { throw AppModelError.noBillableSessions }
         }
         let selectedUnitPrice = registrationMode == .fullTerm
             ? course.unitPriceCents

@@ -68,6 +68,7 @@ private struct BillingDraftLine: Identifiable, Equatable {
     var kind: BillingLineItemKind
     var title: String
     var detail: String
+    var scheduleSnapshot: BillingScheduleSnapshot?
     var quantity: Int
     var unitAmountCents: Int
     var amountText: String
@@ -80,6 +81,7 @@ private struct BillingDraftLine: Identifiable, Equatable {
         kind: BillingLineItemKind = .manual,
         title: String = "",
         detail: String = "",
+        scheduleSnapshot: BillingScheduleSnapshot? = nil,
         quantity: Int = 1,
         unitAmountCents: Int = 0,
         amountText: String = "",
@@ -91,6 +93,7 @@ private struct BillingDraftLine: Identifiable, Equatable {
         self.kind = kind
         self.title = title
         self.detail = detail
+        self.scheduleSnapshot = scheduleSnapshot
         self.quantity = quantity
         self.unitAmountCents = unitAmountCents
         self.amountText = amountText
@@ -666,8 +669,10 @@ private struct BillingComposerView: View {
                 title: line.title.nilIfEmpty ?? "收费项目",
                 englishTitle: englishBillingTitle(for: line),
                 amount: decimal(cents: MoneyTextParser.cents(from: line.amountText) ?? 0),
-                learnerName: line.studentID.flatMap { model.student(id: $0)?.displayName },
-                detail: line.detail.nilIfEmpty,
+                learnerName: line.scheduleSnapshot?.studentName ?? line.studentID.flatMap { model.student(id: $0)?.displayName },
+                detail: [line.detail.nilIfEmpty, line.scheduleSnapshot.map {
+                    BillingSchedulePresentation.detail($0, english: false)
+                }].compactMap { $0 }.joined(separator: "\n").nilIfEmpty,
                 englishDetail: englishBillingDetail(for: line),
                 settlementStatus: line.settlementStatus
             )
@@ -680,7 +685,7 @@ private struct BillingComposerView: View {
     private func receiptSection(for line: BillingDraftLine) -> ReceiptLineItemSection {
         switch line.kind {
         case .tuition:
-            let mode = line.enrollmentID.flatMap { enrollmentID in
+            let mode = line.scheduleSnapshot?.registrationMode ?? line.enrollmentID.flatMap { enrollmentID in
                 model.enrollments.first { $0.id == enrollmentID }?.registrationMode
             }
             return mode == .perSession ? .perSession : .fullTerm
@@ -703,7 +708,7 @@ private struct BillingComposerView: View {
     }
 
     private func englishBillingTitle(for line: BillingDraftLine) -> String {
-        let courseName = line.enrollmentID.flatMap { enrollmentID in
+        let courseName = line.scheduleSnapshot?.courseName ?? line.enrollmentID.flatMap { enrollmentID in
             model.enrollments.first { $0.id == enrollmentID }
         }.flatMap { model.course(id: $0.courseID)?.name }
         switch line.kind {
@@ -730,6 +735,10 @@ private struct BillingComposerView: View {
     }
 
     private func englishBillingDetail(for line: BillingDraftLine) -> String? {
+        if let snapshot = line.scheduleSnapshot {
+            return "\(snapshot.sessions.count) sessions × $\(MoneyTextParser.dollars(from: line.unitAmountCents))\n"
+                + BillingSchedulePresentation.detail(snapshot, english: true)
+        }
         switch line.kind {
         case .tuition:
             guard line.quantity > 1, line.unitAmountCents != 0 else { return nil }
@@ -850,6 +859,7 @@ private struct BillingComposerView: View {
                         sessionCount: estimate.normalSessionCount,
                         unitPriceCents: unit
                     ),
+                    scheduleSnapshot: model.billingScheduleSnapshot(for: enrollment),
                     quantity: max(1, estimate.normalSessionCount),
                     unitAmountCents: unit,
                     amountText: MoneyTextParser.dollars(from: tuition)
@@ -897,13 +907,7 @@ private struct BillingComposerView: View {
         guard enrollment.registrationMode == .perSession else {
             return "整期报名 · " + calculation
         }
-        let dates = model.sessions(for: enrollment)
-            .filter { $0.status != .cancelled }
-            .map { $0.startsAt.formatted(.dateTime.month().day()) }
-            .joined(separator: "、")
-        return dates.isEmpty
-            ? "按次报名 · " + calculation
-            : "按次报名 · " + calculation + " · " + dates
+        return "按次报名 · " + calculation
     }
 
     private func appendPreset(_ kind: BillingLineItemKind) {
@@ -1031,6 +1035,7 @@ private struct BillingComposerView: View {
                 kind: line.kind,
                 title: title,
                 detail: line.detail.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                scheduleSnapshot: line.scheduleSnapshot,
                 quantity: max(1, line.quantity),
                 unitAmountCents: line.quantity > 1 ? line.unitAmountCents : amount,
                 amountCents: amount,
@@ -1067,6 +1072,7 @@ private struct BillingComposerView: View {
             kind: item.kind,
             title: item.title,
             detail: item.detail ?? "",
+            scheduleSnapshot: item.scheduleSnapshot,
             quantity: item.quantity,
             unitAmountCents: item.unitAmountCents,
             amountText: MoneyTextParser.dollars(from: item.amountCents),
@@ -1785,8 +1791,10 @@ private struct BillingPaymentSheet: View {
                     title: item.title,
                     englishTitle: englishBillingTitle(for: item),
                     amount: decimal(cents: item.amountCents),
-                    learnerName: item.studentID.flatMap { model.student(id: $0)?.displayName },
-                    detail: item.detail,
+                    learnerName: item.scheduleSnapshot?.studentName ?? item.studentID.flatMap { model.student(id: $0)?.displayName },
+                    detail: [item.detail, item.scheduleSnapshot.map {
+                        BillingSchedulePresentation.detail($0, english: false)
+                    }].compactMap { $0 }.joined(separator: "\n").nilIfEmpty,
                     englishDetail: englishBillingDetail(for: item),
                     settlementStatus: item.settlementStatus
                 )
@@ -1803,7 +1811,7 @@ private struct BillingPaymentSheet: View {
     private func receiptSection(for item: BillingInvoiceLineItem) -> ReceiptLineItemSection {
         switch item.kind {
         case .tuition:
-            let mode = item.enrollmentID.flatMap { enrollmentID in
+            let mode = item.scheduleSnapshot?.registrationMode ?? item.enrollmentID.flatMap { enrollmentID in
                 model.enrollments.first { $0.id == enrollmentID }?.registrationMode
             }
             return mode == .perSession ? .perSession : .fullTerm
@@ -1817,7 +1825,7 @@ private struct BillingPaymentSheet: View {
     }
 
     private func englishBillingTitle(for item: BillingInvoiceLineItem) -> String {
-        let courseName = item.enrollmentID.flatMap { enrollmentID in
+        let courseName = item.scheduleSnapshot?.courseName ?? item.enrollmentID.flatMap { enrollmentID in
             model.enrollments.first { $0.id == enrollmentID }
         }.flatMap { model.course(id: $0.courseID)?.name }
         switch item.kind {
@@ -1840,6 +1848,10 @@ private struct BillingPaymentSheet: View {
     }
 
     private func englishBillingDetail(for item: BillingInvoiceLineItem) -> String? {
+        if let snapshot = item.scheduleSnapshot {
+            return "\(snapshot.sessions.count) sessions × $\(MoneyTextParser.dollars(from: item.unitAmountCents))\n"
+                + BillingSchedulePresentation.detail(snapshot, english: true)
+        }
         switch item.kind {
         case .tuition:
             guard item.quantity > 1 else { return nil }

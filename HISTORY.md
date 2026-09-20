@@ -12,6 +12,43 @@ handoff package is requested, then regenerate each PDF from its Markdown source.
 
 ## Current release
 
+### v0.9.1 - 2026-09-20
+
+- Released macOS 0.9.1 build 90 as a Developer ID-signed, Apple-notarized
+  universal ZIP. Stapling and freshly extracted ZIP signature/Gatekeeper checks
+  passed. The workspace app was updated from build 88 and launched with real
+  Supabase data. The previous employee package is build 89 (distance: one);
+  local versus newly delivered package distance is zero. No employee computer
+  was accessed or updated, and no old installer was deleted.
+- Replaced first-session/majority-weekday labeling with actual phased schedule
+  summaries, exact date details, and an optional selected-week filter. Room and
+  instructor filters respect session overrides and match the same actual
+  occurrence rather than combining unrelated phases.
+- Existing-course editing changes actual dated sessions or a selected date
+  interval, preserving IDs and enrollment/attendance links. Concurrent edits
+  detected in refreshed local data are rejected rather than silently flattened.
+  Metadata-only editing does not regenerate the timetable.
+- Full-term enrollment can use a later billing start; per-session selections
+  follow their stable session IDs even when rescheduled earlier. Billing counts
+  and date summaries use one resolver, excluding cancelled and trial sessions.
+- New invoices freeze course, learner, enrollment mode, dates, times, rooms,
+  and instructors into item snapshots. Both PNG languages and payment receipts
+  show actual dates without the former two-line truncation. Legacy issued
+  documents remain unchanged; corrections still create new versions.
+- Deployed additive migration `20260920200000_billing_schedule_snapshots.sql`.
+  Verified the JSONB column, v3 RPC and permissions with read-only cloud SQL;
+  confirmed no historical items were backfilled. The Docker-backed pgTAP runner
+  was unavailable, so equivalent schema assertions were queried directly.
+- All 154 Swift tests passed, including linked-record preservation, stale edit
+  rejection, later enrollment, early rescheduling, legacy decoding, and bilingual
+  receipt rendering. Real-data UI checks were read-only; no production course,
+  enrollment, attendance, or invoice was edited as a test.
+- iOS remains 0.9.0 build 49, with an unsigned Release compatibility build
+  passing and no new TestFlight upload. Build 45 is the last documented confirmed
+  tester baseline (distance: four); build 49's current Apple availability was
+  not rechecked. README and distribution records were updated; staff guide/PDF
+  regeneration is deferred until the next requested employee documentation pack.
+
 ### v0.9.0-beta.1p - 2026-09-01
 
 - Distributed macOS 0.9.0 build 89 as a universal Apple Silicon and Intel ZIP.

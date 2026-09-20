@@ -40,8 +40,8 @@ targets:
       properties:
         CFBundleDisplayName: MD Desk
         CFBundleIconFile: AppIcon
-        CFBundleShortVersionString: "0.9.0"
-        CFBundleVersion: "89"
+        CFBundleShortVersionString: "0.9.1"
+        CFBundleVersion: "90"
         CFBundleURLTypes:
           - CFBundleURLName: com.masterdance.desk.auth
             CFBundleURLSchemes:
@@ -58,8 +58,8 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 3GH2L367W3
         ENABLE_HARDENED_RUNTIME: YES
-        MARKETING_VERSION: "0.9.0"
-        CURRENT_PROJECT_VERSION: "89"
+        MARKETING_VERSION: "0.9.1"
+        CURRENT_PROJECT_VERSION: "90"
 
   MasterDanceMobile:
     type: application

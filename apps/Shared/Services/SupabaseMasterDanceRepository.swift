@@ -1099,7 +1099,7 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
         do {
             let stored: BillingInvoiceRow = try await client
                 .rpc(
-                    "admin_issue_billing_invoice_scoped_dual_v2",
+                    "admin_issue_billing_invoice_scoped_dual_v3",
                     params: IssueDualBillingInvoiceParameters(
                         invoiceID: invoice.id.rawValue,
                         guardianID: invoice.guardianID.rawValue,

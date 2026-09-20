@@ -280,7 +280,15 @@ enum ReceiptPNGRenderer {
     static let canvasWidth: CGFloat = 440
 
     static func canvasSize(for document: ReceiptDocument) -> CGSize {
-        let itemHeight = CGFloat(document.items.count) * 54
+        let itemHeight = document.items.reduce(CGFloat.zero) { height, item in
+            let text = item.displayedDetail(language: document.language) ?? ""
+            let bounds = (text as NSString).boundingRect(
+                with: CGSize(width: 248, height: CGFloat.greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: NSFont.systemFont(ofSize: 8.5)]
+            )
+            return height + max(54, ceil(bounds.height) + 42)
+        }
         let sectionHeight = CGFloat(document.groupedItems.count) * 34
         let noteHeight: CGFloat = document.note.isEmpty ? 0 : 68
         let paymentHeight: CGFloat = document.paymentAmount == nil ? 0 : 92
@@ -472,7 +480,7 @@ private struct ReceiptDocumentView: View {
                     Text(detail)
                         .font(.system(size: 8.5, weight: .regular))
                         .foregroundStyle(ReceiptPalette.muted)
-                        .lineLimit(2)
+                        .lineLimit(nil)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

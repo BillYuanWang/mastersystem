@@ -43,9 +43,11 @@ iPhone 不能像 Mac 一样把 App 文件随意发给别人安装。内部 TestF
 
 每次上传 TestFlight 前，`CFBundleVersion` 必须大于 Apple 已经接收过的 build。当前发布状态为：
 
-- macOS：0.9.0 build 89，已签名、公证并生成员工安装包
-- iOS：0.9.0 build 49，已上传并在 Apple 处理中
-- iOS 最后确认可供测试员使用的基线：0.9.0 build 45
+- macOS：0.9.1 build 90（2026-09-20），已签名、公证、装订并通过解压复核；本机也已更新为同版本。相对上一安装包 89，增加 1 个 Build。
+- iOS：0.9.0 build 49，此前已上传；本次仅通过无签名 Release 兼容构建，没有重新上传，也未复核 Apple 当前处理状态。
+- iOS 最后有文档确认可供测试员使用的基线：0.9.0 build 45，与本地配置相差 4 个 Build；不代表断言 49 现在不可用。
+
+Build 90 增加分阶段排课查询、指定周筛选、保留课次关联的调课、按实际报名课次计费，以及中英账单的不可变课次快照。旧课程与历史账单没有被改写。安装包支持 Intel 和 Apple Silicon。员工电脑尚未更新，本次未进行 SSH，也未删除旧安装包。
 
 macOS build 89 汇总了 build 79 之后的课表、离线图片缓存、账单与收据、课程价格、成人 N 次卡、Admin SDK/MCP 和未完成课程提示。iOS build 49 汇总了 build 45 之后的本地图片缓存、成人 N 次卡余额与记录，以及相关管理员签到支持。
 
@@ -63,11 +65,13 @@ macOS build 89 汇总了 build 79 之后的课表、离线图片缓存、账单�
 4. 提交 Apple 公证并等待结果。
 5. 把公证票据装订到 App。
 6. 通过 Gatekeeper 再验证。
-7. 按当前源码版本输出 `dist/macos/MD-Desk-版本-构建号-macOS.zip`；当前已分发文件是 `MD-Desk-0.9.0-89-macOS.zip`。
+7. 按当前源码版本输出 `dist/macos/MD-Desk-版本-构建号-macOS.zip`；当前已验证、可交付文件是 `MD-Desk-0.9.1-90-macOS.zip`。
 
 本次安装包 SHA-256：
 
-`3beb9ef20cc826e0984d207533706d5801b755cd84f509407129bf22b0584cc7`
+`7cdad2bb0f6060c2f10d32e567ad2cc4ca435e8cf49c3fff00b7a07a9372dc29`
+
+Apple 公证记录：`ec08aec9-fc2d-43cd-a74e-174677afddc7`，状态 `Accepted`。本机旧版 88 已移入 `dist/macos/local-backup-0.9.0-88-20260920/`，仅作回退保留，不要给员工安装它。
 
 员工安装：
 
