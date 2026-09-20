@@ -16,6 +16,7 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
     private var hasSnapshot: Bool
     private var hasLoadedCache = false
     private var isSynchronizing = false
+    private var synchronizationTask: Task<Int, Error>?
     private var lastRemoteRefreshAt: Date?
     private var lastRemoteChangeSequence: Int64?
 
@@ -46,6 +47,18 @@ public actor WriteBehindMasterDanceRepository: DeferredSyncMasterDanceRepository
 
     @discardableResult
     public func synchronizeIfNeeded() async throws -> Int {
+        // Billing and other remote-first operations must join an in-flight flush,
+        // not mistake it for an empty queue and race their own dependencies.
+        if let synchronizationTask {
+            return try await synchronizationTask.value
+        }
+        let task = Task { try await self.flushPendingMutations() }
+        synchronizationTask = task
+        defer { synchronizationTask = nil }
+        return try await task.value
+    }
+
+    private func flushPendingMutations() async throws -> Int {
         await loadCacheIfNeeded()
         try await pruneStaleSessionMutations()
         guard !isSynchronizing, !pendingMutations.isEmpty else { return 0 }

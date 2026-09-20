@@ -5,6 +5,20 @@ import Testing
 
 @Suite("Supabase RPC parameter encoding")
 struct SupabaseRPCEncodingTests {
+    @Test("Student creation sends the same UUID used by local enrollments")
+    func studentCreationPreservesIdentity() throws {
+        let studentID = UUID()
+        let guardianID = UUID()
+        let parameters = CreateStudentForGuardianParameters(
+            studentID: studentID, guardianID: guardianID,
+            displayName: "Test Learner", legalName: nil, kind: "child", birthDate: nil
+        )
+        let data = try JSONEncoder().encode(parameters)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["target_student_id"] as? String == studentID.uuidString)
+        #expect(object["target_guardian_id"] as? String == guardianID.uuidString)
+    }
+
     @Test("Enrollment RPC keeps nullable billing keys")
     func enrollmentRPCEncodesNullBillingValues() throws {
         let enrollment = Enrollment(

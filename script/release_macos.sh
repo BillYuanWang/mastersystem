@@ -62,7 +62,7 @@ PLIST
   xcodegen generate --spec project.yml
 )
 
-xcodebuild archive \
+xcodebuild \
   -project "$PROJECT" \
   -scheme MasterDanceAdmin \
   -configuration Release \

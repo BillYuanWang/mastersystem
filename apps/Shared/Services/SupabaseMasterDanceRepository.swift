@@ -403,8 +403,9 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
     func create(student: Student, for guardianID: GuardianID) async throws -> Student {
         let created: StudentRow = try await client
             .rpc(
-                "admin_create_student_for_guardian",
+                "admin_create_student_for_guardian_v2",
                 params: CreateStudentForGuardianParameters(
+                    studentID: student.id.rawValue,
                     guardianID: guardianID.rawValue,
                     displayName: student.displayName,
                     legalName: student.legalName,
@@ -414,6 +415,9 @@ actor SupabaseMasterDanceRepository: MasterDanceRepository {
             )
             .execute()
             .value
+        guard created.id == student.id.rawValue else {
+            throw SupabaseRepositoryError.server("学员编号与云端不一致，已暂停同步，请联系管理员处理。")
+        }
         return try created.domain()
     }
 

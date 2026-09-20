@@ -12,6 +12,29 @@ handoff package is requested, then regenerate each PDF from its Markdown source.
 
 ## Current release
 
+### v0.9.2 - 2026-09-20
+
+- Released macOS 0.9.2 build 91 as a Developer ID-signed, Apple-notarized
+  universal ZIP, with stapling and fresh extraction/signature/Gatekeeper checks.
+  Previous package: 0.9.1 build 90 (distance: one). Local installation is pending
+  permission to close an unsaved invoice draft; employees were not updated.
+- Fixed local/cloud learner UUID divergence: the new creation RPC receives and
+  preserves the local UUID, validates organization/family ownership, and returns
+  the existing profile on retry without duplicating or overwriting it. The old
+  RPC remains available for compatibility with installed older clients.
+- Concurrent sync callers now await the same queue flush. Invoice issuance can
+  no longer skip an already-running student/enrollment synchronization.
+- Deployed `20260920210000_stable_student_creation.sql`. A cloud integration
+  transaction verified stable IDs, idempotent retry, optional birth date,
+  family scoping, non-admin denial, per-session enrollment, paid-item billing,
+  and both invoice artifacts. All synthetic rows were rolled back; no real
+  invoice was issued. All 157 Swift tests passed.
+- Removed a duplicate archive action from the Mac release script. iOS remains
+  0.9.0 build 49 and passed unsigned Release compilation, with no TestFlight
+  upload. Last documented confirmed tester baseline is 45 (distance: four);
+  current Apple availability of 49 was not rechecked.
+- README, HISTORY and distribution notes updated; employee guides/PDFs deferred.
+
 ### v0.9.1 - 2026-09-20
 
 - Released macOS 0.9.1 build 90 as a Developer ID-signed, Apple-notarized

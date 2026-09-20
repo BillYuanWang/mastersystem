@@ -57,6 +57,8 @@ public protocol PeopleRepository: Sendable {
     func listGuardians(studentID: StudentID?) async throws -> [Guardian]
     func save(student: Student) async throws
     func save(guardian: Guardian) async throws
+    // Creation preserves the supplied ID so queued dependent records remain valid.
+    // Retrying the same ID must not create another learner.
     func create(student: Student, for guardianID: GuardianID) async throws -> Student
     func link(studentID: StudentID, to guardianID: GuardianID) async throws
     func issueGuardianLinkCode(guardianID: GuardianID) async throws -> GuardianLinkCode

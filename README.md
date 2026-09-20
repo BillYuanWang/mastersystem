@@ -1,13 +1,21 @@
 # Master Dance
 
-Current release: `v0.9.1`, macOS build 90 (2026-09-20).
-The workspace `MD Desk.app` and the new universal employee ZIP are both 0.9.1
-build 90. Developer ID signing, Apple notarization, ticket stapling, and
-freshly extracted ZIP signature/Gatekeeper checks passed. This replaces local
-build 88 and is one build newer than the previous distributed package (89).
-Employee computers have not been updated; older installers are retained.
+Current release: `v0.9.2`, macOS build 91 (2026-09-20).
+The universal employee ZIP is 0.9.2 build 91, one build newer than package 90.
+Developer ID signing, Apple notarization, ticket stapling, and freshly extracted
+ZIP signature/Gatekeeper checks passed. The running workspace app is still
+0.9.1 build 90 pending permission to close an unsaved invoice draft and install
+91. Employee computers have not been updated; older installers are retained.
 
-The iOS version remains 0.9.0 build 49. Its unchanged target passed an unsigned
+Build 91 fixes new learner creation assigning different local and cloud UUIDs,
+which blocked queued enrollments and invoice issuance with "Student is
+unavailable". The new admin RPC preserves the caller's UUID, validates family
+ownership and makes retries idempotent. Billing now joins an in-flight sync
+instead of racing pending student/enrollment writes. The additive migration is
+deployed; all 157 Swift tests and a rolled-back cloud student-to-invoice
+integration test passed. No real invoice was issued during verification.
+
+The iOS version remains 0.9.0 build 49. Its shared-code changes passed an unsigned
 Release compatibility build; no TestFlight upload was made in this release.
 Build 49 was uploaded on 2026-09-01, but its current Apple processing/tester
 availability was not rechecked. Build 45 remains the last documented confirmed

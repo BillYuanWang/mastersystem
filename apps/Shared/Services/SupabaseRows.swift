@@ -544,6 +544,7 @@ struct GuardianLinkCodeRow: Decodable, Sendable {
 }
 
 struct CreateStudentForGuardianParameters: Encodable, Sendable {
+    let studentID: UUID
     let guardianID: UUID
     let displayName: String
     let legalName: String?
@@ -551,6 +552,7 @@ struct CreateStudentForGuardianParameters: Encodable, Sendable {
     let birthDate: String?
 
     enum CodingKeys: String, CodingKey {
+        case studentID = "target_student_id"
         case guardianID = "target_guardian_id"
         case displayName = "target_display_name"
         case legalName = "target_legal_name"
