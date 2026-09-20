@@ -16,14 +16,19 @@ handoff package is requested, then regenerate each PDF from its Markdown source.
 
 - Released macOS 0.9.2 build 91 as a Developer ID-signed, Apple-notarized
   universal ZIP, with stapling and fresh extraction/signature/Gatekeeper checks.
-  Previous package: 0.9.1 build 90 (distance: one). Local installation is pending
-  permission to close an unsaved invoice draft; employees were not updated.
+  Previous package: 0.9.1 build 90 (distance: one). After explicit approval, the
+  workspace app was updated and launched as build 91 (local/package distance:
+  zero); employees were not updated. The old app and local data were backed up.
 - Fixed local/cloud learner UUID divergence: the new creation RPC receives and
   preserves the local UUID, validates organization/family ownership, and returns
   the existing profile on retry without duplicating or overwriting it. The old
   RPC remains available for compatibility with installed older clients.
 - Concurrent sync callers now await the same queue flush. Invoice issuance can
   no longer skip an already-running student/enrollment synchronization.
+- Repaired the confirmed affected local learner references without creating a
+  duplicate cloud profile. Verified both queued per-session enrollments reached
+  Supabase with their original selections and prices, and the pending queue
+  became empty. Restored the existing paid-item invoice draft without issuing it.
 - Deployed `20260920210000_stable_student_creation.sql`. A cloud integration
   transaction verified stable IDs, idempotent retry, optional birth date,
   family scoping, non-admin denial, per-session enrollment, paid-item billing,

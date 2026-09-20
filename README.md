@@ -3,9 +3,10 @@
 Current release: `v0.9.2`, macOS build 91 (2026-09-20).
 The universal employee ZIP is 0.9.2 build 91, one build newer than package 90.
 Developer ID signing, Apple notarization, ticket stapling, and freshly extracted
-ZIP signature/Gatekeeper checks passed. The running workspace app is still
-0.9.1 build 90 pending permission to close an unsaved invoice draft and install
-91. Employee computers have not been updated; older installers are retained.
+ZIP signature/Gatekeeper checks passed. With user approval, the workspace app
+was updated from 0.9.1 build 90 to 0.9.2 build 91 and launched with real data.
+Local and packaged builds now match (distance: zero). Employee computers have
+not been updated; older installers and the local build 90 backup are retained.
 
 Build 91 fixes new learner creation assigning different local and cloud UUIDs,
 which blocked queued enrollments and invoice issuance with "Student is
@@ -13,7 +14,11 @@ unavailable". The new admin RPC preserves the caller's UUID, validates family
 ownership and makes retries idempotent. Billing now joins an in-flight sync
 instead of racing pending student/enrollment writes. The additive migration is
 deployed; all 157 Swift tests and a rolled-back cloud student-to-invoice
-integration test passed. No real invoice was issued during verification.
+integration test passed. The affected local learner references were backed up
+and repaired against the verified existing cloud profile. Both pending
+enrollments then synchronized without changing selected sessions or prices;
+the queue is empty. The user's paid-item invoice draft was restored in the UI.
+No real invoice was issued during verification.
 
 The iOS version remains 0.9.0 build 49. Its shared-code changes passed an unsigned
 Release compatibility build; no TestFlight upload was made in this release.
