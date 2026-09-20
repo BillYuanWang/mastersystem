@@ -18,6 +18,9 @@ struct AttendanceWorkspaceView: View {
     @SceneStorage("md-desk.attendance.makeup-sort-column") private var makeupSortColumnStorage = ""
     @SceneStorage("md-desk.attendance.makeup-sort-ascending") private var makeupSortAscending = true
     @SceneStorage("md-desk.attendance.makeup-filters") private var makeupFiltersStorage = ""
+    @SceneStorage("md-desk.attendance.session-pass-sort-column") private var sessionPassSortColumnStorage = ""
+    @SceneStorage("md-desk.attendance.session-pass-sort-ascending") private var sessionPassSortAscending = true
+    @SceneStorage("md-desk.attendance.session-pass-filters") private var sessionPassFiltersStorage = ""
     @State private var addingGuestKind: AttendanceGuestKind?
     @State private var deletingAttendanceID: AttendanceID?
 
@@ -64,7 +67,7 @@ struct AttendanceWorkspaceView: View {
                 AttendanceGuestPicker(
                     model: model,
                     kind: kind,
-                    candidates: guestCandidates(course: course, session: session),
+                    candidates: guestCandidates(kind: kind, course: course, session: session),
                     add: { studentID, sourceSessionID in
                         addGuest(
                             studentID,
@@ -181,8 +184,9 @@ struct AttendanceWorkspaceView: View {
             let course = model.course(id: session.courseID)
         {
             let regularRoster = regularRoster(course: course, session: session)
-            let trials = specialRecords(session: session, status: .trial)
-            let makeups = specialRecords(session: session, status: .makeup)
+            let trials = specialRecords(session: session, kind: .trial)
+            let makeups = specialRecords(session: session, kind: .makeup)
+            let sessionPasses = specialRecords(session: session, kind: .sessionPass)
 
             VStack(spacing: 0) {
                 sessionHeader(
@@ -192,6 +196,7 @@ struct AttendanceWorkspaceView: View {
                     leaveCount: leaveCount(session),
                     trialCount: trials.count,
                     makeupCount: makeups.count,
+                    sessionPassCount: sessionPasses.count,
                     theme: theme
                 )
                 Divider()
@@ -215,6 +220,12 @@ struct AttendanceWorkspaceView: View {
                             records: makeups,
                             theme: theme
                         )
+
+                        specialAttendanceSection(
+                            kind: .sessionPass,
+                            records: sessionPasses,
+                            theme: theme
+                        )
                     }
                 }
             }
@@ -234,6 +245,7 @@ struct AttendanceWorkspaceView: View {
         leaveCount: Int,
         trialCount: Int,
         makeupCount: Int,
+        sessionPassCount: Int,
         theme: MDTheme
     ) -> some View {
         HStack(spacing: 14) {
@@ -253,6 +265,8 @@ struct AttendanceWorkspaceView: View {
                 .foregroundStyle(theme.accent)
             Label("补课 \(makeupCount)", systemImage: "arrow.clockwise")
                 .foregroundStyle(theme.success)
+            Label("次卡 \(sessionPassCount)", systemImage: "rectangle.stack.fill")
+                .foregroundStyle(theme.warning)
         }
         .mdFont(.compactStrong)
         .padding(.horizontal, 16)
@@ -460,7 +474,7 @@ struct AttendanceWorkspaceView: View {
             guard let record = attendanceRecord(sessionID: session.id, studentID: enrollment.studentID) else {
                 return true
             }
-            return !record.status.isGuestAttendance
+            return !record.isGuestAttendance
         }
     }
 
@@ -487,9 +501,16 @@ struct AttendanceWorkspaceView: View {
         return result
     }
 
-    private func specialRecords(session: ClassSession, status: AttendanceStatus) -> [Attendance] {
+    private func specialRecords(session: ClassSession, kind: AttendanceGuestKind) -> [Attendance] {
         model.attendance
-            .filter { $0.sessionID == session.id && $0.status == status }
+            .filter { record in
+                guard record.sessionID == session.id else { return false }
+                return switch kind {
+                case .trial: record.status == .trial
+                case .makeup: record.status == .makeup
+                case .sessionPass: record.usesSessionPass
+                }
+            }
             .sorted { lhs, rhs in
                 let left = model.student(id: lhs.studentID)?.displayName ?? ""
                 let right = model.student(id: rhs.studentID)?.displayName ?? ""
@@ -616,41 +637,62 @@ struct AttendanceWorkspaceView: View {
     }
 
     private func guestSortColumn(for kind: AttendanceGuestKind) -> GuestAttendanceColumn? {
-        let raw = kind == .trial ? trialSortColumnStorage : makeupSortColumnStorage
+        let raw = switch kind {
+        case .trial: trialSortColumnStorage
+        case .makeup: makeupSortColumnStorage
+        case .sessionPass: sessionPassSortColumnStorage
+        }
         return GuestAttendanceColumn(rawValue: raw)
     }
 
     private func guestSortAscending(for kind: AttendanceGuestKind) -> Bool {
-        kind == .trial ? trialSortAscending : makeupSortAscending
+        switch kind {
+        case .trial: trialSortAscending
+        case .makeup: makeupSortAscending
+        case .sessionPass: sessionPassSortAscending
+        }
     }
 
     private func setGuestSortColumn(_ column: GuestAttendanceColumn?, kind: AttendanceGuestKind) {
-        if kind == .trial {
+        switch kind {
+        case .trial:
             trialSortColumnStorage = column?.rawValue ?? ""
-        } else {
+        case .makeup:
             makeupSortColumnStorage = column?.rawValue ?? ""
+        case .sessionPass:
+            sessionPassSortColumnStorage = column?.rawValue ?? ""
         }
     }
 
     private func toggleGuestSort(_ column: GuestAttendanceColumn, kind: AttendanceGuestKind) {
         if guestSortColumn(for: kind) == column {
-            if kind == .trial {
+            switch kind {
+            case .trial:
                 trialSortAscending.toggle()
-            } else {
+            case .makeup:
                 makeupSortAscending.toggle()
+            case .sessionPass:
+                sessionPassSortAscending.toggle()
             }
         } else {
             setGuestSortColumn(column, kind: kind)
-            if kind == .trial {
+            switch kind {
+            case .trial:
                 trialSortAscending = true
-            } else {
+            case .makeup:
                 makeupSortAscending = true
+            case .sessionPass:
+                sessionPassSortAscending = true
             }
         }
     }
 
     private func guestFilterStorage(for kind: AttendanceGuestKind) -> Binding<String> {
-        kind == .trial ? $trialFiltersStorage : $makeupFiltersStorage
+        switch kind {
+        case .trial: $trialFiltersStorage
+        case .makeup: $makeupFiltersStorage
+        case .sessionPass: $sessionPassFiltersStorage
+        }
     }
 
     private func guestFilterSelection(
@@ -725,7 +767,11 @@ struct AttendanceWorkspaceView: View {
         return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
     }
 
-    private func guestCandidates(course: Course, session: ClassSession) -> [Student] {
+    private func guestCandidates(
+        kind: AttendanceGuestKind,
+        course: Course,
+        session: ClassSession
+    ) -> [Student] {
         let enrolledStudentIDs = Set(model.enrollments(forSession: session.id).map(\.studentID))
         let recordedStudentIDs = Set(
             model.attendance
@@ -737,6 +783,8 @@ struct AttendanceWorkspaceView: View {
                 $0.isActive
                     && !enrolledStudentIDs.contains($0.id)
                     && !recordedStudentIDs.contains($0.id)
+                    && (kind != .sessionPass
+                        || ($0.kind == .adult && model.availableSessionPass(for: $0.id) != nil))
             }
             .sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
     }
@@ -746,7 +794,9 @@ struct AttendanceWorkspaceView: View {
     }
 
     private func presentCount(_ session: ClassSession) -> Int {
-        model.attendance.filter { $0.sessionID == session.id && $0.status == .present }.count
+        model.attendance.filter {
+            $0.sessionID == session.id && $0.status == .present && !$0.usesSessionPass
+        }.count
     }
 
     private func leaveCount(_ session: ClassSession) -> Int {
@@ -772,7 +822,8 @@ struct AttendanceWorkspaceView: View {
                 sessionID: session.id,
                 studentID: studentID,
                 status: kind.status,
-                makeupForSessionID: sourceSessionID
+                makeupForSessionID: sourceSessionID,
+                usesSessionPass: kind == .sessionPass
             )
         }
     }
@@ -1049,7 +1100,9 @@ private struct AttendanceGuestPicker: View {
             } label: {
                 studentRow(
                     student,
-                    trailing: "已报 \(model.enrollments(for: student.id).count) 门课",
+                    trailing: kind == .sessionPass
+                        ? "次卡剩余 \(model.availableSessionPass(for: student.id).map { model.remainingSessionCount(for: $0) } ?? 0) 次"
+                        : "已报 \(model.enrollments(for: student.id).count) 门课",
                     theme: theme
                 )
             }
@@ -1180,6 +1233,7 @@ private enum GuestAttendanceColumn: String, CaseIterable, Identifiable {
 private enum AttendanceGuestKind: String, Identifiable {
     case trial
     case makeup
+    case sessionPass
 
     var id: String { rawValue }
 
@@ -1187,6 +1241,7 @@ private enum AttendanceGuestKind: String, Identifiable {
         switch self {
         case .trial: .trial
         case .makeup: .makeup
+        case .sessionPass: .present
         }
     }
 
@@ -1194,6 +1249,7 @@ private enum AttendanceGuestKind: String, Identifiable {
         switch self {
         case .trial: "试课"
         case .makeup: "补课"
+        case .sessionPass: "次卡"
         }
     }
 
@@ -1204,6 +1260,7 @@ private enum AttendanceGuestKind: String, Identifiable {
         switch self {
         case .trial: "sparkles"
         case .makeup: "arrow.clockwise"
+        case .sessionPass: "rectangle.stack.fill"
         }
     }
 
@@ -1212,6 +1269,7 @@ private enum AttendanceGuestKind: String, Identifiable {
         switch self {
         case .trial: theme.accent
         case .makeup: theme.success
+        case .sessionPass: theme.warning
         }
     }
 }

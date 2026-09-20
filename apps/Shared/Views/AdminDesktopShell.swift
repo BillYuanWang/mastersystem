@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import MasterDanceCore
 import SwiftUI
 
@@ -11,32 +12,39 @@ struct AdminDesktopShell: View {
     let onSignOut: (() -> Void)?
 
     @State private var selection = AdminSection.schedule
+    @State private var visibleSelection = AdminSection.schedule
+    @State private var loadedSections: Set<AdminSection> = [.schedule]
+    @State private var hasStartedPreloading = false
     @State private var showingGuardianLinkCode = false
 
     @Environment(\.colorScheme) private var colorScheme
 
+    private static let highFrequencyPreloadOrder: [AdminSection] = [
+        .courses,
+        .families,
+        .enrollments,
+        .attendance,
+        .requests
+    ]
+
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                CompactRailView(
-                    selection: $selection,
-                    appearanceRawValue: $appearanceRawValue,
-                    accountDisplayName: accountDisplayName,
-                    onManageAccount: onManageAccount,
-                    onSignOut: onSignOut
-                )
-                .frame(width: MDMetrics.railWidth)
-                .zIndex(20)
+            CompactNavigationBar(
+                selection: sectionSelection,
+                appearanceRawValue: $appearanceRawValue,
+                accountDisplayName: accountDisplayName,
+                onManageAccount: onManageAccount,
+                onSignOut: onSignOut
+            )
+            .zIndex(20)
 
-                Rectangle()
-                    .fill(theme.separator)
-                    .frame(width: 1)
+            Rectangle()
+                .fill(theme.separator)
+                .frame(height: 1)
 
-                workspace
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            workspace
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Rectangle()
                 .fill(theme.separator)
@@ -67,14 +75,42 @@ struct AdminDesktopShell: View {
                 GuardianLinkCodeSheet(code: code)
             }
         }
+        .task(priority: .utility) {
+            await preloadCommonWorkspaces()
+        }
+    }
+
+    private var workspace: some View {
+        ZStack {
+            ForEach(AdminSection.allCases) { section in
+                if loadedSections.contains(section) {
+                    workspaceView(for: section)
+                        .opacity(visibleSelection == section ? 1 : 0)
+                        .allowsHitTesting(visibleSelection == section)
+                        .accessibilityHidden(visibleSelection != section)
+                        .zIndex(visibleSelection == section ? 1 : 0)
+                        .onAppear {
+                            revealWorkspaceIfRequested(section)
+                        }
+                }
+            }
+        }
+        .clipped()
+    }
+
+    private var sectionSelection: Binding<AdminSection> {
+        Binding(
+            get: { selection },
+            set: { activateWorkspace($0) }
+        )
     }
 
     @ViewBuilder
-    private var workspace: some View {
-        switch selection {
+    private func workspaceView(for section: AdminSection) -> some View {
+        switch section {
         case .schedule:
             ScheduleWorkspaceView(model: model) { destination in
-                selection = destination
+                activateWorkspace(destination)
             }
         case .courses:
             SetupWorkspaceView(model: model)
@@ -96,6 +132,50 @@ struct AdminDesktopShell: View {
             ContractsWorkspaceView(model: model)
         case .dataCenter:
             DataCenterWorkspaceView(model: model)
+        }
+    }
+
+    private func activateWorkspace(_ section: AdminSection) {
+        guard section != selection || section != visibleSelection else { return }
+
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        let wasLoaded = loadedSections.contains(section)
+        selection = section
+
+        if wasLoaded {
+            visibleSelection = section
+        } else {
+            loadedSections.insert(section)
+        }
+    }
+
+    private func revealWorkspaceIfRequested(_ section: AdminSection) {
+        guard selection == section, visibleSelection != section else { return }
+        visibleSelection = section
+    }
+
+    private func preloadCommonWorkspaces() async {
+        guard !hasStartedPreloading else { return }
+        hasStartedPreloading = true
+
+        do {
+            try await Task.sleep(for: .milliseconds(300))
+        } catch {
+            return
+        }
+
+        for section in Self.highFrequencyPreloadOrder {
+            guard !Task.isCancelled else { return }
+            guard !loadedSections.contains(section) else { continue }
+
+            loadedSections.insert(section)
+            await Task.yield()
+
+            do {
+                try await Task.sleep(for: .milliseconds(140))
+            } catch {
+                return
+            }
         }
     }
 }
@@ -324,7 +404,7 @@ private struct BackgroundSyncIndicator: View {
     }
 }
 
-private struct CompactRailView: View {
+private struct CompactNavigationBar: View {
     @Binding var selection: AdminSection
     @Binding var appearanceRawValue: String
     let accountDisplayName: String?
@@ -336,19 +416,23 @@ private struct CompactRailView: View {
 
     var body: some View {
         let theme = MDTheme(scheme: colorScheme)
-        VStack(spacing: 9) {
+        HStack(spacing: 8) {
             MasterDanceLogoView(.mark)
-                .frame(width: 38, height: 38)
+                .frame(width: 32, height: 32)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .padding(.top, 12)
-                .padding(.bottom, 8)
+                .padding(.trailing, 5)
                 .help("Master Dance")
+
+            Rectangle()
+                .fill(theme.separator)
+                .frame(width: 1, height: 24)
+                .padding(.trailing, 5)
 
             ForEach(AdminSection.allCases) { section in
                 Button {
                     selection = section
                 } label: {
-                    ZStack(alignment: .leading) {
+                    ZStack(alignment: .bottom) {
                         RoundedRectangle(cornerRadius: MDMetrics.radius)
                             .fill(
                                 selection == section
@@ -360,8 +444,8 @@ private struct CompactRailView: View {
                         if selection == section {
                             Capsule()
                                 .fill(theme.accent)
-                                .frame(width: 3, height: 24)
-                                .offset(x: -6)
+                                .frame(width: 24, height: 3)
+                                .offset(y: 5)
                         }
 
                         Image(systemName: section.systemImage)
@@ -371,18 +455,22 @@ private struct CompactRailView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
                 .accessibilityLabel(section.title)
+                .accessibilityIdentifier("md.navigation.\(section.id)")
+                .accessibilityRemoveTraits(.isSelected)
+                .accessibilityAddTraits(selection == section ? [.isSelected] : [])
                 .onHover { isHovering in
                     updateHover(section.id, isHovering: isHovering)
                 }
-                .overlay(alignment: .leading) {
+                .overlay(alignment: .top) {
                     hoverLabel(id: section.id, title: section.title)
                 }
                 .zIndex(hoveredItem == section.id ? 10 : 0)
                 .help(section.title)
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 12)
 
             if let onManageAccount, let onSignOut {
                 Menu {
@@ -412,7 +500,7 @@ private struct CompactRailView: View {
                 .onHover { isHovering in
                     updateHover("account", isHovering: isHovering)
                 }
-                .overlay(alignment: .leading) {
+                .overlay(alignment: .topTrailing) {
                     hoverLabel(id: "account", title: "教务账号")
                 }
                 .zIndex(hoveredItem == "account" ? 10 : 0)
@@ -444,14 +532,15 @@ private struct CompactRailView: View {
             .onHover { isHovering in
                 updateHover("appearance", isHovering: isHovering)
             }
-            .overlay(alignment: .leading) {
+            .overlay(alignment: .topTrailing) {
                 hoverLabel(id: "appearance", title: "外观")
             }
             .zIndex(hoveredItem == "appearance" ? 10 : 0)
             .help("外观")
-            .padding(.bottom, 12)
         }
-        .frame(maxHeight: .infinity)
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity)
+        .frame(height: 52)
         .background(theme.surface)
     }
 
@@ -466,9 +555,9 @@ private struct CompactRailView: View {
     @ViewBuilder
     private func hoverLabel(id: String, title: String) -> some View {
         if hoveredItem == id {
-            RailHoverLabel(title: title)
-                .offset(x: 50)
-                .transition(.opacity.combined(with: .move(edge: .leading)))
+            NavigationHoverLabel(title: title)
+                .offset(y: 45)
+                .transition(.opacity.combined(with: .move(edge: .top)))
                 .allowsHitTesting(false)
         }
     }
@@ -484,7 +573,7 @@ private struct CompactRailView: View {
     }
 }
 
-private struct RailHoverLabel: View {
+private struct NavigationHoverLabel: View {
     let title: String
 
     @Environment(\.colorScheme) private var colorScheme

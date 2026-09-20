@@ -44,7 +44,7 @@ select is(
     where table_schema = 'public'
       and table_type = 'BASE TABLE'
   ),
-      33::bigint,
+      36::bigint,
   'the public schema contains the expected tables'
 );
 

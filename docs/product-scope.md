@@ -14,7 +14,7 @@
 - Submit leave from iOS or on behalf of a user from administration.
 - Record versioned contract consent.
 - Record reminders and workflow notifications.
-- Set separate full-term and per-session rates for group courses and a per-session-only rate for private lessons.
+- Set a full-term unit rate for group courses and derive the per-session rate as USD 5 more; keep private lessons per-session-only.
 - Adjust one enrollment discount, trial fee, billing start date, and price snapshot.
 - Issue immutable, versioned family invoices and record partial or full payments.
 - Produce private invoice and receipt PNGs while keeping all billing controls on macOS.

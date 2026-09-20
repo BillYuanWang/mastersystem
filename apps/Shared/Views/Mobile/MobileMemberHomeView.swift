@@ -21,6 +21,8 @@ struct MobileMemberHomeView: View {
                         summaryStrip(student: student, asOf: context.date, theme: theme)
                     }
 
+                    sessionPassSection(student: student, theme: theme)
+
                     newsSection(theme: theme)
 
                     MobileAdvertisementSection(model: model)
@@ -211,6 +213,82 @@ struct MobileMemberHomeView: View {
     }
 
     @ViewBuilder
+    private func sessionPassSection(student: Student, theme: MDTheme) -> some View {
+        let passes = model.sessionPasses(for: student.id)
+        if !passes.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    MobileSectionHeading("次卡")
+                    Spacer()
+                    Text("共剩余 \(totalRemainingSessions(in: passes)) 次")
+                        .mdFont(.monoStrong)
+                        .foregroundStyle(theme.accent)
+                }
+
+                VStack(spacing: 0) {
+                    ForEach(Array(passes.enumerated()), id: \.element.id) { index, pass in
+                        NavigationLink {
+                            MobileSessionPassDetailView(model: model, pass: pass)
+                        } label: {
+                            sessionPassRow(pass, theme: theme)
+                        }
+                        .buttonStyle(.plain)
+
+                        if index < passes.count - 1 {
+                            Divider().padding(.leading, 50)
+                        }
+                    }
+                }
+                .background(theme.raisedSurface, in: RoundedRectangle(cornerRadius: MDMetrics.radius))
+                .overlay {
+                    RoundedRectangle(cornerRadius: MDMetrics.radius)
+                        .stroke(theme.faintSeparator, lineWidth: 1)
+                }
+            }
+        }
+    }
+
+    private func sessionPassRow(_ pass: StudentSessionPass, theme: MDTheme) -> some View {
+        let remaining = model.remainingSessionCount(for: pass)
+        let planName = model.sessionPassPlan(id: pass.planID)?.name ?? "次卡"
+        return HStack(spacing: 12) {
+            Image(systemName: "rectangle.stack.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(pass.isActive && remaining > 0 ? theme.accent : theme.secondaryText)
+                .frame(width: 34, height: 34)
+                .background(theme.accent.opacity(0.10), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(planName)
+                    .mdFont(.bodyStrong)
+                    .foregroundStyle(theme.primaryText)
+                    .lineLimit(1)
+                Text(pass.issuedAt.mdChineseFormatted(.dateTime.year().month().day()) + " 发卡")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+            }
+            Spacer(minLength: 6)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("剩余 \(remaining) 次")
+                    .mdFont(.monoStrong)
+                    .foregroundStyle(remaining > 0 ? theme.primaryText : theme.secondaryText)
+                Text("/ \(pass.includedSessions) 次")
+                    .mdFont(.compact)
+                    .foregroundStyle(theme.secondaryText)
+            }
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(theme.secondaryText)
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 58)
+        .contentShape(Rectangle())
+    }
+
+    private func totalRemainingSessions(in passes: [StudentSessionPass]) -> Int {
+        passes.filter(\.isActive).reduce(0) { $0 + model.remainingSessionCount(for: $1) }
+    }
+
+    @ViewBuilder
     private func newsSection(theme: MDTheme) -> some View {
         let articles = Array(publishedNews.prefix(3))
         VStack(alignment: .leading, spacing: 8) {
@@ -276,6 +354,79 @@ struct MobileMemberHomeView: View {
         model.newsArticles
             .filter { $0.status == .published }
             .sorted { ($0.publishedAt ?? $0.updatedAt) > ($1.publishedAt ?? $1.updatedAt) }
+    }
+}
+
+@MainActor
+private struct MobileSessionPassDetailView: View {
+    let model: AppModel
+    let pass: StudentSessionPass
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let theme = MDTheme(scheme: colorScheme)
+        List {
+            Section {
+                LabeledContent("卡内次数", value: "\(pass.includedSessions) 次")
+                LabeledContent("已使用", value: "\(uses.count) 次")
+                LabeledContent("剩余", value: "\(remaining) 次")
+                LabeledContent("发卡日期", value: pass.issuedAt.mdChineseFormatted(.dateTime.year().month().day()))
+                LabeledContent("状态", value: statusTitle)
+                if let notes = pass.notes, !notes.isEmpty {
+                    LabeledContent("备注", value: notes)
+                }
+            } header: {
+                Text("次卡信息")
+            }
+
+            Section("划卡记录 · \(uses.count)") {
+                if uses.isEmpty {
+                    Text("尚无划卡记录")
+                        .foregroundStyle(theme.secondaryText)
+                } else {
+                    ForEach(uses) { use in
+                        HStack(spacing: 10) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(theme.success)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(courseName(for: use))
+                                    .mdFont(.bodyStrong)
+                                Text(use.usedAt.mdChineseFormatted(
+                                    .dateTime.year().month().day().weekday(.wide).hour().minute()
+                                ))
+                                .mdFont(.compact)
+                                .foregroundStyle(theme.secondaryText)
+                            }
+                            Spacer()
+                            Text("-1")
+                                .mdFont(.monoStrong)
+                                .foregroundStyle(theme.secondaryText)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(model.sessionPassPlan(id: pass.planID)?.name ?? "次卡详情")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var uses: [SessionPassUse] {
+        model.sessionPassUses(for: pass.id)
+    }
+
+    private var remaining: Int {
+        model.remainingSessionCount(for: pass)
+    }
+
+    private var statusTitle: String {
+        if !pass.isActive { return "已停用" }
+        return remaining > 0 ? "使用中" : "已用完"
+    }
+
+    private func courseName(for use: SessionPassUse) -> String {
+        guard let session = model.session(id: use.sessionID) else { return "课程" }
+        return model.course(id: session.courseID)?.name ?? "课程"
     }
 }
 #endif

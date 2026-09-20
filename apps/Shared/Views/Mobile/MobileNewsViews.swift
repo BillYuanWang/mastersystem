@@ -15,7 +15,8 @@ struct MobileNewsRow: View {
             NewsMediaView(
                 model: model,
                 image: model.newsCover(for: article.id),
-                contentMode: .fit
+                contentMode: .fit,
+                cacheRevision: article.updatedAt
             )
                 .frame(width: 94, height: 94)
                 .background(theme.subtleSurface)
@@ -164,7 +165,12 @@ struct MobileNewsDetailView: View {
 
     private func articleImage(_ image: NewsArticleImage, theme: MDTheme) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            NewsMediaView(model: model, image: image, contentMode: .fit)
+            NewsMediaView(
+                model: model,
+                image: image,
+                contentMode: .fit,
+                cacheRevision: article.updatedAt
+            )
                 .frame(maxWidth: .infinity, minHeight: 160)
                 .background(theme.subtleSurface)
                 .clipShape(RoundedRectangle(cornerRadius: MDMetrics.radius))

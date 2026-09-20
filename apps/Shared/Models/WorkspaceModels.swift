@@ -90,6 +90,8 @@ enum ReferenceKind: String, CaseIterable, Identifiable {
 }
 
 struct CourseCreationDraft {
+    var existingSessions: [ClassSession]?
+    var sourceSessions: [ClassSession]?
     var name = ""
     var termID: TermID?
     var ageGroupID: AgeGroupID?
@@ -241,13 +243,17 @@ extension AppModel {
 
 enum AppModelError: LocalizedError {
     case missingCourseFields
+    case invalidCourseSchedule
+    case courseScheduleChangedRemotely
     case courseTermRequiresHoliday
     case invalidCourseUnitPrice
     case missingEnrollmentFields
     case missingPerSessionSelection
+    case noBillableSessions
     case privateLessonRequiresPerSessionEnrollment
     case invalidEnrollmentBilling
     case missingBillingTerm
+    case missingBillingLearners
     case missingBillingItems
     case holidayOutsideTerm
     case invalidTermRange
@@ -262,6 +268,9 @@ enum AppModelError: LocalizedError {
     case makeupRequiresSource
     case invalidMakeupSource
     case makeupSourceAlreadyUsed
+    case invalidSessionPassPlan
+    case sessionPassRequiresAdult
+    case noAvailableSessionPass
     case courseTermHasEnrollments
     case courseScheduleHasRecords
     case missingNewsTitle
@@ -286,9 +295,11 @@ enum AppModelError: LocalizedError {
         case .invalidCourseUnitPrice: "请输入正确的每节单价，金额最多保留两位小数。"
         case .missingEnrollmentFields: "请选择学生和课程。"
         case .missingPerSessionSelection: "按次报名至少需要选择一个具体课次。"
+        case .noBillableSessions: "所选起始日期之后没有可报名课次，请检查日期、休课和试课记录。"
         case .privateLessonRequiresPerSessionEnrollment: "私课仅支持按次报名，请选择具体课次。"
         case .invalidEnrollmentBilling: "请检查报名计费起始日、单价、试课费和折扣。"
         case .missingBillingTerm: "请选择账单所属学期。"
+        case .missingBillingLearners: "请至少选择一名账单学员。"
         case .missingBillingItems: "账单至少需要一个收费项目。"
         case .invalidTermRange: "结束日期必须晚于开始日期。"
         case .holidayOutsideTerm: "假期日期必须位于所选学期内。"
@@ -303,8 +314,13 @@ enum AppModelError: LocalizedError {
         case .makeupRequiresSource: "请选择这次补课对应的请假或缺席课次。"
         case .invalidMakeupSource: "所选课次不是这名学员可补的请假或缺席。"
         case .makeupSourceAlreadyUsed: "这次请假或缺席已经登记过补课。"
+        case .invalidSessionPassPlan: "请填写有效的次卡名称、次数和单价。"
+        case .sessionPassRequiresAdult: "当前版本只允许成人学员使用次卡。"
+        case .noAvailableSessionPass: "这名学员没有可用次数，请先发放或启用一张次卡。"
         case .courseTermHasEnrollments: "这门课程已有报名，不能更换学期；请先处理报名。"
         case .courseScheduleHasRecords: "这门课程已有签到、请假或按次报名记录，不能整体重排课次。"
+        case .invalidCourseSchedule: "课次日期或时间无效。请检查学期范围、假期和重复时间。"
+        case .courseScheduleChangedRemotely: "这门课程的排课已被更新，请重新打开编辑页面后再修改。"
         case .missingNewsTitle: "请输入新闻标题。"
         case .missingNewsBody: "请输入新闻正文。"
         case .missingNewsAuthor: "请输入作者。"

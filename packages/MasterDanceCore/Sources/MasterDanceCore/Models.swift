@@ -81,6 +81,31 @@ public struct CourseType: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+public struct SessionPassPlan: Identifiable, Codable, Equatable, Sendable {
+    public let id: SessionPassPlanID
+    public var name: String
+    public var includedSessions: Int
+    public var unitPriceCents: Int
+    public var notes: String?
+    public var isActive: Bool
+
+    public init(
+        id: SessionPassPlanID = SessionPassPlanID(),
+        name: String,
+        includedSessions: Int,
+        unitPriceCents: Int,
+        notes: String? = nil,
+        isActive: Bool = true
+    ) {
+        self.id = id
+        self.name = name
+        self.includedSessions = includedSessions
+        self.unitPriceCents = unitPriceCents
+        self.notes = notes
+        self.isActive = isActive
+    }
+}
+
 public struct AgeGroup: Identifiable, Codable, Equatable, Sendable {
     public let id: AgeGroupID
     public var name: String
@@ -434,6 +459,62 @@ public struct Enrollment: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+public struct StudentSessionPass: Identifiable, Codable, Equatable, Sendable {
+    public let id: StudentSessionPassID
+    public let studentID: StudentID
+    public let planID: SessionPassPlanID
+    public var issuedAt: Date
+    public let includedSessions: Int
+    public let unitPriceCents: Int
+    public var notes: String?
+    public var isActive: Bool
+
+    public init(
+        id: StudentSessionPassID = StudentSessionPassID(),
+        studentID: StudentID,
+        planID: SessionPassPlanID,
+        issuedAt: Date,
+        includedSessions: Int,
+        unitPriceCents: Int,
+        notes: String? = nil,
+        isActive: Bool = true
+    ) {
+        self.id = id
+        self.studentID = studentID
+        self.planID = planID
+        self.issuedAt = issuedAt
+        self.includedSessions = includedSessions
+        self.unitPriceCents = unitPriceCents
+        self.notes = notes
+        self.isActive = isActive
+    }
+}
+
+public struct SessionPassUse: Identifiable, Codable, Equatable, Sendable {
+    public let id: SessionPassUseID
+    public let studentSessionPassID: StudentSessionPassID
+    public let attendanceID: AttendanceID
+    public let sessionID: ClassSessionID
+    public let studentID: StudentID
+    public let usedAt: Date
+
+    public init(
+        id: SessionPassUseID = SessionPassUseID(),
+        studentSessionPassID: StudentSessionPassID,
+        attendanceID: AttendanceID,
+        sessionID: ClassSessionID,
+        studentID: StudentID,
+        usedAt: Date
+    ) {
+        self.id = id
+        self.studentSessionPassID = studentSessionPassID
+        self.attendanceID = attendanceID
+        self.sessionID = sessionID
+        self.studentID = studentID
+        self.usedAt = usedAt
+    }
+}
+
 public enum AttendanceStatus: String, Codable, CaseIterable, Sendable {
     case present
     case absent
@@ -462,6 +543,7 @@ public struct Attendance: Identifiable, Codable, Equatable, Sendable {
     public let studentID: StudentID
     public var enrollmentID: EnrollmentID?
     public var makeupForSessionID: ClassSessionID?
+    public var usesSessionPass: Bool
     public var status: AttendanceStatus
     public var recordedAt: Date
     public var note: String?
@@ -472,6 +554,7 @@ public struct Attendance: Identifiable, Codable, Equatable, Sendable {
         studentID: StudentID,
         enrollmentID: EnrollmentID? = nil,
         makeupForSessionID: ClassSessionID? = nil,
+        usesSessionPass: Bool = false,
         status: AttendanceStatus,
         recordedAt: Date,
         note: String? = nil
@@ -481,9 +564,52 @@ public struct Attendance: Identifiable, Codable, Equatable, Sendable {
         self.studentID = studentID
         self.enrollmentID = enrollmentID
         self.makeupForSessionID = makeupForSessionID
+        self.usesSessionPass = usesSessionPass
         self.status = status
         self.recordedAt = recordedAt
         self.note = note
+    }
+
+    public var isGuestAttendance: Bool {
+        usesSessionPass || status.isGuestAttendance
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case sessionID
+        case studentID
+        case enrollmentID
+        case makeupForSessionID
+        case usesSessionPass
+        case status
+        case recordedAt
+        case note
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(AttendanceID.self, forKey: .id)
+        sessionID = try values.decode(ClassSessionID.self, forKey: .sessionID)
+        studentID = try values.decode(StudentID.self, forKey: .studentID)
+        enrollmentID = try values.decodeIfPresent(EnrollmentID.self, forKey: .enrollmentID)
+        makeupForSessionID = try values.decodeIfPresent(ClassSessionID.self, forKey: .makeupForSessionID)
+        usesSessionPass = try values.decodeIfPresent(Bool.self, forKey: .usesSessionPass) ?? false
+        status = try values.decode(AttendanceStatus.self, forKey: .status)
+        recordedAt = try values.decode(Date.self, forKey: .recordedAt)
+        note = try values.decodeIfPresent(String.self, forKey: .note)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(sessionID, forKey: .sessionID)
+        try values.encode(studentID, forKey: .studentID)
+        try values.encodeIfPresent(enrollmentID, forKey: .enrollmentID)
+        try values.encodeIfPresent(makeupForSessionID, forKey: .makeupForSessionID)
+        try values.encode(usesSessionPass, forKey: .usesSessionPass)
+        try values.encode(status, forKey: .status)
+        try values.encode(recordedAt, forKey: .recordedAt)
+        try values.encodeIfPresent(note, forKey: .note)
     }
 }
 

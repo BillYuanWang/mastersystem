@@ -4,6 +4,7 @@ import MasterDanceCore
 struct BillingInvoiceSeriesKey: Hashable, Sendable {
     let guardianID: GuardianID
     let termID: TermID?
+    let learnerIDs: [StudentID]
 }
 
 struct BillingInvoiceSeries: Identifiable, Sendable {
@@ -11,7 +12,13 @@ struct BillingInvoiceSeries: Identifiable, Sendable {
     let invoices: [BillingInvoice]
 
     var id: String {
-        key.guardianID.description + "-" + (key.termID?.description ?? "no-term")
+        [
+            key.guardianID.description,
+            key.termID?.description ?? "no-term",
+            key.learnerIDs.isEmpty
+                ? "legacy-family"
+                : key.learnerIDs.map(\.description).joined(separator: "_"),
+        ].joined(separator: "-")
     }
 
     var latestInvoice: BillingInvoice {
@@ -22,7 +29,11 @@ struct BillingInvoiceSeries: Identifiable, Sendable {
 enum BillingInvoiceSeriesResolver {
     static func series(from invoices: [BillingInvoice]) -> [BillingInvoiceSeries] {
         Dictionary(grouping: invoices) {
-            BillingInvoiceSeriesKey(guardianID: $0.guardianID, termID: $0.termID)
+            BillingInvoiceSeriesKey(
+                guardianID: $0.guardianID,
+                termID: $0.termID,
+                learnerIDs: $0.learnerIDs
+            )
         }
         .map { key, values in
             BillingInvoiceSeries(key: key, invoices: sortedVersions(values))
@@ -38,10 +49,14 @@ enum BillingInvoiceSeriesResolver {
     static func series(
         guardianID: GuardianID,
         termID: TermID?,
+        learnerIDs: [StudentID],
         in invoices: [BillingInvoice]
     ) -> BillingInvoiceSeries? {
-        series(from: invoices).first {
-            $0.key.guardianID == guardianID && $0.key.termID == termID
+        let normalizedLearnerIDs = BillingInvoice.normalizedLearnerIDs(learnerIDs)
+        return series(from: invoices).first {
+            $0.key.guardianID == guardianID
+                && $0.key.termID == termID
+                && $0.key.learnerIDs == normalizedLearnerIDs
         }
     }
 
@@ -49,7 +64,12 @@ enum BillingInvoiceSeriesResolver {
         containing invoice: BillingInvoice,
         in invoices: [BillingInvoice]
     ) -> BillingInvoiceSeries? {
-        series(guardianID: invoice.guardianID, termID: invoice.termID, in: invoices)
+        series(
+            guardianID: invoice.guardianID,
+            termID: invoice.termID,
+            learnerIDs: invoice.learnerIDs,
+            in: invoices
+        )
     }
 
     private static func sortedVersions(_ invoices: [BillingInvoice]) -> [BillingInvoice] {

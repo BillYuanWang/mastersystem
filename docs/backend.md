@@ -4,6 +4,13 @@
 
 Supabase provides Auth, Postgres, Row Level Security, private contract Storage, Realtime, and one trusted invitation Edge Function. Native apps receive only the project URL and publishable key. Service-role and database credentials never ship in an app.
 
+The optional local Admin integration under `integrations/master-dance-admin`
+uses the same publishable configuration and an ordinary active administrator
+session. Its SDK, localhost API, and MCP surfaces do not bypass RLS, database
+constraints, dependency-aware deletion, immutable billing/legal records, or
+metadata audit events. Admin credentials and the localhost bearer token live in
+macOS Keychain, never in the repository.
+
 The database is the authority once Phase 4 connects the macOS client. The old CSV and local app remain migration inputs, not a second writable production store.
 
 ## Roles

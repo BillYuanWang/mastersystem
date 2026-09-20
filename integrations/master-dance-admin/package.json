@@ -1,0 +1,35 @@
+{
+  "name": "@master-dance/admin-integration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Master Dance Admin SDK, HTTP API, and MCP server.",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "master-dance-admin-api": "./dist/api/server.js",
+    "master-dance-mcp": "./dist/mcp/server.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test dist/tests/*.test.js",
+    "start:api": "node dist/api/server.js",
+    "start:mcp": "node dist/mcp/server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "7.0.2"
+  }
+}

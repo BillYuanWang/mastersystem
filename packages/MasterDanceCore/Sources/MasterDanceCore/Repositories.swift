@@ -27,6 +27,19 @@ public protocol CourseReferenceRepository: Sendable {
     func deleteInstructor(id: InstructorID) async throws
 }
 
+public protocol SessionPassRepository: Sendable {
+    func listSessionPassPlans() async throws -> [SessionPassPlan]
+    func save(sessionPassPlan: SessionPassPlan) async throws
+    func deleteSessionPassPlan(id: SessionPassPlanID) async throws
+    func listStudentSessionPasses(studentID: StudentID?) async throws -> [StudentSessionPass]
+    func save(studentSessionPass: StudentSessionPass) async throws
+    func deleteStudentSessionPass(id: StudentSessionPassID) async throws
+    func listSessionPassUses(
+        studentSessionPassID: StudentSessionPassID?,
+        studentID: StudentID?
+    ) async throws -> [SessionPassUse]
+}
+
 public protocol CourseRepository: Sendable {
     func listCourses(termID: TermID?) async throws -> [Course]
     func save(course: Course) async throws
@@ -44,6 +57,8 @@ public protocol PeopleRepository: Sendable {
     func listGuardians(studentID: StudentID?) async throws -> [Guardian]
     func save(student: Student) async throws
     func save(guardian: Guardian) async throws
+    // Creation preserves the supplied ID so queued dependent records remain valid.
+    // Retrying the same ID must not create another learner.
     func create(student: Student, for guardianID: GuardianID) async throws -> Student
     func link(studentID: StudentID, to guardianID: GuardianID) async throws
     func issueGuardianLinkCode(guardianID: GuardianID) async throws -> GuardianLinkCode
@@ -119,19 +134,18 @@ public protocol BillingRepository: Sendable {
     func issueBillingInvoice(
         invoice: BillingInvoice,
         lineItems: [BillingInvoiceLineItem],
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingInvoice
     func recordBillingPayment(
         payment: BillingPayment,
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) async throws -> BillingPayment
     func billingArtifactData(storagePath: String) async throws -> Data
 }
 
 public typealias MasterDanceRepository = TermRepository
     & CourseReferenceRepository
+    & SessionPassRepository
     & CourseRepository
     & ClassSessionRepository
     & PeopleRepository
