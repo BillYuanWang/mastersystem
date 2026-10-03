@@ -12,10 +12,18 @@ handoff package is requested, then regenerate each PDF from its Markdown source.
 
 ## Current release
 
-### v0.9.3 - 2026-10-03 (internal-test candidate)
+### v0.9.3 - 2026-10-03 (internal test)
 
 - macOS source build 92 and iOS source build 50. Distribution and Apple
   processing are tracked separately in `docs/DISTRIBUTION.md`.
+- Mac 92 passed Developer ID signing, notarization, stapling, fresh-extraction
+  signature checks and Gatekeeper; the workspace app was replaced with 92 after
+  preserving 91. Source/package distance is zero; previous package distance is
+  one. No staff device update and no new UI acceptance while the Mac is locked.
+- iOS 50 uploaded successfully at 00:52 PDT and entered Apple processing.
+  Distance from previous upload 49 is one. Tester availability remains
+  unverified; last documented confirmed tester baseline 45 is five builds
+  behind. No public App Store submission.
 - Fixed remember-login persistence for Supabase's project-scoped session key.
   Unremembered sessions no longer reach persistent storage; remembered sessions
   preserve the existing key, while password-reset PKCE verifiers still work.
@@ -24,9 +32,13 @@ handoff package is requested, then regenerate each PDF from its Markdown source.
   logging server error details. Parent Account navigation title matches its tab.
 - iOS declares `ITSAppUsesNonExemptEncryption=false` for the current system
   HTTPS/Keychain and hashing usage; preflight checks the built bundle value.
+- Removed the duplicate archive action from the iOS release script.
 - Fixed the schema-qualified pgTAP column/type assertions and made the billing
   integration test create its own rollback fixtures. Production records are
   neither a CI dependency nor modified by this release.
+- GitHub's clean database CI now passes all 227 assertions; Swift and Edge
+  Function checks also pass. The integration fixture includes all required
+  course reference data and deterministic dates.
 - All 10 SDK/API/MCP tests passed. Forty cloud migrations match local history;
   linked database lint reports no schema errors. Security advisors return
   warnings requiring documented review, not a blanket security clearance.

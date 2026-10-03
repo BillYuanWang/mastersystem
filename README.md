@@ -1,16 +1,24 @@
 # Master Dance
 
-Current local candidate: `v0.9.3`, macOS build 92 and iOS build 50 (2026-10-03).
+Current internal-test release: `v0.9.3`, macOS build 92 and iOS build 50 (2026-10-03).
 Distribution is not implied by a successful build. See
 [distribution status](docs/DISTRIBUTION.md) and the
 [release audit](docs/qa/2026-10-03-release-audit.md) for verified delivery gates.
+Mac 92 is signed/notarized, freshly extracted and verified; the workspace app
+has been replaced with 92, preserving 91 as a backup. Local/package distance is
+zero; previous package distance is one. iOS 50 upload succeeded and entered
+Apple processing (one build after prior upload 49). Tester availability remains
+unverified while the Mac is locked; the last documented confirmed tester build
+is 45, a stale baseline five builds behind 50. No staff device was updated.
 
 This candidate fixes remember-login handling for the current Supabase SDK's
 project-scoped token key, protects sync-error details in system logs, aligns the
 parent account-page title, and declares exempt encryption in the iOS bundle.
 The database CI tests now use unambiguous pgTAP signatures and self-contained
 rollback fixtures rather than requiring production records. All 160 Swift tests
-and 10 Admin integration tests passed. No production data or schema was changed.
+and 10 Admin integration tests passed. GitHub's clean database run passed all
+227 assertions, with green Swift and Edge Function checks. No production data
+or schema was changed.
 Public App Store submission remains blocked by account deletion/retention,
 privacy and support URLs, the published test agreement, unfinished Growth UI,
 and review metadata/device acceptance. This is an internal-test candidate.

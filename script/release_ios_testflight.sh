@@ -58,7 +58,7 @@ PLIST
   xcodegen generate --spec project.yml
 )
 
-xcodebuild archive \
+xcodebuild \
   -project "$PROJECT" \
   -scheme MasterDanceMobile \
   -configuration Release \

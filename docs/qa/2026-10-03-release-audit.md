@@ -23,6 +23,8 @@ prove that every UI path or production workflow is defect-free.
    Keychain plus hashing, not proprietary encryption. The bundle declares
    exempt encryption and preflight verifies the built value. Reassess this
    declaration if encryption implementations or dependencies change.
+6. The iOS release script supplied the archive action twice. Removed the
+   duplicate so future uploads do not build the same archive twice.
 
 ## Verified evidence
 
@@ -30,6 +32,12 @@ prove that every UI path or production workflow is defect-free.
 - Initial baseline: 157 Swift tests, macOS/iOS unsigned Release builds passed.
 - After fixes: 160 Swift tests in 30 suites passed; 10 Admin SDK/API/MCP tests
   passed. No live writes are part of these tests.
+- Final unsigned Release preflight passed for Mac 92 and iOS 50, including the
+  built encryption declaration. Both distribution certificates are available.
+- GitHub commit `cb9e325`: Swift checks passed; database CI passed 227 assertions
+  across 16 files plus schema lint; Edge Function formatting/type-check passed.
+  Evidence: [database run](https://github.com/BillYuanWang/mastersystem/actions/runs/37107646892)
+  and [Swift run](https://github.com/BillYuanWang/mastersystem/actions/runs/37107646813).
 - Forty local Supabase migrations match the linked project through
   `20260920210000`; linked database lint reports no schema errors.
 - A read-only cloud query found one published contract, v1, with a test-version
@@ -42,6 +50,7 @@ prove that every UI path or production workflow is defect-free.
   warnings are not automatically safe merely because lint passes. The existing
   authorization tests remain release gates. MFA/password settings were not
   silently changed, as this could alter existing user login behavior.
+- Read-only cloud inspection returned no public business tables with RLS off.
 - Release app entrypoints use production authentication. Preview-role bypasses
   are DEBUG-only. No sample data was imported into production.
 - A tracked-file scan found no secret Supabase keys, private-key blocks, or
@@ -77,6 +86,21 @@ tester availability. A successful upload is not Apple processing approval or
 proof that a tester can install. A fresh package does not update staff Macs.
 The Mac was locked during the initial UI/App Store Connect verification attempt;
 do not infer visual or tester acceptance from CLI build results.
+
+- Mac 92: notarization `c9baee4d-2af4-496e-ad65-4794cda06323` Accepted;
+  stapling, fresh-extraction verification and Gatekeeper passed. A sandboxed
+  codesign check gave a false negative; the full system trust environment
+  confirmed the signature valid. Package contains arm64 and x86_64.
+- SHA-256: `22185ed34511d5c79f2f7c40950e38053e74dfcadf3e5700f94ab048f01101ff`.
+- Workspace app replaced with 0.9.3 (92); original 91 backed up under `dist/macos`.
+  App was not running and no live data/cache/draft was edited. No employee Mac
+  was updated. New interactive acceptance is still pending.
+- iOS 50: Xcode export/upload succeeded at 2026-10-03 00:52 PDT; Apple reported
+  package processing. The archive has version 0.9.3 (50) and
+  `ITSAppUsesNonExemptEncryption=false`. Processing completion/internal tester
+  availability is not verified.
+- Existing GitHub PR #2 receives the fixes. No merge or public App Store
+  submission is implied by an upload or a successful check.
 
 ## Primary references
 
