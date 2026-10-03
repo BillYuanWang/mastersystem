@@ -45,6 +45,7 @@ test -d "$MAC_APP"
 test -d "$IOS_APP"
 test -f "$MAC_APP/Contents/Resources/PrivacyInfo.xcprivacy"
 test -f "$IOS_APP/PrivacyInfo.xcprivacy"
+test "$(plutil -extract ITSAppUsesNonExemptEncryption raw -o - "$IOS_APP/Info.plist")" = "false"
 
 MAC_BUILD="$(plutil -extract CFBundleVersion raw -o - "$MAC_APP/Contents/Info.plist")"
 IOS_BUILD="$(plutil -extract CFBundleVersion raw -o - "$IOS_APP/Info.plist")"

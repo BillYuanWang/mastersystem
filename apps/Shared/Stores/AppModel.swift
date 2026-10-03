@@ -1878,7 +1878,7 @@ final class AppModel {
 
     private func presentBackgroundSyncFailure(_ error: Error) {
         Self.syncLogger.error(
-            "Background synchronization failed: \(String(reflecting: error), privacy: .public)"
+            "Background synchronization failed: \(String(reflecting: error), privacy: .private)"
         )
         let notice = BackgroundSyncNotice.failure(error.localizedDescription)
         guard backgroundSync.notice != notice else { return }

@@ -1,7 +1,7 @@
 begin;
 select plan(4);
-select has_column('public', 'billing_invoice_items', 'schedule_snapshot');
-select col_type_is('public', 'billing_invoice_items', 'schedule_snapshot', 'jsonb');
+select has_column('public', 'billing_invoice_items', 'schedule_snapshot', 'issued line items retain the actual schedule');
+select col_type_is('public', 'billing_invoice_items', 'schedule_snapshot', 'jsonb', 'schedule snapshot is structured JSON');
 select ok(exists(select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.proname = 'admin_issue_billing_invoice_scoped_dual_v3'), 'v3 issuance RPC exists');
 select ok(not has_function_privilege('anon',

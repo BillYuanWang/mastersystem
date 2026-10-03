@@ -1,6 +1,23 @@
 # Master Dance
 
-Current release: `v0.9.2`, macOS build 91 (2026-09-20).
+Current local candidate: `v0.9.3`, macOS build 92 and iOS build 50 (2026-10-03).
+Distribution is not implied by a successful build. See
+[distribution status](docs/DISTRIBUTION.md) and the
+[release audit](docs/qa/2026-10-03-release-audit.md) for verified delivery gates.
+
+This candidate fixes remember-login handling for the current Supabase SDK's
+project-scoped token key, protects sync-error details in system logs, aligns the
+parent account-page title, and declares exempt encryption in the iOS bundle.
+The database CI tests now use unambiguous pgTAP signatures and self-contained
+rollback fixtures rather than requiring production records. All 160 Swift tests
+and 10 Admin integration tests passed. No production data or schema was changed.
+Public App Store submission remains blocked by account deletion/retention,
+privacy and support URLs, the published test agreement, unfinished Growth UI,
+and review metadata/device acceptance. This is an internal-test candidate.
+
+### Previous verified distribution
+
+Previous release: `v0.9.2`, macOS build 91 (2026-09-20).
 The universal employee ZIP is 0.9.2 build 91, one build newer than package 90.
 Developer ID signing, Apple notarization, ticket stapling, and freshly extracted
 ZIP signature/Gatekeeper checks passed. With user approval, the workspace app
@@ -20,7 +37,7 @@ enrollments then synchronized without changing selected sessions or prices;
 the queue is empty. The user's paid-item invoice draft was restored in the UI.
 No real invoice was issued during verification.
 
-The iOS version remains 0.9.0 build 49. Its shared-code changes passed an unsigned
+The previous iOS version was 0.9.0 build 49. Its shared-code changes passed an unsigned
 Release compatibility build; no TestFlight upload was made in this release.
 Build 49 was uploaded on 2026-09-01, but its current Apple processing/tester
 availability was not rechecked. Build 45 remains the last documented confirmed

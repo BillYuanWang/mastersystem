@@ -12,6 +12,27 @@ handoff package is requested, then regenerate each PDF from its Markdown source.
 
 ## Current release
 
+### v0.9.3 - 2026-10-03 (internal-test candidate)
+
+- macOS source build 92 and iOS source build 50. Distribution and Apple
+  processing are tracked separately in `docs/DISTRIBUTION.md`.
+- Fixed remember-login persistence for Supabase's project-scoped session key.
+  Unremembered sessions no longer reach persistent storage; remembered sessions
+  preserve the existing key, while password-reset PKCE verifiers still work.
+  Added three regression tests; all 160 Swift tests passed.
+- Sync errors now use private system-log interpolation rather than publicly
+  logging server error details. Parent Account navigation title matches its tab.
+- iOS declares `ITSAppUsesNonExemptEncryption=false` for the current system
+  HTTPS/Keychain and hashing usage; preflight checks the built bundle value.
+- Fixed the schema-qualified pgTAP column/type assertions and made the billing
+  integration test create its own rollback fixtures. Production records are
+  neither a CI dependency nor modified by this release.
+- All 10 SDK/API/MCP tests passed. Forty cloud migrations match local history;
+  linked database lint reports no schema errors. Security advisors return
+  warnings requiring documented review, not a blanket security clearance.
+- App Store gates and evidence are in `docs/qa/2026-10-03-release-audit.md`.
+  No public submission or employee-device update. Staff guides/PDFs deferred.
+
 ### v0.9.2 - 2026-09-20
 
 - Released macOS 0.9.2 build 91 as a Developer ID-signed, Apple-notarized

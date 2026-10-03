@@ -8,6 +8,56 @@ struct SessionAwareAuthStorageTests {
     private let sessionKey = "supabase.auth.token"
     private let verifierKey = "supabase.auth.token-code-verifier"
 
+    @Test("Production uses the SDK project-scoped storage key")
+    func matchesSDKStorageKey() {
+        let configuration = SupabaseConfiguration(
+            url: URL(string: "https://test-project.supabase.co")!,
+            publishableKey: "test-key"
+        )
+        #expect(configuration.authStorageKey == "sb-test-project-auth-token")
+    }
+
+    @Test("Actual SDK session keys honor remember-login and survive toggling")
+    func projectScopedSessionPersistence() throws {
+        let key = "sb-test-project-auth-token"
+        let backing = FakeAuthStorage()
+        let session = Data("session".utf8)
+        backing.store(key: key, value: session)
+        backing.store(key: "supabase.session", value: session)
+        let storage = SessionAwareAuthStorage(
+            backing: backing, persistsSession: false, sessionKey: key
+        )
+        #expect(backing.value(for: key) == nil)
+        #expect(backing.value(for: "supabase.session") == nil)
+        #expect(try storage.retrieve(key: key) == nil)
+
+        try storage.store(key: key, value: session)
+        #expect(backing.value(for: key) == nil)
+        #expect(try storage.retrieve(key: key) == session)
+        storage.setSessionPersistenceEnabled(true)
+        #expect(backing.value(for: key) == session)
+        storage.setSessionPersistenceEnabled(false)
+        #expect(backing.value(for: key) == nil)
+        #expect(try storage.retrieve(key: key) == session)
+
+        let restarted = SessionAwareAuthStorage(
+            backing: backing, persistsSession: false, sessionKey: key
+        )
+        #expect(try restarted.retrieve(key: key) == nil)
+    }
+
+    @Test("Project-scoped password reset verifier remains available without remembering login")
+    func projectScopedPasswordResetVerifier() throws {
+        let key = "sb-test-project-auth-token"
+        let backing = FakeAuthStorage()
+        let storage = SessionAwareAuthStorage(
+            backing: backing, persistsSession: false, sessionKey: key
+        )
+        let verifier = Data("verifier".utf8)
+        try storage.store(key: key + "-code-verifier", value: verifier)
+        #expect(backing.value(for: key + "-code-verifier") == verifier)
+    }
+
     @Test("Remembered sessions are written to backing storage")
     func persistsRememberedSession() throws {
         let backing = FakeAuthStorage()

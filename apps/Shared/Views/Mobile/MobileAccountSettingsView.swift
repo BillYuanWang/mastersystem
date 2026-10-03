@@ -89,7 +89,7 @@ struct MobileAccountSettingsView: View {
                 .disabled(onSignOut == nil)
             }
         }
-        .navigationTitle("我的")
+        .navigationTitle(role == .administrator ? "我的" : "帐号")
         .sheet(item: $editingGuardian) { guardian in
             if let actions {
                 MobileGuardianContactEditor(
