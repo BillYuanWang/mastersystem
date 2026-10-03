@@ -17,6 +17,7 @@ declare
   session_id uuid := gen_random_uuid();
   semester_id uuid := gen_random_uuid();
   category_id uuid := gen_random_uuid();
+  age_id uuid := gen_random_uuid();
   type_id uuid := gen_random_uuid();
   room_id uuid := gen_random_uuid();
   instructor_id uuid := gen_random_uuid();
@@ -37,15 +38,17 @@ begin
   values (org_id, semester_id, 'Test Holiday', '2026-11-23', '2026-11-29');
   insert into public.course_categories(id, organization_id, name)
   values (category_id, org_id, 'Dance');
+  insert into public.age_groups(id, organization_id, name)
+  values (age_id, org_id, 'Test Age Group');
   insert into public.course_types(id, organization_id, name, is_private)
   values (type_id, org_id, 'Group', false);
   insert into public.rooms(id, organization_id, name)
   values (room_id, org_id, 'Test Room');
   insert into public.instructors(id, organization_id, display_name)
   values (instructor_id, org_id, 'Test Instructor');
-  insert into public.courses(id, organization_id, term_id, name, category_id,
+  insert into public.courses(id, organization_id, term_id, name, category_id, age_group_id,
     default_room_id, default_instructor_id, course_type_id, format)
-  values (class_id, org_id, semester_id, 'Test Course', category_id,
+  values (class_id, org_id, semester_id, 'Test Course', category_id, age_id,
     room_id, instructor_id, type_id, 'group');
   insert into public.class_sessions(id, organization_id, course_id, starts_at,
     ends_at, effective_instructor_id, effective_room_id)
