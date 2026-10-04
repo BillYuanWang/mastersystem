@@ -43,9 +43,11 @@ iPhone 不能像 Mac 一样把 App 文件随意发给别人安装。内部 TestF
 
 每次上传 TestFlight 前，`CFBundleVersion` 必须大于 Apple 已经接收过的 build。当前发布状态为：
 
-- macOS：最新安装包为 0.9.3 build 92（2026-10-03），已签名、公证、装订，并通过全新解压严格验签及 Gatekeeper 检查。本机项目目录的 App 也已替换为 92，与安装包差距为 0；相对上个公证包 91 增加 1 Build。未升级员工电脑，锁屏期间未进行新版界面验收。
-- iOS：本地与本次实际上传版本均为 0.9.3 build 50。Apple 于 2026-10-03 00:52（洛杉矶）返回 Upload succeeded / Uploaded package is processing。与上次上传 49 相差 1 Build；尚未验证处理完成、内部组分发或真机安装，不能称为测试员已经可用。
-- iOS 最后有文档确认可供测试员使用的基线仍为 0.9.0 build 45，与本地 50 相差 5 个 Build；这是待刷新基线，不代表断言 49 或 50 当前不可用。网页检查因 Mac 锁屏未完成。
+- macOS：最新安装包为 0.9.4 build 93（2026-10-03），已签名、公证、装订，并通过全新解压严格验签及 Gatekeeper 检查。本机 App 也已替换为 93，与安装包差距为 0；相对上个公证包 92 增加 1 Build。11 个页面已进行真实数据只读切换检查，未升级员工电脑。
+- iOS：本地与本次实际上传版本均为 0.9.4 build 51。Apple 于 2026-10-03 23:01（洛杉矶）返回 Upload succeeded / Uploaded package is processing。与上次上传 50 相差 1 Build；Release 模拟器已验证真实教务登录和课程下载，但不能据此声称 TestFlight 测试员已经可用。
+- iOS 最后有文档确认可供测试员使用的基线仍为 0.9.0 build 45，与本地 51 相差 6 个 Build；这是待刷新基线，不代表后续构建不可用。当前 App Store Connect 网页登录已过期，需完成重新登录后核验处理完成和内部组状态。
+
+Build 93 修复七天双教室课表中价格标签挤掉年龄段的问题。iOS 51 修复首次课程下载时错误显示“这一天没有课程”的问题，区分加载、失败重试和真正无课。已有缓存内容继续立即显示。生产业务数据和结构未修改。后续验收见 `docs/qa/2026-10-03-build-followup.md`。
 
 Build 92 / iOS 50 修复实际 Supabase 登录键名与“记住登录”控制不一致的问题，系统日志不再公开同步错误详情；家长帐号页标题统一。iOS 带加密合规声明，减少重复询问。Mac 与前包的主要差异为登录和日志修复；iOS 相对 49 同时包含之后的共享排课、报名与同步逻辑。160 项 Swift、227 项隔离数据库测试和 10 项 SDK/API/MCP 测试通过，GitHub 的数据库、Edge Function 与 Swift 检查全绿。本轮未改生产数据或数据库结构。完整上架阻塞项见 `docs/qa/2026-10-03-release-audit.md`。
 
@@ -67,13 +69,13 @@ macOS build 89 汇总了 build 79 之后的课表、离线图片缓存、账单�
 4. 提交 Apple 公证并等待结果。
 5. 把公证票据装订到 App。
 6. 通过 Gatekeeper 再验证。
-7. 按当前源码版本输出 `dist/macos/MD-Desk-版本-构建号-macOS.zip`；当前已验证、可交付文件是 `MD-Desk-0.9.3-92-macOS.zip`。
+7. 按当前源码版本输出 `dist/macos/MD-Desk-版本-构建号-macOS.zip`；当前已验证、可交付文件是 `MD-Desk-0.9.4-93-macOS.zip`。
 
 本次安装包 SHA-256：
 
-`22185ed34511d5c79f2f7c40950e38053e74dfcadf3e5700f94ab048f01101ff`
+`cbc3002786ce9ffb0b8360b2fc67c60c2df44c51e64eee3f2a83ba9e92075ea7`
 
-Apple 公证记录：`c9baee4d-2af4-496e-ad65-4794cda06323`，状态 `Accepted`。旧安装包及旧版备份保留，仅作回退使用。本机原 Build 91 保留在 `dist/macos/MD-Desk-0.9.2-91-local-backup-20261003.app`；更早 Build 90 备份也未删除。两个架构均包含：Intel x86_64 与 Apple Silicon arm64。
+Apple 公证记录：`ca70a89f-d60a-4f76-91ae-13e9a2765644`，状态 `Accepted`。旧安装包及旧版备份保留，仅作回退使用。本机原 Build 92 保留在 `dist/macos/MD-Desk-0.9.3-92-local-backup-20261003.app`；更早备份也未删除。两个架构均包含：Intel x86_64 与 Apple Silicon arm64。
 
 员工安装：
 
@@ -101,7 +103,7 @@ Apple 处理完成后：
 
 1. 在 App Store Connect 的 `Users and Access` 添加员工 Apple Account，并只授予 Master Dance 所需的 App 访问。
 2. 在 Master Dance 的 `TestFlight > Internal Testing` 建立内部组。
-3. 把负责人和员工加入该组，并在 Apple 处理完成后选择 build 50；如果该组已开启自动分发，处理完成后会自动进入该组。本轮没有增加测试员或扩大访问范围。
+3. 把负责人和员工加入该组，并在 Apple 处理完成后选择 build 51；如果该组已开启自动分发，处理完成后会自动进入该组。本轮没有增加测试员或扩大访问范围。
 4. 两台 iPhone 从 App Store 安装 TestFlight。
 5. 接受邀请，在 TestFlight 中安装 Master Dance。
 6. 教务老师使用 Admin 帐号，负责人可以分别测试 Admin 和监护人帐号。

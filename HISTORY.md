@@ -12,6 +12,30 @@ handoff package is requested, then regenerate each PDF from its Markdown source.
 
 ## Current release
 
+### v0.9.4 - 2026-10-03 (internal test)
+
+- macOS 93: narrow dual-room timetable lanes use a combined age/price line
+  instead of allowing the price badge to squeeze age text to zero width.
+  Expanded lanes retain the detailed metadata and both prices remain in hover.
+- iOS 51: first attendance load displays progress instead of claiming there
+  are no classes; a failed empty load provides a retry action. Existing cached
+  course rows remain visible while refreshing.
+- Both Release builds succeeded. Mac 93 was signed, notarized, stapled and
+  verified after fresh ZIP extraction. Replaced the workspace app with 93 and
+  preserved local 92. Local/package gap: zero; previous package gap: one.
+- iOS 51 uploaded to internal TestFlight at 23:01 PDT. Previous upload 50 gap:
+  one. Current tester availability requires a renewed App Store Connect login;
+  last documented confirmed tester build 45 is six builds behind, not live proof
+  that later builds are unavailable. No public App Store submission.
+- Rechecked 160 Swift tests. Mac's 11 tabs opened against real data without a
+  visible sync error. Verified production-configured iOS simulator admin login
+  and course download. No attendance, enrollment, invoice or cloud schema edits.
+- A FinderInfo attribute attached to the Dropbox workspace copy caused strict
+  signature verification to fail; removing only that attribute restored valid
+  verification. The original ZIP was unchanged and verified independently.
+- Employee devices and staff handoff guides were not changed. Public-release
+  gates remain separate from compilation, signing and upload acceptance.
+
 ### v0.9.3 - 2026-10-03 (internal test)
 
 - macOS source build 92 and iOS source build 50. Distribution and Apple

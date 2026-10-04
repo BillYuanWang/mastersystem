@@ -8,6 +8,7 @@ struct MobileAttendanceHomeView: View {
     @State private var selectedDate = Self.initialDate
     @State private var wheelDate = Self.initialDate
     @State private var isShowingDateWheel = false
+    @State private var hasCheckedInitialCourses = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -63,12 +64,36 @@ struct MobileAttendanceHomeView: View {
             }
 
             if sessionsForDay.isEmpty {
-                ContentUnavailableView(
-                    "这一天没有课程",
-                    systemImage: "calendar",
-                    description: Text("可以从上方选择其他日期。")
-                )
-                .listRowBackground(Color.clear)
+                if !hasCheckedInitialCourses || !model.hasLoaded || model.isLoading {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .tint(theme.accent)
+                        Text("正在加载课程")
+                            .mdFont(.body)
+                            .foregroundStyle(theme.secondaryText)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 100)
+                    .listRowBackground(Color.clear)
+                } else if hasCourseLoadingError {
+                    VStack(spacing: 12) {
+                        ContentUnavailableView(
+                            "课程暂未加载",
+                            systemImage: "wifi.exclamationmark",
+                            description: Text("请检查网络连接后重试。")
+                        )
+                        Button("重试") {
+                            Task { await loadInitialCourses(forceRefresh: true) }
+                        }
+                    }
+                    .listRowBackground(Color.clear)
+                } else {
+                    ContentUnavailableView(
+                        "这一天没有课程",
+                        systemImage: "calendar",
+                        description: Text("可以从上方选择其他日期。")
+                    )
+                    .listRowBackground(Color.clear)
+                }
             } else {
                 Section("当天课程") {
                     ForEach(sessionsForDay) { session in
@@ -100,7 +125,7 @@ struct MobileAttendanceHomeView: View {
         }
         .refreshable { await model.refreshFromCloud() }
         .task {
-            await model.synchronizeRemoteChanges()
+            await loadInitialCourses(forceRefresh: false)
         }
         .sheet(isPresented: $isShowingDateWheel) {
             MobileAttendanceDateWheel(
@@ -118,6 +143,22 @@ struct MobileAttendanceHomeView: View {
         model.sessions
             .filter { Calendar.masterDance.isDate($0.startsAt, inSameDayAs: selectedDate) }
             .sorted { $0.startsAt < $1.startsAt }
+    }
+
+    private var hasCourseLoadingError: Bool {
+        if model.errorMessage != nil { return true }
+        if case .failure = model.backgroundSync.notice { return true }
+        return false
+    }
+
+    private func loadInitialCourses(forceRefresh: Bool) async {
+        hasCheckedInitialCourses = false
+        defer { hasCheckedInitialCourses = true }
+        if forceRefresh {
+            await model.refreshFromCloud()
+        } else {
+            await model.synchronizeRemoteChanges()
+        }
     }
 
     private func attendanceProgress(for session: ClassSession) -> String {

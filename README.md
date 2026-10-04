@@ -1,17 +1,25 @@
 # Master Dance
 
-Current internal-test release: `v0.9.3`, macOS build 92 and iOS build 50 (2026-10-03).
+Current internal-test release: `v0.9.4`, macOS build 93 and iOS build 51 (2026-10-03).
 Distribution is not implied by a successful build. See
 [distribution status](docs/DISTRIBUTION.md) and the
 [release audit](docs/qa/2026-10-03-release-audit.md) for verified delivery gates.
-Mac 92 is signed/notarized, freshly extracted and verified; the workspace app
-has been replaced with 92, preserving 91 as a backup. Local/package distance is
-zero; previous package distance is one. iOS 50 upload succeeded and entered
-Apple processing (one build after prior upload 49). Tester availability remains
-unverified while the Mac is locked; the last documented confirmed tester build
-is 45, a stale baseline five builds behind 50. No staff device was updated.
+Mac 93 is signed/notarized, freshly extracted and verified; the workspace app
+has been replaced with 93, preserving 92 as a backup. Local/package distance is
+zero; previous package distance is one. iOS 51 upload succeeded at 23:01 PDT
+and entered Apple processing (one build after prior upload 50). Tester
+availability remains unverified because App Store Connect requires a fresh
+browser login. The last documented confirmed tester build is 45, a stale
+baseline six builds behind 51. No staff device was updated.
 
-This candidate fixes remember-login handling for the current Supabase SDK's
+Build 93 keeps the age group and both price modes readable in narrow timetable
+lanes. Build 51 distinguishes loading/failure/retry from an actually empty
+attendance day, while retaining already-loaded courses. Mac's 11 tabs passed
+read-only navigation checks against real data. Release simulator login and
+course download were checked with the existing admin account, without changing
+business records. Details: [runtime follow-up](docs/qa/2026-10-03-build-followup.md).
+
+The preceding 0.9.3 candidate fixes remember-login handling for the current Supabase SDK's
 project-scoped token key, protects sync-error details in system logs, aligns the
 parent account-page title, and declares exempt encryption in the iOS bundle.
 The database CI tests now use unambiguous pgTAP signatures and self-contained

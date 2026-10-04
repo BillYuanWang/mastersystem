@@ -63,6 +63,7 @@ struct CourseBlockView: View {
                         instructorName: instructor?.displayName ?? "老师",
                         isPrivateLesson: course?.format == .privateLesson,
                         priceLabel: priceLabel,
+                        compactPriceLabel: compactPriceLabel,
                         textColor: textColor
                     )
                 }
@@ -218,6 +219,7 @@ struct CourseBlockView: View {
         instructorName: String,
         isPrivateLesson: Bool,
         priceLabel: String,
+        compactPriceLabel: String,
         textColor: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: height < 58 ? 0 : 1) {
@@ -238,21 +240,25 @@ struct CourseBlockView: View {
                 )
             }
 
-            HStack(spacing: 4) {
-                Text(courseTypeName.uppercased())
-                    .mdFont(size: labelFontSize, weight: .semibold, design: .monospaced)
-                    .foregroundStyle(textColor.opacity(0.78))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) {
+                    Text(courseTypeName.uppercased())
+                        .mdFont(size: labelFontSize, weight: .semibold, design: .monospaced)
+                        .foregroundStyle(textColor.opacity(0.78))
+                    ageBadge(ageGroupName, textColor: textColor)
+                    priceBadge(priceLabel, compact: false, textColor: textColor)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+
+                // Keep age and both price modes together when two room lanes are narrow.
+                Text("\(ageGroupName) · \(compactPriceLabel)")
+                    .mdFont(size: labelFontSize, weight: .semibold)
+                    .foregroundStyle(textColor.opacity(0.92))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.68)
-                    .layoutPriority(1)
-
-                ageBadge(ageGroupName, textColor: textColor)
-                    .layoutPriority(2)
-
-                Spacer(minLength: 0)
-
-                priceBadge(priceLabel, compact: false, textColor: textColor)
+                    .minimumScaleFactor(0.5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(height: 13, alignment: .leading)
 
             Spacer(minLength: height < 58 ? 0 : 2)
 
@@ -409,7 +415,16 @@ struct CourseBlockView: View {
             ? course.dropInUnitPriceCents
             : course.unitPriceCents
         guard let primaryPrice else { return compact ? "待定" : "价格待定" }
-        if compact { return "$\(compactDollars(primaryPrice))" }
+        if compact {
+            if course.format.requiresPerSessionEnrollment {
+                return "次$\(compactDollars(primaryPrice))"
+            }
+            var parts = ["期$\(compactDollars(primaryPrice))"]
+            if let dropInPrice = course.dropInUnitPriceCents {
+                parts.append("次$\(compactDollars(dropInPrice))")
+            }
+            return parts.joined(separator: "·")
+        }
         if course.format.requiresPerSessionEnrollment {
             return "次 $\(compactDollars(primaryPrice))/节"
         }
@@ -426,7 +441,7 @@ struct CourseBlockView: View {
             ? course.dropInUnitPriceCents
             : course.unitPriceCents
         guard let primaryPrice else { return compact ? "待核" : "价格待复核" }
-        if compact { return "$\(compactDollars(primaryPrice))*" }
+        if compact { return "\(pricedLabel(for: course, compact: true))*" }
 
         var parts = [course.format.requiresPerSessionEnrollment
             ? "次 $\(compactDollars(primaryPrice))/节"
