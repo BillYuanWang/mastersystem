@@ -5,6 +5,7 @@ public struct PreviewData: Codable, Sendable {
     public var termHolidays: [TermHoliday]
     public var courseCategories: [CourseCategory]
     public var courseTypes: [CourseType]
+    public var sessionPassPlans: [SessionPassPlan]
     public var ageGroups: [AgeGroup]
     public var rooms: [Room]
     public var instructors: [Instructor]
@@ -14,6 +15,8 @@ public struct PreviewData: Codable, Sendable {
     public var guardians: [Guardian]
     public var enrollments: [Enrollment]
     public var attendance: [Attendance]
+    public var studentSessionPasses: [StudentSessionPass]
+    public var sessionPassUses: [SessionPassUse]
     public var leaveRequests: [LeaveRequest]
     public var contractDocuments: [ContractDocument]
     public var contractConsents: [ContractConsent]
@@ -31,6 +34,7 @@ public struct PreviewData: Codable, Sendable {
         termHolidays: [TermHoliday] = [],
         courseCategories: [CourseCategory] = [],
         courseTypes: [CourseType] = [],
+        sessionPassPlans: [SessionPassPlan] = [],
         ageGroups: [AgeGroup] = [],
         rooms: [Room] = [],
         instructors: [Instructor] = [],
@@ -40,6 +44,8 @@ public struct PreviewData: Codable, Sendable {
         guardians: [Guardian] = [],
         enrollments: [Enrollment] = [],
         attendance: [Attendance] = [],
+        studentSessionPasses: [StudentSessionPass] = [],
+        sessionPassUses: [SessionPassUse] = [],
         leaveRequests: [LeaveRequest] = [],
         contractDocuments: [ContractDocument] = [],
         contractConsents: [ContractConsent] = [],
@@ -56,6 +62,7 @@ public struct PreviewData: Codable, Sendable {
         self.termHolidays = termHolidays
         self.courseCategories = courseCategories
         self.courseTypes = courseTypes
+        self.sessionPassPlans = sessionPassPlans
         self.ageGroups = ageGroups
         self.rooms = rooms
         self.instructors = instructors
@@ -65,6 +72,8 @@ public struct PreviewData: Codable, Sendable {
         self.guardians = guardians
         self.enrollments = enrollments
         self.attendance = attendance
+        self.studentSessionPasses = studentSessionPasses
+        self.sessionPassUses = sessionPassUses
         self.leaveRequests = leaveRequests
         self.contractDocuments = contractDocuments
         self.contractConsents = contractConsents
@@ -183,6 +192,72 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
             || data.sessions.contains { $0.instructorOverrideID == id }
         try requireUnused(!inUse, "这位老师已被课程或课次使用，不能删除。")
         remove(id: id, from: &data.instructors)
+    }
+
+    public func listSessionPassPlans() -> [SessionPassPlan] { data.sessionPassPlans }
+
+    public func save(sessionPassPlan: SessionPassPlan) throws {
+        guard !sessionPassPlan.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              sessionPassPlan.includedSessions > 0,
+              sessionPassPlan.includedSessions <= 10_000,
+              sessionPassPlan.unitPriceCents >= 0 else {
+            throw PreviewRepositoryError.invalidSessionPassPlan
+        }
+        upsert(sessionPassPlan, in: &data.sessionPassPlans)
+    }
+
+    public func deleteSessionPassPlan(id: SessionPassPlanID) throws {
+        try requireUnused(
+            !data.studentSessionPasses.contains { $0.planID == id },
+            "这个次卡方案已经发给学员，不能删除；可以将方案停用。"
+        )
+        remove(id: id, from: &data.sessionPassPlans)
+    }
+
+    public func listStudentSessionPasses(studentID: StudentID? = nil) -> [StudentSessionPass] {
+        data.studentSessionPasses.filter { studentID == nil || $0.studentID == studentID }
+    }
+
+    public func save(studentSessionPass: StudentSessionPass) throws {
+        guard let student = data.students.first(where: { $0.id == studentSessionPass.studentID }) else {
+            throw PreviewRepositoryError.studentNotFound
+        }
+        guard student.kind == .adult else {
+            throw PreviewRepositoryError.sessionPassRequiresAdult
+        }
+        guard data.sessionPassPlans.contains(where: { $0.id == studentSessionPass.planID }),
+              studentSessionPass.includedSessions > 0,
+              studentSessionPass.unitPriceCents >= 0 else {
+            throw PreviewRepositoryError.invalidSessionPassPlan
+        }
+        if let existing = data.studentSessionPasses.first(where: { $0.id == studentSessionPass.id }),
+           !data.sessionPassUses.filter({ $0.studentSessionPassID == existing.id }).isEmpty,
+           (existing.studentID != studentSessionPass.studentID
+                || existing.planID != studentSessionPass.planID
+                || existing.issuedAt != studentSessionPass.issuedAt
+                || existing.includedSessions != studentSessionPass.includedSessions
+                || existing.unitPriceCents != studentSessionPass.unitPriceCents) {
+            throw PreviewRepositoryError.recordInUse("这张次卡已经有划卡记录，只能修改备注或启用状态。")
+        }
+        upsert(studentSessionPass, in: &data.studentSessionPasses)
+    }
+
+    public func deleteStudentSessionPass(id: StudentSessionPassID) throws {
+        try requireUnused(
+            !data.sessionPassUses.contains { $0.studentSessionPassID == id },
+            "这张次卡已有划卡记录，不能删除；可以将它停用。"
+        )
+        remove(id: id, from: &data.studentSessionPasses)
+    }
+
+    public func listSessionPassUses(
+        studentSessionPassID: StudentSessionPassID? = nil,
+        studentID: StudentID? = nil
+    ) -> [SessionPassUse] {
+        data.sessionPassUses.filter {
+            (studentSessionPassID == nil || $0.studentSessionPassID == studentSessionPassID)
+                && (studentID == nil || $0.studentID == studentID)
+        }
     }
 
     public func listCourses(termID: TermID? = nil) -> [Course] {
@@ -331,7 +406,8 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         let inUse = data.enrollments.contains { $0.studentID == id }
             || data.attendance.contains { $0.studentID == id }
             || data.leaveRequests.contains { $0.studentID == id }
-        try requireUnused(!inUse, "这个学员已有报名、签到或请假记录，不能删除；可以将档案停用。")
+            || data.studentSessionPasses.contains { $0.studentID == id }
+        try requireUnused(!inUse, "这个学员已有报名、签到、请假或次卡记录，不能删除；可以将档案停用。")
         remove(id: id, from: &data.students)
     }
 
@@ -352,6 +428,9 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
 
         let hasLeaveRequest = data.leaveRequests.contains { studentIDs.contains($0.studentID) }
         try requireUnused(!hasLeaveRequest, "这个家庭已有请假记录，不能删除；可以停用学员档案。")
+
+        let hasSessionPass = data.studentSessionPasses.contains { studentIDs.contains($0.studentID) }
+        try requireUnused(!hasSessionPass, "这个家庭已有学员次卡，不能删除；可以停用学员档案。")
 
         data.students.removeAll { studentIDs.contains($0.id) }
         remove(id: id, from: &data.guardians)
@@ -405,8 +484,67 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         }
     }
 
-    public func save(attendance: Attendance) { upsert(attendance, in: &data.attendance) }
-    public func deleteAttendance(id: AttendanceID) { remove(id: id, from: &data.attendance) }
+    public func save(attendance: Attendance) throws {
+        if attendance.usesSessionPass {
+            guard attendance.status == .present,
+                  attendance.enrollmentID == nil,
+                  attendance.makeupForSessionID == nil else {
+                throw PreviewRepositoryError.invalidSessionPassAttendance
+            }
+            guard data.students.first(where: { $0.id == attendance.studentID })?.kind == .adult else {
+                throw PreviewRepositoryError.sessionPassRequiresAdult
+            }
+
+            if let useIndex = data.sessionPassUses.firstIndex(where: { $0.attendanceID == attendance.id }) {
+                let current = data.sessionPassUses[useIndex]
+                guard data.studentSessionPasses.first(where: { $0.id == current.studentSessionPassID })?.studentID
+                    == attendance.studentID else {
+                    throw PreviewRepositoryError.invalidSessionPassAttendance
+                }
+                data.sessionPassUses[useIndex] = SessionPassUse(
+                    id: current.id,
+                    studentSessionPassID: current.studentSessionPassID,
+                    attendanceID: attendance.id,
+                    sessionID: attendance.sessionID,
+                    studentID: attendance.studentID,
+                    usedAt: attendance.recordedAt
+                )
+            } else {
+                let availablePass = data.studentSessionPasses
+                    .filter { pass in
+                        pass.studentID == attendance.studentID
+                            && pass.isActive
+                            && data.sessionPassUses.filter({ $0.studentSessionPassID == pass.id }).count
+                                < pass.includedSessions
+                    }
+                    .sorted {
+                        if $0.issuedAt != $1.issuedAt { return $0.issuedAt < $1.issuedAt }
+                        return $0.id.description < $1.id.description
+                    }
+                    .first
+                guard let availablePass else {
+                    throw PreviewRepositoryError.noAvailableSessionPass
+                }
+                data.sessionPassUses.append(
+                    SessionPassUse(
+                        studentSessionPassID: availablePass.id,
+                        attendanceID: attendance.id,
+                        sessionID: attendance.sessionID,
+                        studentID: attendance.studentID,
+                        usedAt: attendance.recordedAt
+                    )
+                )
+            }
+        } else {
+            data.sessionPassUses.removeAll { $0.attendanceID == attendance.id }
+        }
+        upsert(attendance, in: &data.attendance)
+    }
+
+    public func deleteAttendance(id: AttendanceID) {
+        data.sessionPassUses.removeAll { $0.attendanceID == id }
+        remove(id: id, from: &data.attendance)
+    }
 
     public func listLeaveRequests(
         sessionID: ClassSessionID? = nil,
@@ -674,8 +812,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
     public func issueBillingInvoice(
         invoice: BillingInvoice,
         lineItems: [BillingInvoiceLineItem],
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) throws -> BillingInvoice {
         guard data.guardians.contains(where: { $0.id == invoice.guardianID }) else {
             throw PreviewRepositoryError.guardianNotFound
@@ -683,10 +820,23 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
         guard invoice.termID != nil else {
             throw PreviewRepositoryError.recordInUse("账单必须属于一个学期。")
         }
-        guard !lineItems.isEmpty,
+        let learnerIDs = Set(invoice.learnerIDs)
+        guard !learnerIDs.isEmpty,
+              learnerIDs.allSatisfy({ learnerID in
+                  data.students.contains {
+                      $0.id == learnerID && $0.guardianID == invoice.guardianID
+                  }
+              }),
+              !lineItems.isEmpty,
               lineItems.allSatisfy({ $0.invoiceID == invoice.id }),
-              artifact.invoiceID == invoice.id,
-              artifact.kind == .invoice else {
+              lineItems.allSatisfy({ item in
+                  item.studentID.map(learnerIDs.contains) ?? true
+              }),
+              artifactUploads.count == BillingArtifactLanguage.allCases.count,
+              Set(artifactUploads.map(\.artifact.resolvedLanguage)) == Set(BillingArtifactLanguage.allCases),
+              artifactUploads.allSatisfy({
+                  $0.artifact.invoiceID == invoice.id && $0.artifact.kind == .invoice
+              }) else {
             throw PreviewRepositoryError.recordInUse("账单资料不完整。")
         }
         let calculatedTotal = lineItems
@@ -705,6 +855,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
                 previous.supersededByInvoiceID == nil,
                 previous.guardianID == invoice.guardianID,
                 previous.termID == invoice.termID,
+                previous.learnerIDs == invoice.learnerIDs,
                 previous.invoiceNumber == invoice.invoiceNumber,
                 previous.version + 1 == invoice.version
             else {
@@ -714,6 +865,7 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
                 id: previous.id,
                 guardianID: previous.guardianID,
                 termID: previous.termID,
+                learnerIDs: previous.learnerIDs,
                 invoiceNumber: previous.invoiceNumber,
                 version: previous.version,
                 schoolYearLabel: previous.schoolYearLabel,
@@ -732,25 +884,28 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
             let alreadyExists = data.billingInvoices.contains {
                 $0.guardianID == invoice.guardianID
                     && $0.termID == invoice.termID
+                    && $0.learnerIDs == invoice.learnerIDs
                     && $0.supersedesInvoiceID == nil
             }
             guard !alreadyExists else {
-                throw PreviewRepositoryError.recordInUse("这个家庭在该学期已有账单，请创建新版本。")
+                throw PreviewRepositoryError.recordInUse("所选学员在该学期已有账单，请创建新版本。")
             }
         }
 
         upsert(invoice, in: &data.billingInvoices)
         data.billingInvoiceLineItems.removeAll { $0.invoiceID == invoice.id }
         data.billingInvoiceLineItems.append(contentsOf: lineItems)
-        upsert(artifact, in: &data.billingArtifacts)
-        billingMedia[artifact.storagePath] = pngData
+        for upload in artifactUploads {
+            let artifact = storedPreviewArtifact(upload.artifact)
+            upsert(artifact, in: &data.billingArtifacts)
+            billingMedia[artifact.storagePath] = upload.pngData
+        }
         return invoice
     }
 
     public func recordBillingPayment(
         payment: BillingPayment,
-        artifact: BillingArtifact,
-        pngData: Data
+        artifactUploads: [BillingArtifactUpload]
     ) throws -> BillingPayment {
         guard let invoice = data.billingInvoices.first(where: { $0.id == payment.invoiceID }) else {
             throw PreviewRepositoryError.recordInUse("找不到这份账单。")
@@ -763,14 +918,21 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
             ? BillingCalculator.cardFeeCents(for: payment.amountCents)
             : 0
         guard payment.processingFeeCents == expectedFee,
-              artifact.invoiceID == payment.invoiceID,
-              artifact.paymentID == payment.id,
-              artifact.kind == .receipt else {
+              artifactUploads.count == BillingArtifactLanguage.allCases.count,
+              Set(artifactUploads.map(\.artifact.resolvedLanguage)) == Set(BillingArtifactLanguage.allCases),
+              artifactUploads.allSatisfy({
+                  $0.artifact.invoiceID == payment.invoiceID
+                      && $0.artifact.paymentID == payment.id
+                      && $0.artifact.kind == .receipt
+              }) else {
             throw PreviewRepositoryError.recordInUse("付款或收据资料不正确。")
         }
         upsert(payment, in: &data.billingPayments)
-        upsert(artifact, in: &data.billingArtifacts)
-        billingMedia[artifact.storagePath] = pngData
+        for upload in artifactUploads {
+            let artifact = storedPreviewArtifact(upload.artifact)
+            upsert(artifact, in: &data.billingArtifacts)
+            billingMedia[artifact.storagePath] = upload.pngData
+        }
         return payment
     }
 
@@ -779,6 +941,20 @@ public actor PreviewMasterDanceStore: MasterDanceRepository {
             throw PreviewRepositoryError.recordInUse("预览账单图片尚未下载。")
         }
         return data
+    }
+
+    private func storedPreviewArtifact(_ artifact: BillingArtifact) -> BillingArtifact {
+        guard artifact.storagePath.isEmpty else { return artifact }
+        return BillingArtifact(
+            id: artifact.id,
+            invoiceID: artifact.invoiceID,
+            paymentID: artifact.paymentID,
+            kind: artifact.kind,
+            storagePath: "preview/billing/\(artifact.id)-\(artifact.resolvedLanguage.storageSuffix).png",
+            mimeType: artifact.mimeType,
+            generatedAt: artifact.generatedAt,
+            language: artifact.resolvedLanguage
+        )
     }
 
     public static func sample(now: Date = Date()) -> PreviewMasterDanceStore {
@@ -868,6 +1044,10 @@ public enum PreviewRepositoryError: LocalizedError, Sendable, Equatable {
     case invalidPerSessionEnrollment
     case privateLessonRequiresPerSessionEnrollment
     case invalidPrivateLessonPricing
+    case invalidSessionPassPlan
+    case sessionPassRequiresAdult
+    case invalidSessionPassAttendance
+    case noAvailableSessionPass
 
     public var errorDescription: String? {
         switch self {
@@ -893,6 +1073,14 @@ public enum PreviewRepositoryError: LocalizedError, Sendable, Equatable {
             "私课仅支持按次报名。"
         case .invalidPrivateLessonPricing:
             "私课只能填写按次单价。"
+        case .invalidSessionPassPlan:
+            "次卡方案必须填写名称、有效次数和不小于零的单价。"
+        case .sessionPassRequiresAdult:
+            "当前版本只允许成人学员使用次卡。"
+        case .invalidSessionPassAttendance:
+            "次卡到课不能同时关联课程报名或补课来源。"
+        case .noAvailableSessionPass:
+            "这名学员没有可用次数，请先发放或启用一张次卡。"
         }
     }
 }

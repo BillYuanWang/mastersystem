@@ -61,7 +61,8 @@ private struct MobileAdvertisementCard: View {
                 AdvertisementMediaView(
                     model: model,
                     media: advertisement.thumbnail,
-                    contentMode: .fit
+                    contentMode: .fit,
+                    cacheRevision: advertisement.updatedAt
                 )
                 .frame(width: 82, height: 82)
                 .background(theme.subtleSurface)
@@ -135,7 +136,8 @@ private struct MobileAdvertisementDetailView: View {
                     AdvertisementMediaView(
                         model: model,
                         media: advertisement.thumbnail,
-                        contentMode: .fit
+                        contentMode: .fit,
+                        cacheRevision: advertisement.updatedAt
                     )
                     .frame(width: 112, height: 112)
                     .background(theme.subtleSurface)
@@ -173,7 +175,8 @@ private struct MobileAdvertisementDetailView: View {
                 AdvertisementMediaView(
                     model: model,
                     media: advertisement.poster,
-                    contentMode: .fit
+                    contentMode: .fit,
+                    cacheRevision: advertisement.updatedAt
                 )
                 .frame(maxWidth: .infinity)
                 .aspectRatio(posterAspectRatio, contentMode: .fit)

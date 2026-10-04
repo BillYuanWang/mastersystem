@@ -12,9 +12,23 @@ struct NewsMediaView: View {
     let model: AppModel
     let image: NewsArticleImage?
     var contentMode: ContentMode = .fill
+    var cacheRevision: Date?
 
     @State private var data: Data?
     @State private var isLoading = false
+    @State private var displayedImageID: NewsArticleImageID?
+
+    init(
+        model: AppModel,
+        image: NewsArticleImage?,
+        contentMode: ContentMode = .fill,
+        cacheRevision: Date? = nil
+    ) {
+        self.model = model
+        self.image = image
+        self.contentMode = contentMode
+        self.cacheRevision = cacheRevision
+    }
 
     var body: some View {
         Group {
@@ -35,16 +49,53 @@ struct NewsMediaView: View {
             }
         }
         .clipped()
-        .task(id: image?.storagePath) {
-            data = nil
+        .task(id: mediaTaskID) {
             guard let path = image?.storagePath, !path.isEmpty else {
+                data = nil
+                displayedImageID = nil
                 isLoading = false
                 return
             }
-            isLoading = true
-            data = await model.newsMediaData(storagePath: path)
+
+            if displayedImageID != image?.id {
+                data = nil
+            }
+            displayedImageID = image?.id
+            isLoading = data == nil
+
+            let key = PersistentMediaCache.resourceKey(
+                namespace: "news",
+                storagePath: path,
+                revision: cacheRevision
+            )
+            let cached = await PersistentMediaCache.shared.lookup(for: key)
+            guard !Task.isCancelled else { return }
+            if let cached {
+                data = cached.data
+                isLoading = false
+                if cached.isFresh { return }
+            }
+
+            do {
+                let refreshed = try await PersistentMediaCache.shared.refresh(key: key) {
+                    try await model.downloadNewsMediaData(storagePath: path)
+                }
+                guard !Task.isCancelled else { return }
+                data = refreshed
+            } catch {
+                // Keep the last successful disk copy when the device is offline.
+            }
             isLoading = false
         }
+    }
+
+    private var mediaTaskID: String {
+        guard let path = image?.storagePath, !path.isEmpty else { return "news|none" }
+        return PersistentMediaCache.resourceKey(
+            namespace: "news",
+            storagePath: path,
+            revision: cacheRevision
+        )
     }
 }
 

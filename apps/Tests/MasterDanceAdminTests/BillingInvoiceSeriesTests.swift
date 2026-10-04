@@ -9,12 +9,14 @@ struct BillingInvoiceSeriesTests {
     func groupsVersions() throws {
         let guardianID = GuardianID()
         let termID = TermID()
+        let learnerID = StudentID()
         let firstID = BillingInvoiceID()
         let secondID = BillingInvoiceID()
         let first = invoice(
             id: firstID,
             guardianID: guardianID,
             termID: termID,
+            learnerIDs: [learnerID],
             number: "INV-2026-0001",
             version: 1,
             supersededByInvoiceID: secondID
@@ -23,6 +25,7 @@ struct BillingInvoiceSeriesTests {
             id: secondID,
             guardianID: guardianID,
             termID: termID,
+            learnerIDs: [learnerID],
             number: first.invoiceNumber,
             version: 2,
             supersedesInvoiceID: first.id
@@ -39,19 +42,22 @@ struct BillingInvoiceSeriesTests {
     func separatesGuardianAndTerm() {
         let guardianID = GuardianID()
         let firstTermID = TermID()
+        let firstLearnerID = StudentID()
         let invoices = [
-            invoice(guardianID: guardianID, termID: firstTermID, number: "INV-1"),
-            invoice(guardianID: guardianID, termID: TermID(), number: "INV-2"),
-            invoice(guardianID: GuardianID(), termID: firstTermID, number: "INV-3"),
+            invoice(guardianID: guardianID, termID: firstTermID, learnerIDs: [firstLearnerID], number: "INV-1"),
+            invoice(guardianID: guardianID, termID: TermID(), learnerIDs: [firstLearnerID], number: "INV-2"),
+            invoice(guardianID: GuardianID(), termID: firstTermID, learnerIDs: [StudentID()], number: "INV-3"),
+            invoice(guardianID: guardianID, termID: firstTermID, learnerIDs: [StudentID()], number: "INV-4"),
         ]
 
-        #expect(BillingInvoiceSeriesResolver.series(from: invoices).count == 3)
+        #expect(BillingInvoiceSeriesResolver.series(from: invoices).count == 4)
     }
 
     private func invoice(
         id: BillingInvoiceID = BillingInvoiceID(),
         guardianID: GuardianID,
         termID: TermID,
+        learnerIDs: [StudentID],
         number: String,
         version: Int = 1,
         supersedesInvoiceID: BillingInvoiceID? = nil,
@@ -61,6 +67,7 @@ struct BillingInvoiceSeriesTests {
             id: id,
             guardianID: guardianID,
             termID: termID,
+            learnerIDs: learnerIDs,
             invoiceNumber: number,
             version: version,
             schoolYearLabel: "2026–2027",

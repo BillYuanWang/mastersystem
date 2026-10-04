@@ -93,14 +93,12 @@ enum ReceiptClipboard {
             throw ReceiptClipboardError.invalidPNG
         }
 
-        let item = NSPasteboardItem()
-        item.setData(data, forType: .png)
-        if let tiff = image.tiffRepresentation {
-            item.setData(tiff, forType: .tiff)
-        }
         pasteboard.clearContents()
-        guard pasteboard.writeObjects([item]) else {
+        guard pasteboard.setData(data, forType: .png) else {
             throw ReceiptClipboardError.writeFailed
+        }
+        if let tiff = image.tiffRepresentation {
+            _ = pasteboard.setData(tiff, forType: .tiff)
         }
     }
 }

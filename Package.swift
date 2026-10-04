@@ -46,12 +46,24 @@ let package = Package(
                 "MasterDanceMobile",
                 "MasterDanceAdmin/Info.plist",
                 "project.yml",
-                "Shared/Resources",
+                "Shared/Resources/AppIcon.icns",
+                "Shared/Resources/MasterDanceLogo.png",
+                "Shared/Resources/MasterDanceLogoMark.png",
                 "Tests"
             ],
             sources: [
                 "MasterDanceAdmin",
-                "Shared"
+                "Shared/AppShell.swift",
+                "Shared/Design",
+                "Shared/Models",
+                "Shared/Services",
+                "Shared/Stores",
+                "Shared/Views"
+            ],
+            resources: [
+                .copy("Shared/Resources/MasterDanceMacLogo.png"),
+                .copy("Shared/Resources/MasterDanceMacLogoMark.png"),
+                .copy("Shared/Resources/ReceiptWaterSleeveWatermark.png")
             ]
         ),
         .testTarget(

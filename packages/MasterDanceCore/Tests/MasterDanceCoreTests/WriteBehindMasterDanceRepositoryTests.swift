@@ -4,6 +4,56 @@ import Testing
 
 @Suite("Local-first repository")
 struct WriteBehindMasterDanceRepositoryTests {
+    @Test("New learner creation preserves queued enrollment IDs across relaunch")
+    func newLearnerAndEnrollmentKeepIdentity() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let guardian = Guardian(displayName: "Test Family")
+        let remote = PreviewMasterDanceStore(data: PreviewData(guardians: [guardian]))
+        let repository = WriteBehindMasterDanceRepository(
+            remote: remote, cacheDirectory: directory, cacheKey: "student-identity"
+        )
+        let student = Student(guardianID: guardian.id, displayName: "Test Learner", kind: .child)
+        let created = try await repository.create(student: student, for: guardian.id)
+        let enrollment = Enrollment(
+            termID: TermID(), courseID: CourseID(), studentID: created.id, enrolledAt: Date()
+        )
+        try await repository.save(enrollment: enrollment)
+        #expect(created.id == student.id)
+
+        let restored = WriteBehindMasterDanceRepository(
+            remote: remote, cacheDirectory: directory, cacheKey: "student-identity"
+        )
+        #expect(try await restored.synchronizeIfNeeded() == 2)
+        #expect(await remote.listStudents().map(\.id) == [student.id])
+        #expect(await remote.listEnrollments(studentID: student.id) == [enrollment])
+        _ = try await remote.create(student: student, for: guardian.id)
+        #expect(await remote.listStudents().count == 1)
+    }
+
+    @Test("Concurrent synchronization callers wait for every pending write")
+    func concurrentCallersJoinFlush() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let remote = PreviewMasterDanceStore()
+        let repository = WriteBehindMasterDanceRepository(
+            remote: remote, cacheDirectory: directory, cacheKey: "joined-sync"
+        )
+        for index in 0..<24 {
+            try await repository.save(guardian: Guardian(displayName: "Family \(index)"))
+        }
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for _ in 0..<8 {
+                group.addTask {
+                    _ = try await repository.synchronizeIfNeeded()
+                    #expect(await repository.pendingMutationCount() == 0)
+                    #expect(await remote.listGuardians().count == 24)
+                }
+            }
+            try await group.waitForAll()
+        }
+    }
+
     @Test("Attendance is durable locally before cloud synchronization")
     func attendancePersistsBeforeSync() async throws {
         let directory = temporaryDirectory()

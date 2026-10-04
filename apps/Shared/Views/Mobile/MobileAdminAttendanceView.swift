@@ -8,6 +8,7 @@ struct MobileAttendanceHomeView: View {
     @State private var selectedDate = Self.initialDate
     @State private var wheelDate = Self.initialDate
     @State private var isShowingDateWheel = false
+    @State private var hasCheckedInitialCourses = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -63,12 +64,36 @@ struct MobileAttendanceHomeView: View {
             }
 
             if sessionsForDay.isEmpty {
-                ContentUnavailableView(
-                    "这一天没有课程",
-                    systemImage: "calendar",
-                    description: Text("可以从上方选择其他日期。")
-                )
-                .listRowBackground(Color.clear)
+                if !hasCheckedInitialCourses || !model.hasLoaded || model.isLoading {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .tint(theme.accent)
+                        Text("正在加载课程")
+                            .mdFont(.body)
+                            .foregroundStyle(theme.secondaryText)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 100)
+                    .listRowBackground(Color.clear)
+                } else if hasCourseLoadingError {
+                    VStack(spacing: 12) {
+                        ContentUnavailableView(
+                            "课程暂未加载",
+                            systemImage: "wifi.exclamationmark",
+                            description: Text("请检查网络连接后重试。")
+                        )
+                        Button("重试") {
+                            Task { await loadInitialCourses(forceRefresh: true) }
+                        }
+                    }
+                    .listRowBackground(Color.clear)
+                } else {
+                    ContentUnavailableView(
+                        "这一天没有课程",
+                        systemImage: "calendar",
+                        description: Text("可以从上方选择其他日期。")
+                    )
+                    .listRowBackground(Color.clear)
+                }
             } else {
                 Section("当天课程") {
                     ForEach(sessionsForDay) { session in
@@ -100,7 +125,7 @@ struct MobileAttendanceHomeView: View {
         }
         .refreshable { await model.refreshFromCloud() }
         .task {
-            await model.synchronizeRemoteChanges()
+            await loadInitialCourses(forceRefresh: false)
         }
         .sheet(isPresented: $isShowingDateWheel) {
             MobileAttendanceDateWheel(
@@ -118,6 +143,22 @@ struct MobileAttendanceHomeView: View {
         model.sessions
             .filter { Calendar.masterDance.isDate($0.startsAt, inSameDayAs: selectedDate) }
             .sorted { $0.startsAt < $1.startsAt }
+    }
+
+    private var hasCourseLoadingError: Bool {
+        if model.errorMessage != nil { return true }
+        if case .failure = model.backgroundSync.notice { return true }
+        return false
+    }
+
+    private func loadInitialCourses(forceRefresh: Bool) async {
+        hasCheckedInitialCourses = false
+        defer { hasCheckedInitialCourses = true }
+        if forceRefresh {
+            await model.refreshFromCloud()
+        } else {
+            await model.synchronizeRemoteChanges()
+        }
     }
 
     private func attendanceProgress(for session: ClassSession) -> String {
@@ -237,7 +278,7 @@ private struct MobileAttendanceSessionView: View {
     let model: AppModel
     let sessionID: ClassSessionID
 
-    @State private var guestMode: AttendanceStatus?
+    @State private var guestMode: MobileGuestAttendanceMode?
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -263,17 +304,22 @@ private struct MobileAttendanceSessionView: View {
                     }
 
                     guestSection(
-                        title: "试课学员",
-                        status: .trial,
-                        records: guestRecords(status: .trial),
+                        mode: .trial,
+                        records: guestRecords(mode: .trial),
                         session: session,
                         theme: theme
                     )
 
                     guestSection(
-                        title: "补课学员",
-                        status: .makeup,
-                        records: guestRecords(status: .makeup),
+                        mode: .makeup,
+                        records: guestRecords(mode: .makeup),
+                        session: session,
+                        theme: theme
+                    )
+
+                    guestSection(
+                        mode: .sessionPass,
+                        records: guestRecords(mode: .sessionPass),
                         session: session,
                         theme: theme
                     )
@@ -293,6 +339,11 @@ private struct MobileAttendanceSessionView: View {
                                 guestMode = .makeup
                             } label: {
                                 Label("添加补课学员", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            Button {
+                                guestMode = .sessionPass
+                            } label: {
+                                Label("添加次卡学员", systemImage: "rectangle.stack.fill")
                             }
                         } label: {
                             Image(systemName: "person.badge.plus")
@@ -438,8 +489,7 @@ private struct MobileAttendanceSessionView: View {
 
     @ViewBuilder
     private func guestSection(
-        title: String,
-        status: AttendanceStatus,
+        mode: MobileGuestAttendanceMode,
         records: [Attendance],
         session: ClassSession,
         theme: MDTheme
@@ -447,15 +497,15 @@ private struct MobileAttendanceSessionView: View {
         Section {
             if records.isEmpty {
                 Button {
-                    guestMode = status
+                    guestMode = mode
                 } label: {
-                    Label("添加\(title)", systemImage: "person.badge.plus")
+                    Label("添加\(mode.sectionTitle)", systemImage: "person.badge.plus")
                 }
             } else {
                 ForEach(records) { record in
                     HStack {
-                        Image(systemName: status.mobileSystemImage)
-                            .foregroundStyle(status.mobileColor(theme: theme))
+                        Image(systemName: mode.systemImage)
+                            .foregroundStyle(mode.color(theme: theme))
                             .frame(width: 24)
                         Text(model.student(id: record.studentID)?.displayName ?? "学员")
                             .mdFont(.bodyStrong)
@@ -467,24 +517,27 @@ private struct MobileAttendanceSessionView: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(theme.secondaryText)
-                        .accessibilityLabel("取消\(status.mobileTitle)，恢复为未记录")
+                        .accessibilityLabel("取消\(mode.shortTitle)，恢复为未记录")
                     }
                 }
                 Button {
-                    guestMode = status
+                    guestMode = mode
                 } label: {
                     Label("继续添加", systemImage: "plus")
                         .mdFont(.compactStrong)
                 }
             }
         } header: {
-            Text("\(title) · \(records.count)")
+            Text("\(mode.sectionTitle) · \(records.count)")
         }
     }
 
-    private func guestRecords(status: AttendanceStatus) -> [Attendance] {
+    private func guestRecords(mode: MobileGuestAttendanceMode) -> [Attendance] {
         model.attendance
-            .filter { $0.sessionID == sessionID && $0.status == status }
+            .filter { record in
+                guard record.sessionID == sessionID else { return false }
+                return mode.matches(record)
+            }
             .sorted {
                 (model.student(id: $0.studentID)?.displayName ?? "")
                     .localizedCompare(model.student(id: $1.studentID)?.displayName ?? "") == .orderedAscending
@@ -533,7 +586,7 @@ private struct MobileAttendanceSessionView: View {
 private struct MobileGuestAttendancePicker: View {
     let model: AppModel
     let session: ClassSession
-    let mode: AttendanceStatus
+    let mode: MobileGuestAttendanceMode
 
     @State private var searchText = ""
     @Environment(\.dismiss) private var dismiss
@@ -551,7 +604,7 @@ private struct MobileGuestAttendancePicker: View {
                     ContentUnavailableView.search(text: searchText)
                 }
             }
-            .navigationTitle(mode == .trial ? "添加试课学员" : "添加补课学员")
+            .navigationTitle("添加\(mode.sectionTitle)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -589,7 +642,9 @@ private struct MobileGuestAttendancePicker: View {
             } label: {
                 candidateRow(
                     student,
-                    detail: model.guardian(id: student.guardianID)?.displayName ?? "",
+                    detail: mode == .sessionPass
+                        ? "次卡剩余 \(model.availableSessionPass(for: student.id).map { model.remainingSessionCount(for: $0) } ?? 0) 次"
+                        : (model.guardian(id: student.guardianID)?.displayName ?? ""),
                     theme: theme
                 )
             }
@@ -615,7 +670,7 @@ private struct MobileGuestAttendancePicker: View {
             Spacer()
             if existingStudentIDs.contains(student.id) {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(mode.mobileColor(theme: theme))
+                    .foregroundStyle(mode.color(theme: theme))
             } else if mode != .makeup {
                 Image(systemName: "plus.circle")
                     .foregroundStyle(theme.accent)
@@ -635,6 +690,10 @@ private struct MobileGuestAttendancePicker: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         return model.students
             .filter { !enrolledStudentIDs.contains($0.id) }
+            .filter {
+                mode != .sessionPass
+                    || ($0.kind == .adult && model.availableSessionPass(for: $0.id) != nil)
+            }
             .filter { student in
                 guard !query.isEmpty else { return true }
                 let guardian = model.guardian(id: student.guardianID)
@@ -648,15 +707,67 @@ private struct MobileGuestAttendancePicker: View {
 
     private func add(_ student: Student, sourceSessionID: ClassSessionID?) {
         model.performBackgroundOperation(
-            label: "添加\(mode.mobileTitle)",
-            successMessage: "\(student.displayName)已加入\(mode.mobileTitle)"
+            label: "添加\(mode.shortTitle)",
+            successMessage: "\(student.displayName)已加入\(mode.shortTitle)"
         ) {
             try await model.recordAttendance(
                 sessionID: session.id,
                 studentID: student.id,
-                status: mode,
-                makeupForSessionID: sourceSessionID
+                status: mode.status,
+                makeupForSessionID: sourceSessionID,
+                usesSessionPass: mode == .sessionPass
             )
+        }
+    }
+}
+
+private enum MobileGuestAttendanceMode: String, Identifiable {
+    case trial
+    case makeup
+    case sessionPass
+
+    var id: String { rawValue }
+
+    var status: AttendanceStatus {
+        switch self {
+        case .trial: .trial
+        case .makeup: .makeup
+        case .sessionPass: .present
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .trial: "试课"
+        case .makeup: "补课"
+        case .sessionPass: "次卡"
+        }
+    }
+
+    var sectionTitle: String { shortTitle + "学员" }
+
+    var systemImage: String {
+        switch self {
+        case .trial: "sparkles"
+        case .makeup: "arrow.triangle.2.circlepath"
+        case .sessionPass: "rectangle.stack.fill"
+        }
+    }
+
+    func matches(_ attendance: Attendance) -> Bool {
+        switch self {
+        case .trial: attendance.status == .trial
+        case .makeup: attendance.status == .makeup
+        case .sessionPass: attendance.usesSessionPass
+        }
+    }
+
+    @MainActor
+    func color(theme: MDTheme) -> Color {
+        switch self {
+        case .trial: theme.accent
+        case .makeup: theme.success
+        case .sessionPass: theme.warning
         }
     }
 }

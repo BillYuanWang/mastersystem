@@ -47,16 +47,22 @@ struct SupabaseConfiguration: Sendable {
         }
         let authStorage = SessionAwareAuthStorage(
             backing: backing,
-            persistsSession: persistSession
+            persistsSession: persistSession,
+            sessionKey: authStorageKey
         )
         let client = SupabaseClient(
             supabaseURL: url,
             supabaseKey: publishableKey,
             options: SupabaseClientOptions(
-                auth: .init(storage: authStorage)
+                auth: .init(storage: authStorage, storageKey: authStorageKey)
             )
         )
         return ConfiguredSessionClient(client: client, authStorage: authStorage)
+    }
+
+    // Keep the SDK's existing project-scoped key so remembered logins survive updates.
+    var authStorageKey: String {
+        "sb-\(url.host?.split(separator: ".").first.map(String.init) ?? "masterdance")-auth-token"
     }
 
     private var usesProtectedFileAuthStorage: Bool {
@@ -106,25 +112,30 @@ enum LocalFirstRepositoryFactory {
 }
 
 final class SessionAwareAuthStorage: AuthLocalStorage, @unchecked Sendable {
-    private static let sessionKeys = ["supabase.auth.token", "supabase.session"]
+    private let sessionKeys: Set<String>
 
     private let backing: any AuthLocalStorage
     private let lock = NSLock()
     private var values: [String: Data] = [:]
     private var persistsSession: Bool
 
-    init(backing: any AuthLocalStorage, persistsSession: Bool) {
+    init(
+        backing: any AuthLocalStorage,
+        persistsSession: Bool,
+        sessionKey: String = "supabase.auth.token"
+    ) {
         self.backing = backing
         self.persistsSession = persistsSession
+        sessionKeys = [sessionKey, "supabase.auth.token", "supabase.session"]
         if !persistsSession {
-            Self.sessionKeys.forEach { try? backing.remove(key: $0) }
+            sessionKeys.forEach { try? backing.remove(key: $0) }
         }
     }
 
     func setSessionPersistenceEnabled(_ isEnabled: Bool) {
         let sessionValues = lock.withLock {
             persistsSession = isEnabled
-            return Self.sessionKeys.compactMap { key in
+            return sessionKeys.compactMap { key in
                 values[key].map { (key, $0) }
             }
         }
@@ -134,14 +145,14 @@ final class SessionAwareAuthStorage: AuthLocalStorage, @unchecked Sendable {
                 try? backing.store(key: entry.0, value: entry.1)
             }
         } else {
-            Self.sessionKeys.forEach { try? backing.remove(key: $0) }
+            sessionKeys.forEach { try? backing.remove(key: $0) }
         }
     }
 
     func store(key: String, value: Data) throws {
         let shouldPersist = lock.withLock {
             values[key] = value
-            return persistsSession || !Self.sessionKeys.contains(key)
+            return persistsSession || !sessionKeys.contains(key)
         }
         if shouldPersist {
             try backing.store(key: key, value: value)
@@ -156,7 +167,7 @@ final class SessionAwareAuthStorage: AuthLocalStorage, @unchecked Sendable {
         }
 
         let shouldPersist = lock.withLock {
-            persistsSession || !Self.sessionKeys.contains(key)
+            persistsSession || !sessionKeys.contains(key)
         }
         guard shouldPersist else {
             try? backing.remove(key: key)

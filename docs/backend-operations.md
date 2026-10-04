@@ -18,6 +18,20 @@ Migrations are forward-only. Never edit a migration after it has reached a share
 - Investigate repeated `42501`, scheduling exclusion (`23P01`), invitation cleanup, and failed notification events.
 - Run `supabase db lint --linked --fail-on error` after every production migration.
 
+## Local Admin automation
+
+- Build and test `integrations/master-dance-admin` before enabling its MCP or
+  localhost API on an administrator Mac.
+- Store the ordinary Admin login and local API token with
+  `script/setup_master_dance_admin_credentials.sh`; never substitute a
+  service-role key.
+- Keep the HTTP API bound to `127.0.0.1` and start it only for a trusted local
+  integration. Do not port-forward or expose it to a LAN or the internet.
+- Prefer read-before-write calls and stable UUIDs. Confirm destructive or
+  immutable-history actions, then verify the returned record and `audit_events`.
+- Stop the API process when it is not in use. The STDIO MCP process is launched
+  on demand by Codex and exits with its client.
+
 ## Backup and recovery
 
 - Until the project has managed daily backups, create encrypted off-repository logical dumps. Never commit a data dump to this public repository.

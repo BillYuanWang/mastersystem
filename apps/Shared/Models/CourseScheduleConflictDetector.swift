@@ -20,50 +20,59 @@ enum CourseScheduleConflictDetector {
         let activeCourses = Dictionary(
             uniqueKeysWithValues: courses.filter(\.isActive).map { ($0.id, $0) }
         )
-        let scheduledSessions = sessions.compactMap { session -> ScheduledResource? in
-            guard
-                session.status != .cancelled,
-                let course = activeCourses[session.courseID]
-            else { return nil }
+        let scheduledSessions = sessions
+            .compactMap { session -> ScheduledResource? in
+                guard
+                    session.status != .cancelled,
+                    let course = activeCourses[session.courseID]
+                else { return nil }
 
-            return ScheduledResource(
-                courseID: course.id,
-                startsAt: session.startsAt,
-                endsAt: session.endsAt,
-                roomID: session.roomOverrideID ?? course.defaultRoomID,
-                instructorID: session.instructorOverrideID ?? course.defaultInstructorID
-            )
-        }
+                return ScheduledResource(
+                    courseID: course.id,
+                    startsAt: session.startsAt,
+                    endsAt: session.endsAt,
+                    roomID: session.roomOverrideID ?? course.defaultRoomID,
+                    instructorID: session.instructorOverrideID ?? course.defaultInstructorID
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.startsAt != rhs.startsAt { return lhs.startsAt < rhs.startsAt }
+                if lhs.endsAt != rhs.endsAt { return lhs.endsAt < rhs.endsAt }
+                return lhs.courseID.description < rhs.courseID.description
+            }
 
         var aggregates: [CourseID: [CourseID: ConflictAggregate]] = [:]
-        for leftIndex in scheduledSessions.indices {
-            let left = scheduledSessions[leftIndex]
-            for rightIndex in scheduledSessions.indices where rightIndex > leftIndex {
-                let right = scheduledSessions[rightIndex]
+        var activeSessions: [ScheduledResource] = []
+        for current in scheduledSessions {
+            activeSessions.removeAll { $0.endsAt <= current.startsAt }
+
+            for other in activeSessions {
                 guard
-                    left.courseID != right.courseID,
-                    left.startsAt < right.endsAt,
-                    right.startsAt < left.endsAt
+                    current.courseID != other.courseID,
+                    current.startsAt < other.endsAt,
+                    other.startsAt < current.endsAt
                 else { continue }
 
                 var resources = Set<CourseScheduleConflict.Resource>()
-                if left.roomID == right.roomID { resources.insert(.room) }
-                if left.instructorID == right.instructorID { resources.insert(.instructor) }
+                if current.roomID == other.roomID { resources.insert(.room) }
+                if current.instructorID == other.instructorID { resources.insert(.instructor) }
                 guard !resources.isEmpty else { continue }
 
                 record(
-                    conflictWith: right.courseID,
+                    conflictWith: other.courseID,
                     resources: resources,
-                    for: left.courseID,
+                    for: current.courseID,
                     in: &aggregates
                 )
                 record(
-                    conflictWith: left.courseID,
+                    conflictWith: current.courseID,
                     resources: resources,
-                    for: right.courseID,
+                    for: other.courseID,
                     in: &aggregates
                 )
             }
+
+            activeSessions.append(current)
         }
 
         return aggregates.mapValues { conflictsByCourse in

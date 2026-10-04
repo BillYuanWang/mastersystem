@@ -313,16 +313,10 @@ struct StudentsWorkspaceView: View {
                         .truncationMode(.tail)
                 }
                 tableCell(width: FamilyTableMetrics.email, theme: theme) {
-                    Text(displayValue(guardian.email))
-                        .mdFont(.body)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    contactValue(guardian.email, theme: theme)
                 }
                 tableCell(width: FamilyTableMetrics.phone, theme: theme) {
-                    Text(displayValue(guardian.phone))
-                        .mdFont(.body)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    contactValue(guardian.phone, theme: theme)
                 }
                 tableCell(width: FamilyTableMetrics.learners, theme: theme) {
                     Text(learnerSummary(for: guardian))
@@ -853,6 +847,22 @@ struct StudentsWorkspaceView: View {
     private func displayValue(_ value: String?) -> String {
         guard let value, !value.isEmpty else { return "—" }
         return value
+    }
+
+    @ViewBuilder
+    private func contactValue(_ value: String?, theme: MDTheme) -> some View {
+        if let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Text(value)
+                .mdFont(.body)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        } else {
+            Label("待补", systemImage: "exclamationmark.circle.fill")
+                .mdFont(.bodyStrong)
+                .foregroundStyle(theme.danger)
+                .lineLimit(1)
+                .help("选择此监护人后，在右侧点击编辑补充资料")
+        }
     }
 
     private func rowBackground(for guardian: Guardian, theme: MDTheme) -> Color {

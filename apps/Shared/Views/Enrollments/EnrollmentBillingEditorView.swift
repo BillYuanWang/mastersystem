@@ -51,6 +51,12 @@ struct EnrollmentBillingEditorView: View {
                     identitySection(theme: theme)
                     registrationSection(theme: theme)
                     pricingSection(theme: theme)
+                    section("本次报名覆盖课次", theme: theme) {
+                        Text(CourseScheduleSummary(sessions: model.billableSessions(for: draft), calendar: .masterDance).details(calendar: .masterDance))
+                            .mdFont(.compact)
+                        Text("已扣除休课和已记录的试课")
+                            .mdFont(.compact).foregroundStyle(theme.secondaryText)
+                    }
                     discountSection(theme: theme)
                     estimateSection(theme: theme)
                     notesSection(theme: theme)
@@ -168,7 +174,8 @@ struct EnrollmentBillingEditorView: View {
                     .frame(width: 220)
                 }
 
-                GridRow {
+                if draft.registrationMode == .fullTerm {
+                  GridRow {
                     fieldLabel("计费起始")
                     HStack(spacing: 8) {
                         DatePicker(
@@ -184,6 +191,13 @@ struct EnrollmentBillingEditorView: View {
                             )
                         }
                         .buttonStyle(.borderless)
+                    }
+                  }
+                } else {
+                    GridRow {
+                        fieldLabel("计费课次")
+                        Text("以勾选课次为准，调课后仍保留报名")
+                            .mdFont(.compact).foregroundStyle(theme.secondaryText)
                     }
                 }
 

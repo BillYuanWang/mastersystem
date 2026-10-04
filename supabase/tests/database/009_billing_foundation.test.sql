@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(20);
+select plan(26);
 
 select has_column('public', 'courses', 'unit_price_cents', 'courses have a per-session price');
 select has_column('public', 'courses', 'pricing_status', 'courses have a pricing status');
@@ -11,7 +11,14 @@ select has_column('public', 'enrollments', 'trial_fee_cents', 'enrollments recor
 select has_column('public', 'enrollments', 'discount_kind', 'enrollments support one course discount');
 
 select has_table('public', 'billing_invoices', 'family invoices table exists');
+select has_column('public', 'billing_invoices', 'learner_ids', 'invoices preserve their selected learner scope');
 select has_table('public', 'billing_invoice_items', 'immutable invoice items table exists');
+select has_column(
+  'public',
+  'billing_invoice_items',
+  'settlement_status',
+  'invoice items distinguish unpaid, paid, and waived prices'
+);
 select has_table('public', 'billing_payments', 'append-only payments table exists');
 select has_table('public', 'billing_artifacts', 'invoice and receipt PNG metadata table exists');
 
@@ -32,6 +39,20 @@ select ok(
     'public.admin_record_billing_payment(uuid,uuid,integer,integer,public.billing_payment_method,timestamptz,text,uuid,text)'
   ) is not null,
   'append-only payment RPC exists'
+);
+
+select ok(
+  to_regprocedure(
+    'public.admin_issue_billing_invoice_scoped_dual(uuid,uuid,uuid,uuid[],text,integer,text,timestamptz,text,uuid,uuid,text,uuid,text,jsonb)'
+  ) is not null,
+  'scoped invoice issuance stores bilingual and English artifacts atomically'
+);
+
+select ok(
+  to_regprocedure(
+    'public.admin_issue_billing_invoice_scoped_dual_v2(uuid,uuid,uuid,uuid[],text,integer,text,timestamptz,text,uuid,uuid,text,uuid,text,jsonb)'
+  ) is not null,
+  'current invoice issuance preserves three-state settlement data'
 );
 
 select ok(
@@ -88,6 +109,27 @@ select ok(
 );
 
 select ok(
+  exists (
+    select 1
+    from pg_catalog.pg_trigger
+    where tgrelid = 'public.billing_invoice_items'::regclass
+      and tgname = 'billing_invoice_items_settlement_guard'
+      and not tgisinternal
+  ),
+  'invoice items keep the legacy amount-due flag synchronized'
+);
+
+select ok(
+  exists (
+    select 1
+    from pg_catalog.pg_constraint
+    where conrelid = 'public.billing_invoice_items'::regclass
+      and conname = 'billing_invoice_items_settlement_consistent'
+  ),
+  'settlement status and amount-due behavior cannot disagree'
+);
+
+select ok(
   not exists (
     select 1
     from pg_catalog.pg_policies
@@ -99,8 +141,8 @@ select ok(
 );
 
 select ok(
-  to_regclass('public.billing_invoices_one_root_per_family_term_idx') is not null,
-  'a family and term can start only one invoice series'
+  to_regclass('public.billing_invoices_one_root_per_family_term_scope_idx') is not null,
+  'a family, term, and exact learner selection can start one invoice series'
 );
 
 select ok(
